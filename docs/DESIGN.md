@@ -219,6 +219,7 @@ Knapsack does the same, so its files are where users already expect them.
 ```
 <config>/knapsack/
   config.toml           # profiles, addon refs, preferences, API keys
+  config.lock           # held by every command that writes config.toml
   state/
     forever.toml        # what's installed in each profile
     forever.lock        # held while a command runs against this profile
@@ -268,7 +269,10 @@ api_key = ""
 
 What belongs here:
 
-- **Profiles**: name, AddOns path, flavor.
+- **Profiles**: name, AddOns path, flavor. Names are lowercase letters,
+  digits, `-` and `_`, because each one becomes a state and lock file name. On
+  the case-insensitive filesystems of Windows and macOS, `Forever` and
+  `forever` would otherwise share one state file.
 - **Addons per profile**, stored as normalized **refs**, never raw URLs. The
   CLI accepts URLs and converts them, so each addon has exactly one spelling.
   GitHub `owner/repo` is lower-cased, because GitHub treats it
@@ -342,7 +346,16 @@ Every command that reads or writes a profile holds `state/<profile>.lock`
 (via `gofrs/flock`) for its whole duration. A second Knapsack process, such as
 a scheduled run or the TUI, fails fast with
 `error: profile "forever" is in use by another knapsack process` rather than
-corrupting state. Profile-agnostic config commands lock `config.lock` instead.
+corrupting state.
+
+Every command that **writes `config.toml`** also holds `config.lock`, in
+Knapsack's config directory, beside `state/` so no profile name can collide
+with it. That includes profile commands such as `add`, which record refs in
+config. It's taken after the profile lock, and config is re-read under it
+before the change is applied, so two commands on different profiles can't
+each save a stale copy and lose the other's change. The lock stays in
+Knapsack's directory with `--config`, so nothing is created next to a config
+file kept elsewhere.
 
 ### 5.6 Cache
 
@@ -866,8 +879,9 @@ Code conventions:
 - Errors are wrapped with context at each boundary (`%w`). Sentinel errors
   are used for conditions callers branch on. User-facing text exists only in
   `app.UserError` and the frontends (§6.6).
-- `context.Context` is the first parameter of anything that does I/O or takes
-  a lock.
+- `context.Context` is the first parameter of anything that does network I/O
+  or can block waiting. Local file writes can't be cancelled, and locks never
+  wait (§5.5), so `atomicfile` and `lock` don't take one.
 - Interfaces are small and defined in the package that uses them, except
   `source.Source` (§4).
 - Constructors take dependencies explicitly. There's no global HTTP client and
