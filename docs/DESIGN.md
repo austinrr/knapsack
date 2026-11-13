@@ -100,7 +100,7 @@ GitHub SDKs (go-github), git libraries, ORMs/SQLite.
 | `gofmt` / `goimports` | Formatting (enforced through golangci-lint formatters) |
 | `golangci-lint` v2 | Linting (config in §10). Installed as a binary, as its docs recommend |
 | `govulncheck` | Dependency vulnerability scan. Pinned as a `tool` dependency in `go.mod` |
-| `goreleaser` | Cross-platform release builds. Pinned as a `tool` dependency |
+| `goreleaser` | Cross-platform release builds. Pinned as a `tool` dependency when release tooling lands (PR 19) |
 | `git-cliff` | Changelog and next-version calculation from conventional-commit PR titles. Runs in CI only |
 | GitHub Actions | CI on Linux, Windows and macOS |
 | `Makefile` | `make lint`, `make test`, `make build`. Thin wrappers only; CI runs the same commands |
@@ -948,8 +948,7 @@ one command group.
 **PR 1 — Module, root command and test harness**
 - Title: `feat: add module skeleton and version command`
 - Implements: §3 (tooling), §8.7 (Cobra conventions), §8.6 (exit codes)
-- `go.mod` (`go 1.26`; `govulncheck` and `goreleaser` as `tool`
-  dependencies), `cmd/knapsack` with `main.go` and `root.go`, `knapsack
+- `go.mod` (`go 1.26`; `govulncheck` as a `tool` dependency), `cmd/knapsack` with `main.go` and `root.go`, `knapsack
   version` (version injected through `-ldflags`, `dev` otherwise), Makefile,
   `.golangci.yml` from §10, `.gitignore`.
 - Test harness in `cmd/knapsack`: a helper that runs the root command with
@@ -1143,7 +1142,8 @@ one command group.
 **PR 19 — Release**
 - Title: `chore: add release cut and goreleaser`
 - Implements: §11 (releases)
-- `cliff.toml`, the Release Cut workflow (version bump from commit types,
+- `goreleaser` as a `tool` dependency (deferred from PR 1: it pulls in
+  hundreds of modules and nothing needs it earlier), `cliff.toml`, the Release Cut workflow (version bump from commit types,
   changelog, tag, dry-run option), the release workflow it calls
   (`.goreleaser.yaml`), and install instructions and usage in the README.
 - Done when: a `v0.1.0` tag produces binaries for linux/windows/darwin ×

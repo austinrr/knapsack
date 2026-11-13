@@ -1,0 +1,31 @@
+# Linter set and rationale: docs/DESIGN.md §10.
+version: "2"
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - bodyclose # unclosed HTTP response bodies
+    - errorlint # errors.Is/As and %w used correctly
+    - exhaustive # switches cover every case of an enum-like type
+    - gocritic
+    - gosec # file permissions, zip-slip, etc.
+    - misspell
+    - nilerr
+    - noctx # HTTP requests without a context
+    - revive
+    - unconvert
+    - unparam
+    - usestdlibvars
+  settings:
+    gosec:
+      excludes:
+        - G304 # file paths from variables; a file manager does this by design
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/austinrr/knapsack

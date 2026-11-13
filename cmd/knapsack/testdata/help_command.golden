@@ -1,0 +1,7 @@
+# exit: 0
+# stdout:
+Print the knapsack version
+
+Usage:
+  knapsack version
+# stderr:
