@@ -76,7 +76,7 @@ func TestClient(t *testing.T) {
 	}{
 		{flavor.Retail, flavor.Client{
 			Folder: "_retail_", GameType: "standard", Family: flavor.FamilyMainline,
-			Interface: flavor.Range{Min: 100000}, Product: "wow",
+			Interface: flavor.Range{Min: 100000, Max: flavor.NoMax}, Product: "wow",
 		}},
 		{flavor.Classic, flavor.Client{
 			Folder: "_classic_", GameType: "mists", Family: flavor.FamilyClassic,
@@ -99,7 +99,10 @@ func TestClient(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(string(tt.flavor), func(t *testing.T) {
 			t.Parallel()
-			got := tt.flavor.Client()
+			got, ok := tt.flavor.Client()
+			if !ok {
+				t.Fatalf("Client() ok = false")
+			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("Client() =\n  %+v\nwant\n  %+v", got, tt.want)
 			}
@@ -109,18 +112,25 @@ func TestClient(t *testing.T) {
 
 func TestClientUnknown(t *testing.T) {
 	t.Parallel()
-	if got := flavor.Flavor("bogus").Client(); got.Folder != "" {
-		t.Errorf("unknown flavor Client() = %+v, want zero Client", got)
+	for _, f := range []flavor.Flavor{"bogus", "Retail", ""} {
+		got, ok := f.Client()
+		if ok || !reflect.DeepEqual(got, flavor.Client{}) {
+			t.Errorf("Flavor(%q).Client() = %+v, %v; want zero Client, false", f, got, ok)
+		}
+		// The zero Range must not accept real Interface numbers.
+		if got.Interface.Contains(16001) || got.Interface.Contains(120105) {
+			t.Errorf("zero Range %v accepts real Interface numbers", got.Interface)
+		}
 	}
 }
 
 // Client returns a copy, so a caller changing Aliases can't change the table.
 func TestClientReturnsCopy(t *testing.T) {
 	t.Parallel()
-	c := flavor.Forever.Client()
+	c, _ := flavor.Forever.Client()
 	c.Aliases[0] = "changed"
-	if got := flavor.Forever.Client().Aliases[0]; got != "camelot" {
-		t.Errorf("table modified through Client(): alias = %q", got)
+	if again, _ := flavor.Forever.Client(); again.Aliases[0] != "camelot" {
+		t.Errorf("table modified through Client(): alias = %q", again.Aliases[0])
 	}
 }
 
@@ -136,10 +146,11 @@ func TestInterfaceRanges(t *testing.T) {
 		flavor.Forever:     16001,
 	}
 	for _, f := range flavor.All() {
+		c, _ := f.Client()
 		for g, n := range samples {
-			got := f.Client().Interface.Contains(n)
+			got := c.Interface.Contains(n)
 			if want := f == g; got != want {
-				t.Errorf("%s range %s Contains(%d) = %v, want %v", f, f.Client().Interface, n, got, want)
+				t.Errorf("%s range %s Contains(%d) = %v, want %v", f, c.Interface, n, got, want)
 			}
 		}
 	}
@@ -148,7 +159,7 @@ func TestInterfaceRanges(t *testing.T) {
 func TestRange(t *testing.T) {
 	t.Parallel()
 	bounded := flavor.Range{Min: 16000, Max: 16999}
-	open := flavor.Range{Min: 100000}
+	open := flavor.Range{Min: 100000, Max: flavor.NoMax}
 	tests := []struct {
 		r    flavor.Range
 		n    int

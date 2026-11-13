@@ -7,6 +7,7 @@ package flavor
 
 import (
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -46,25 +47,30 @@ type Client struct {
 	Family Family
 	// Interface is the range of ## Interface values built for this game.
 	Interface Range
-	// Product is the product code in .build.info, or "" if not yet known.
+	// Product is the product code in .build.info, or "" if not yet known,
+	// in which case the client's exact Interface number can't be read.
 	Product string
 }
 
-// Range is an inclusive range of Interface numbers. A Max of 0 means there is
-// no upper bound.
+// Range is an inclusive range of Interface numbers. Use NoMax for a range
+// with no upper bound.
 type Range struct {
 	Min, Max int
 }
 
+// NoMax is the Max of a range with no upper bound. Making it explicit keeps
+// the zero Range from accepting real Interface numbers: it holds only 0.
+const NoMax = math.MaxInt
+
 // Contains reports whether n is in the range.
 func (r Range) Contains(n int) bool {
-	return n >= r.Min && (r.Max == 0 || n <= r.Max)
+	return n >= r.Min && n <= r.Max
 }
 
 // String formats the range for messages: "16000–16999", or "100000+" when
 // there is no upper bound.
 func (r Range) String() string {
-	if r.Max == 0 {
+	if r.Max == NoMax {
 		return fmt.Sprintf("%d+", r.Min)
 	}
 	return fmt.Sprintf("%d–%d", r.Min, r.Max)
@@ -79,7 +85,7 @@ var table = []struct {
 		Folder:    "_retail_",
 		GameType:  "standard",
 		Family:    FamilyMainline,
-		Interface: Range{Min: 100000},
+		Interface: Range{Min: 100000, Max: NoMax},
 		Product:   "wow",
 	}},
 	{Classic, Client{
@@ -130,25 +136,26 @@ func Parse(s string) (Flavor, error) {
 			return row.flavor, nil
 		}
 	}
-	names := make([]string, len(table))
-	for i, row := range table {
-		names[i] = string(row.flavor)
+	var names []string
+	for _, f := range All() {
+		names = append(names, string(f))
 	}
 	return "", fmt.Errorf("unknown flavor %q (want one of %s)", s, strings.Join(names, ", "))
 }
 
-// Client returns the flavor's row of the client data table. A Flavor that
-// didn't come from Parse or a constant returns the zero Client.
-func (f Flavor) Client() Client {
+// Client returns the flavor's row of the client data table. It reports false
+// for a Flavor that isn't in the table, so callers can't validate against
+// empty data by mistake.
+func (f Flavor) Client() (Client, bool) {
 	for _, row := range table {
 		if row.flavor == f {
 			c := row.client
 			// Copy the slice so callers can't modify the table.
 			c.Aliases = append([]string(nil), c.Aliases...)
-			return c
+			return c, true
 		}
 	}
-	return Client{}
+	return Client{}, false
 }
 
 // FromPath detects the flavor from an AddOns directory by finding the client

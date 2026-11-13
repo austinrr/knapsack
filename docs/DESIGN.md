@@ -367,7 +367,7 @@ const (
 )
 func Parse(s string) (Flavor, error)          // unknown values are rejected
 func FromPath(addonsDir string) (Flavor, bool) // …/_forever_/Interface/AddOns → Forever
-func (f Flavor) Client() Client               // the row of the client data table (§6.4)
+func (f Flavor) Client() (Client, bool)       // the row of the client data table (§6.4)
 
 // ClientInterface reads the installed client's version from .build.info in
 // the WoW folder and returns its Interface number (1.60.1 → 16001).
