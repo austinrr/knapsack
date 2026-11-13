@@ -1,0 +1,23 @@
+## Interface: 120100, 120105, 16001, 50504, 38001, 20506, 11509
+## ExcludeLoadGameType: wowhack
+## Title: Baganator
+## Version: 853
+## Author: plusmouse
+## OptionalDeps: Syndicator, Masque
+## SavedVariables: BAGANATOR_CONFIG, BAGANATOR_DATA
+## SavedVariablesPerCharacter: BAGANATOR_CURRENT_PROFILE
+## IconTexture: Interface\AddOns\Baganator\Assets\logo.tga
+## AddonCompartmentFunc: Baganator_AddonCompartmentCallback
+
+## Category-enUS: Inventory
+## Category-deDE: Inventar
+## Category-esES: Inventario
+## Category-esMX: Inventario
+## Category-frFR: Inventaire
+## Category-itIT: Inventario
+## Category-koKR: 소지품
+## Category-ptBR: Inventário
+## Category-ruRU: Предметы
+## Category-zhCN: 物品栏
+## Category-zhTW: 物品欄
+
