@@ -1,0 +1,5 @@
+# exit: 0
+# stdout:
+CURRENT  NAME       FLAVOR   ADDONS  PATH
+*        elsewhere  classic  0       <home>/wow/_classic_/Interface/AddOns
+# stderr:

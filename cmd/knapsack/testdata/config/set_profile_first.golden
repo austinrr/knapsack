@@ -1,0 +1,5 @@
+# exit: 0
+# stdout:
+Profile "forever" created (forever, <home>/wow/_forever_/Interface/AddOns).
+Switched to profile "forever".
+# stderr:

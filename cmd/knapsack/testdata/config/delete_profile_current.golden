@@ -1,0 +1,5 @@
+# exit: 0
+# stdout:
+Deleted profile "forever".
+# stderr:
+warning: "forever" was the current profile; choose another with: knapsack config use-profile <name>

@@ -6,6 +6,14 @@ import (
 	"strings"
 )
 
+// Marshal returns c as TOML, in the same layout Save writes. It doesn't
+// validate.
+func Marshal(c *Config) []byte {
+	var buf bytes.Buffer
+	encode(&buf, c)
+	return buf.Bytes()
+}
+
 // encode writes c as TOML in a fixed layout: top-level keys, then one table
 // per profile in name order, then source tables that have a key. Each addon
 // is on its own line, so adding or removing one is a one-line diff.

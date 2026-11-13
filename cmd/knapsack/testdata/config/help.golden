@@ -1,0 +1,30 @@
+# exit: 0
+# stdout:
+Manage profiles and config.toml.
+
+A profile is one game's AddOns folder and the addons you want in it.
+
+Commands that change config rewrite config.toml in a fixed layout, so
+comments in the file are not kept.
+
+Usage:
+  knapsack config [flags]
+  knapsack config [command]
+
+Available Commands:
+  current-profile Print the current profile
+  delete-profile  Delete a profile
+  get-profiles    List profiles
+  set-profile     Create or change a profile
+  use-profile     Set the current profile
+  view            Print the config, with API keys redacted
+
+Flags:
+  -h, --help   help for config
+
+Global Flags:
+      --config string   use this config file instead of the default
+  -v, --verbose         show the underlying cause of errors
+
+Use "knapsack config [command] --help" for more information about a command.
+# stderr:

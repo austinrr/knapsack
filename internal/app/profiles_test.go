@@ -1,0 +1,149 @@
+package app_test
+
+import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/google/go-cmp/cmp"
+
+	"github.com/austinrr/knapsack/internal/app"
+	"github.com/austinrr/knapsack/internal/config"
+	"github.com/austinrr/knapsack/internal/flavor"
+	"github.com/austinrr/knapsack/internal/paths"
+	"github.com/austinrr/knapsack/internal/ref"
+)
+
+// newApp returns an App on a temp KNAPSACK_HOME, its config store, and the
+// path of a _forever_ AddOns folder inside it.
+func newApp(t *testing.T) (*app.App, *config.Store, string) {
+	t.Helper()
+	home := t.TempDir()
+	p, err := paths.Resolve(func(string) string { return home })
+	if err != nil {
+		t.Fatal(err)
+	}
+	addons := filepath.Join(home, "wow", "_forever_", "Interface", "AddOns")
+	if err := os.MkdirAll(addons, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	store := config.NewStore(p.ConfigFile)
+	return app.New(app.Options{Paths: p, Config: store}), store, addons
+}
+
+// Changing a profile's path keeps its addons and flavor.
+func TestSetProfileModifyKeepsAddons(t *testing.T) {
+	t.Parallel()
+	a, store, addons := newApp(t)
+	ctx := context.Background()
+	if _, err := a.SetProfile(ctx, app.SetProfileRequest{Name: "forever", Path: addons}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Record an addon the way `add` will.
+	c, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := ref.Parse("github:austinrr/baganator-mirror")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := c.Profiles["forever"]
+	p.Addons = []ref.Ref{r}
+	c.Profiles["forever"] = p
+	if err := store.Save(c); err != nil {
+		t.Fatal(err)
+	}
+
+	moved := filepath.Join(filepath.Dir(addons), "AddOns-moved")
+	if err := os.Mkdir(moved, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	res, err := a.SetProfile(ctx, app.SetProfileRequest{Name: "forever", Path: moved})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := app.ProfileInfo{Name: "forever", Path: moved, Flavor: flavor.Forever, Addons: []ref.Ref{r}, Current: true}
+	if diff := cmp.Diff(want, res.Profile); diff != "" {
+		t.Errorf("profile after modify (-want +got):\n%s", diff)
+	}
+	if res.Created || res.MadeCurrent {
+		t.Errorf("modify reported Created=%v MadeCurrent=%v, want both false", res.Created, res.MadeCurrent)
+	}
+}
+
+// Only the first profile becomes current; deleting the current one leaves
+// none current.
+func TestCurrentProfileLifecycle(t *testing.T) {
+	t.Parallel()
+	a, _, addons := newApp(t)
+	ctx := context.Background()
+
+	first, err := a.SetProfile(ctx, app.SetProfileRequest{Name: "one", Path: addons})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := t.TempDir()
+	second, err := a.SetProfile(ctx, app.SetProfileRequest{Name: "two", Path: other, Flavor: "retail"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !first.MadeCurrent || second.MadeCurrent {
+		t.Errorf("MadeCurrent = %v, %v; want true, false", first.MadeCurrent, second.MadeCurrent)
+	}
+
+	res, err := a.DeleteProfile(ctx, "one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.WasCurrent {
+		t.Error("deleting the current profile: WasCurrent = false")
+	}
+	var ue *app.UserError
+	if _, err := a.CurrentProfile(ctx); !errors.As(err, &ue) || ue.Msg != "no current profile" {
+		t.Errorf("CurrentProfile after delete = %v, want the no-current-profile UserError", err)
+	}
+}
+
+// A cancelled context stops a use case before it does anything.
+func TestCancelledContext(t *testing.T) {
+	t.Parallel()
+	a, store, addons := newApp(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := a.SetProfile(ctx, app.SetProfileRequest{Name: "forever", Path: addons}); !errors.Is(err, context.Canceled) {
+		t.Errorf("SetProfile error = %v, want context.Canceled", err)
+	}
+	if _, err := os.Stat(store.Path()); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("config was written despite the cancelled context: %v", err)
+	}
+}
+
+// ViewConfig redacts keys and never changes the file.
+func TestViewConfigRedacts(t *testing.T) {
+	t.Parallel()
+	a, store, addons := newApp(t)
+	c := config.New()
+	c.Profiles["forever"] = config.Profile{Path: addons, Flavor: flavor.Forever}
+	c.Sources.Wago.APIKey = "secret"
+	if err := store.Save(c); err != nil {
+		t.Fatal(err)
+	}
+	view, err := a.ViewConfig(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := view.Sources.Wago.APIKey; got != "REDACTED" {
+		t.Errorf("viewed key = %q, want REDACTED", got)
+	}
+	again, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := again.Sources.Wago.APIKey; got != "secret" {
+		t.Errorf("stored key = %q after view, want it unchanged", got)
+	}
+}

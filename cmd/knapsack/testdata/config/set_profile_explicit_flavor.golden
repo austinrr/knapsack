@@ -1,0 +1,5 @@
+# exit: 0
+# stdout:
+Profile "custom" created (anniversary, <home>/addons).
+Switched to profile "custom".
+# stderr:
