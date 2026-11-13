@@ -3,6 +3,7 @@ module github.com/austinrr/knapsack
 go 1.26.0
 
 require (
+	github.com/BurntSushi/toml v1.6.0
 	github.com/gofrs/flock v0.13.2
 	github.com/google/go-cmp v0.7.0
 	github.com/spf13/cobra v1.10.2

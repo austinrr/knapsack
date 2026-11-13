@@ -1,0 +1,25 @@
+current_profile = "forever"
+
+[profiles.classic]
+path = "<root>/wow/_classic_/Interface/AddOns"
+flavor = "classic"
+addons = []
+
+[profiles.forever]
+path = "<root>/wow/_forever_/Interface/AddOns"
+flavor = "forever"
+addons = [
+  "github:austinrr/baganator-mirror",
+  "github:austinrr/syndicator-mirror",
+  "wago:VBNBxKx5",
+]
+
+[profiles.retail]
+path = "<root>/World of Warcraft/_retail_/Interface/AddOns"
+flavor = "retail"
+addons = [
+  "curseforge:12345",
+]
+
+[sources.curseforge]
+api_key = "key-with-\"quotes\"\\and\\backslashes"

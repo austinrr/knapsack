@@ -247,7 +247,7 @@ Written by the user or by `knapsack` commands. Never contains derived data.
 current_profile = "forever"
 
 [profiles.forever]
-path   = "/games/wow/_forever_/Interface/AddOns"
+path = "/games/wow/_forever_/Interface/AddOns"
 flavor = "forever"
 addons = [
   "github:austinrr/baganator-mirror",
@@ -256,15 +256,14 @@ addons = [
 ]
 
 [profiles.retail]
-path   = "C:/Program Files (x86)/World of Warcraft/_retail_/Interface/AddOns"
+path = "C:/Program Files (x86)/World of Warcraft/_retail_/Interface/AddOns"
 flavor = "retail"
-addons = ["curseforge:12345"]
+addons = [
+  "curseforge:12345",
+]
 
 [sources.curseforge]
-api_key = ""
-
-[sources.wago]
-api_key = ""
+api_key = "…"
 ```
 
 What belongs here:
@@ -293,6 +292,12 @@ the whole file in a stable key order, so diffs stay small under version
 control. No Go TOML library preserves comments, so comments in `config.toml`
 are lost when Knapsack writes it. This is documented in `--help` and the
 README rather than worked around.
+
+The layout is fixed: profiles in name order, one addon per line so adding
+or removing one is a one-line diff, and `[sources.*]` tables only when they
+hold a key. Saving what was loaded gives identical bytes. Unknown keys are
+an error on load, because they're almost always typos (`flavour`) that
+would otherwise be silently ignored.
 
 ### 5.3 State — `state/<profile>.toml`
 
