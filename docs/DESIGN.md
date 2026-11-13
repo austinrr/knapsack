@@ -272,6 +272,10 @@ What belongs here:
   digits, `-` and `_`, because each one becomes a state and lock file name. On
   the case-insensitive filesystems of Windows and macOS, `Forever` and
   `forever` would otherwise share one state file.
+- **Paths** are absolute, in Unix or Windows form. Either form loads on any OS,
+  so one config in a dotfiles repo can hold profiles for both. Two profiles
+  can't share an AddOns folder, since each would track the same folders in
+  its own state.
 - **Addons per profile**, stored as normalized **refs**, never raw URLs. The
   CLI accepts URLs and converts them, so each addon has exactly one spelling.
   GitHub `owner/repo` is lower-cased, because GitHub treats it

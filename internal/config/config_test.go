@@ -201,8 +201,25 @@ func TestLoadErrors(t *testing.T) {
 		},
 		{
 			name:    "unknown keys",
-			file:    "[profiles.forever]\n" + ok + "flavour = \"retail\"\n[sources.github]\ntoken = \"x\"\n",
-			wantErr: []string{"unknown keys: profiles.forever.flavour, sources.github"},
+			file:    "[profiles.forever]\n" + ok + "flavour = \"retail\"\n[sources.wago]\napi-key = \"x\"\n",
+			wantErr: []string{"unknown keys: profiles.forever.flavour, sources.wago.api-key"},
+		},
+		{
+			// A mistyped table is named once, not with every key inside it.
+			name:    "unknown table",
+			file:    "[profile.forever]\n" + ok,
+			wantErr: []string{"unknown keys: profile.forever\n"},
+		},
+		{
+			name:    "unknown source table",
+			file:    "[sources.github]\napi_key = \"x\"\n",
+			wantErr: []string{"unknown source table [sources.github] (sources with settings: curseforge, wago)"},
+		},
+		{
+			name: "same path twice",
+			file: "[profiles.a]\npath = \"<root>/wow/AddOns\"\nflavor = \"forever\"\n" +
+				"[profiles.b]\npath = \"<root>/WoW/AddOns/\"\nflavor = \"forever\"\n",
+			wantErr: []string{`profiles "a" and "b" have the same path`},
 		},
 		{
 			name:    "wrong type",
@@ -255,11 +272,13 @@ func TestLoadErrors(t *testing.T) {
 			wantErr: []string{`current_profile "retail" is not a profile`},
 		},
 		{
+			// A bad ref doesn't hide the rest.
 			name: "every problem is reported",
 			file: "current_profile = \"nope\"\n" +
-				"[profiles.a]\npath = \"rel\"\nflavor = \"x\"\n" +
+				"[profiles.a]\npath = \"rel\"\nflavor = \"x\"\naddons = [\"bad\"]\n" +
 				"[profiles.b]\nflavor = \"forever\"\n",
 			wantErr: []string{
+				`profile "a": invalid addon ref "bad"`,
 				`profile "a": path "rel" is not absolute`,
 				`profile "a": unknown flavor "x"`,
 				`profile "b": path is empty`,
@@ -275,7 +294,7 @@ func TestLoadErrors(t *testing.T) {
 				t.Fatal("Load succeeded, want error")
 			}
 			for _, want := range tt.wantErr {
-				if !strings.Contains(err.Error(), want) {
+				if !strings.Contains(err.Error()+"\n", want) {
 					t.Errorf("error %q\ndoesn't contain %q", err, want)
 				}
 			}
@@ -384,5 +403,80 @@ func TestAPIKey(t *testing.T) {
 		if got := c.APIKey(tt.source, env(tt.env)); got != tt.want {
 			t.Errorf("%s: APIKey(%q) = %q, want %q", tt.name, tt.source, got, tt.want)
 		}
+	}
+}
+
+// Profiles from both OSes can share one config, as in a dotfiles repo, and
+// it loads on either.
+func TestLoadMixedOSPaths(t *testing.T) {
+	t.Parallel()
+	path := writeFile(t, `
+[profiles.linux]
+path = "/games/wow/_forever_/Interface/AddOns"
+flavor = "forever"
+
+[profiles.windows]
+path = "C:/Program Files (x86)/World of Warcraft/_retail_/Interface/AddOns"
+flavor = "retail"
+
+[profiles.backslashes]
+path = 'D:\Games\WoW\_classic_\Interface\AddOns'
+flavor = "classic"
+
+[profiles.unc]
+path = '\\nas\wow\_classic_era_\Interface\AddOns'
+flavor = "classic_era"
+`)
+	c, err := config.NewStore(path).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Profiles) != 4 {
+		t.Errorf("loaded %d profiles, want 4", len(c.Profiles))
+	}
+}
+
+// Save refuses what Load couldn't read back the same way.
+func TestSaveValidation(t *testing.T) {
+	t.Parallel()
+	base := func() *config.Config {
+		c := config.New()
+		c.Profiles["forever"] = config.Profile{Path: root() + "/AddOns", Flavor: flavor.Forever}
+		return c
+	}
+	tests := []struct {
+		name    string
+		change  func(*config.Config)
+		wantErr string
+	}{
+		{"unnormalized ref", func(c *config.Config) {
+			p := c.Profiles["forever"]
+			p.Addons = []ref.Ref{{Source: ref.GitHub, ID: "Owner/Repo"}}
+			c.Profiles["forever"] = p
+		}, `addon "github:Owner/Repo" is not a valid, normalized ref`},
+		{"zero ref", func(c *config.Config) {
+			p := c.Profiles["forever"]
+			p.Addons = []ref.Ref{{}}
+			c.Profiles["forever"] = p
+		}, `addon ":" is not a valid, normalized ref`},
+		{"non-UTF-8 path", func(c *config.Config) {
+			p := c.Profiles["forever"]
+			p.Path = root() + "/caf\xe9/AddOns"
+			c.Profiles["forever"] = p
+		}, "is not valid UTF-8"},
+		{"non-UTF-8 key", func(c *config.Config) {
+			c.Sources.Wago.APIKey = "\xff"
+		}, "sources.wago.api_key is not valid UTF-8"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			c := base()
+			tt.change(c)
+			err := config.NewStore(filepath.Join(t.TempDir(), "config.toml")).Save(c)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("Save error = %v, want it to contain %q", err, tt.wantErr)
+			}
+		})
 	}
 }

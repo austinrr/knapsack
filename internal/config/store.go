@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -39,10 +40,7 @@ func (s *Store) Path() string {
 type fileConfig struct {
 	CurrentProfile string                 `toml:"current_profile"`
 	Profiles       map[string]fileProfile `toml:"profiles"`
-	Sources        struct {
-		CurseForge fileSource `toml:"curseforge"`
-		Wago       fileSource `toml:"wago"`
-	} `toml:"sources"`
+	Sources        map[string]fileSource  `toml:"sources"`
 }
 
 type fileProfile struct {
@@ -68,45 +66,66 @@ func (s *Store) Load() (*Config, error) {
 	}
 
 	var fc fileConfig
-	md, err := toml.Decode(string(data), &fc)
+	md, err := toml.NewDecoder(bytes.NewReader(data)).Decode(&fc)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", s.path, err)
 	}
 	// Unknown keys are almost always typos ("flavour", "api-key"), which
 	// would otherwise be silently ignored.
-	if undecoded := md.Undecoded(); len(undecoded) > 0 {
-		keys := make([]string, len(undecoded))
-		for i, k := range undecoded {
-			keys[i] = k.String()
-		}
-		return nil, fmt.Errorf("%s: unknown keys: %s", s.path, strings.Join(keys, ", "))
+	if unknown := unknownKeys(md.Undecoded()); len(unknown) > 0 {
+		return nil, fmt.Errorf("%s: unknown keys: %s", s.path, strings.Join(unknown, ", "))
 	}
 
-	c, err := fromFile(&fc)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", s.path, err)
-	}
-	if err := c.Validate(); err != nil {
+	// Report bad refs and every other problem together, so one Load shows
+	// the user everything to fix.
+	c, refErrs := fromFile(&fc)
+	if err := errors.Join(refErrs, c.Validate()); err != nil {
 		return nil, fmt.Errorf("%s: %w", s.path, err)
 	}
 	return c, nil
 }
 
-// fromFile converts the decoded TOML into a Config, parsing refs. Flavors
-// are checked by Validate.
+// unknownKeys names each undecoded key once. An unknown table such as
+// [sources.github] is listed by itself, not along with every key inside it.
+func unknownKeys(keys []toml.Key) []string {
+	var names []string
+	for _, k := range keys {
+		names = append(names, k.String())
+	}
+	var out []string
+	for _, name := range names {
+		parentListed := slices.ContainsFunc(names, func(other string) bool {
+			return strings.HasPrefix(name, other+".")
+		})
+		if !parentListed {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// fromFile converts the decoded TOML into a Config, parsing refs and source
+// tables. It always returns a Config, holding everything that parsed, so
+// Validate can still check the rest; flavors and paths are left to Validate.
 func fromFile(fc *fileConfig) (*Config, error) {
 	c := New()
 	c.CurrentProfile = fc.CurrentProfile
-	c.Sources.CurseForge.APIKey = fc.Sources.CurseForge.APIKey
-	c.Sources.Wago.APIKey = fc.Sources.Wago.APIKey
 
 	var errs []error
-	names := make([]string, 0, len(fc.Profiles))
-	for name := range fc.Profiles {
-		names = append(names, name)
+	for _, name := range slices.Sorted(maps.Keys(fc.Sources)) {
+		i := slices.IndexFunc(keyedSources, func(ks keyedSource) bool { return ks.name == name })
+		if i < 0 {
+			var known []string
+			for _, ks := range keyedSources {
+				known = append(known, ks.name)
+			}
+			errs = append(errs, fmt.Errorf("unknown source table [sources.%s] (sources with settings: %s)", name, strings.Join(known, ", ")))
+			continue
+		}
+		keyedSources[i].field(&c.Sources).APIKey = fc.Sources[name].APIKey
 	}
-	slices.Sort(names)
-	for _, name := range names {
+
+	for _, name := range slices.Sorted(maps.Keys(fc.Profiles)) {
 		fp := fc.Profiles[name]
 		p := Profile{Path: fp.Path, Flavor: flavor.Flavor(fp.Flavor)}
 		for _, s := range fp.Addons {

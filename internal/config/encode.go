@@ -41,19 +41,14 @@ func encode(buf *bytes.Buffer, c *Config) {
 		buf.WriteString("]\n")
 	}
 
-	for _, src := range []struct {
-		name string
-		s    Source
-	}{
-		{"curseforge", c.Sources.CurseForge},
-		{"wago", c.Sources.Wago},
-	} {
-		if src.s.APIKey == "" {
+	for _, ks := range keyedSources {
+		key := ks.field(&c.Sources).APIKey
+		if key == "" {
 			continue
 		}
 		section()
-		fmt.Fprintf(buf, "[sources.%s]\n", src.name)
-		fmt.Fprintf(buf, "api_key = %s\n", quote(src.s.APIKey))
+		fmt.Fprintf(buf, "[sources.%s]\n", ks.name)
+		fmt.Fprintf(buf, "api_key = %s\n", quote(key))
 	}
 }
 
