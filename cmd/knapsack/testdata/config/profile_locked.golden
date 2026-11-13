@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: profile "forever" is in use by another knapsack process
+hint: wait for it to finish, then try again

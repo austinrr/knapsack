@@ -1,0 +1,22 @@
+# exit: 0
+# stdout:
+[
+  {
+    "name": "forever",
+    "current": true,
+    "flavor": "forever",
+    "path": "<home>/wow/_forever_/Interface/AddOns",
+    "addons": [
+      "github:austinrr/baganator-mirror",
+      "wago:VBNBxKx5"
+    ]
+  },
+  {
+    "name": "retail",
+    "current": false,
+    "flavor": "retail",
+    "path": "<home>/wow/_retail_/Interface/AddOns",
+    "addons": []
+  }
+]
+# stderr:

@@ -62,6 +62,29 @@ func New() *Config {
 	return &Config{Profiles: map[string]Profile{}}
 }
 
+// Keys returns the API keys that are set, by source name. Environment
+// overrides aren't applied; use Config.APIKey for that.
+func (s Sources) Keys() map[string]string {
+	keys := map[string]string{}
+	for _, ks := range keyedSources {
+		if k := ks.field(&s).APIKey; k != "" {
+			keys[ks.name] = k
+		}
+	}
+	return keys
+}
+
+// Redacted returns a copy with every API key that's set replaced by
+// "REDACTED", for showing config without revealing secrets.
+func (s Sources) Redacted() Sources {
+	for _, ks := range keyedSources {
+		if f := ks.field(&s); f.APIKey != "" {
+			f.APIKey = "REDACTED"
+		}
+	}
+	return s
+}
+
 // keyedSources is every source that takes an API key, in file order: its
 // [sources.<name>] table, its environment variable and its field. Loading,
 // saving, APIKey and the file mode all use this one list, so adding a source
@@ -127,7 +150,7 @@ func (c *Config) Validate() error {
 		if p.Path == "" {
 			continue
 		}
-		key := samePathKey(p.Path)
+		key := pathKey(p.Path)
 		if other, ok := paths[key]; ok {
 			errs = append(errs, fmt.Errorf("profiles %q and %q have the same path %q; each AddOns folder can belong to only one profile", other, name, p.Path))
 			continue
@@ -200,10 +223,15 @@ func isAbs(p string) bool {
 		('a' <= p[0] && p[0] <= 'z' || 'A' <= p[0] && p[0] <= 'Z')
 }
 
-// samePathKey normalizes a path for spotting two profiles that point at one
-// folder: separators unified, cleaned, and case folded, since Windows and
-// macOS ignore case.
-func samePathKey(p string) string {
+// SamePath reports whether two profile paths name the same folder, ignoring
+// separator style, trailing separators and case (Windows and macOS ignore
+// case). Validate uses the same rule.
+func SamePath(a, b string) bool {
+	return pathKey(a) == pathKey(b)
+}
+
+// pathKey normalizes a path for SamePath.
+func pathKey(p string) string {
 	return strings.ToLower(path.Clean(strings.ReplaceAll(p, `\`, "/")))
 }
 

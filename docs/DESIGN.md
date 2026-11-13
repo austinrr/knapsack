@@ -726,7 +726,7 @@ forever: 1 upgrade · retail: 1 install
 |---|---|---|
 | `-p, --profile <name>` | `KNAPSACK_PROFILE` | Profile to act on (like kubectl `--context`). Defaults to `current_profile` |
 | `-A, --all-profiles` | | Act on every profile (`check`, `update`, `list`) |
-| `-o, --output <fmt>` | | `wide` (extra columns) or `json`. Default: a human-readable table |
+| `-o, --output <fmt>` | | `wide` (extra columns) or `json`. Default: a human-readable table. Only commands that print data accept it, each with the formats it supports, so it's never silently ignored |
 | `-v, --verbose` | | Debug logging and underlying errors to stderr via `slog` |
 | `--config <file>` | | Use this config file (like `--kubeconfig`) |
 
@@ -755,8 +755,15 @@ forever: 1 upgrade · retail: 1 install
   omitted, it's inferred from the client folder in the path (`_forever_` →
   `forever`), and it's an error if it can't be. The first profile created
   becomes current.
+- **`config set-profile`** on an existing profile changes only the flags given,
+  like kubectl's `set-context`. `--path` must be an existing directory, and
+  an explicit `--flavor` that contradicts the path's client folder is an
+  error.
 - **`config delete-profile`** removes the profile and its state file. It never
-  touches addon files on disk.
+  touches addon files on disk. If it was the current profile, none is current
+  afterwards; Knapsack doesn't guess another.
+- **`config view`** prints config with API keys shown as `REDACTED`, like
+  `kubectl config view`.
 
 ### 8.5 Naming addons
 
@@ -1036,15 +1043,15 @@ one command group.
 **PR 7 — `app` scaffolding and `config` commands**
 - Title: `feat(config): add profile commands`
 - Implements: §6.5 (`New`, `Options`), §6.6 (`UserError`), §8.1 (profile
-  commands), §8.3 (`-p`, `-o`, `-v`, `--config`, `KNAPSACK_PROFILE`), §8.6
-  (error rendering)
+  commands), §8.3 (`-o`, `-v`, `--config`), §8.6 (error rendering)
 - `app.New`, profile use cases (set, list, use, current, delete, view),
   `UserError`, error rendering and exit codes in `main`, the six
   `config` subcommands with table and `-o json` output.
 - Done when: golden tests for every subcommand, including errors with hints
   (unknown profile, flavor not inferable from the path).
-- Not yet: addon commands; state files (`delete-profile` removing a state
-  file is added in PR 10).
+- Not yet: addon commands; `-p`/`KNAPSACK_PROFILE`, which land with the
+  first commands that act on a profile (PR 16); state files
+  (`delete-profile` removing a state file is added in PR 10).
 
 #### M2 — Installing from a local zip
 
@@ -1132,7 +1139,8 @@ one command group.
 
 **PR 16 — `add`, `remove`, `list`, `info` commands**
 - Title: `feat: add add, remove, list and info commands`
-- Implements: §8.1, §8.4, §8.6 for these four commands
+- Implements: §8.1, §8.4, §8.6 for these four commands, and §8.3 `-p` with
+  `KNAPSACK_PROFILE`
 - Commands, `rm`/`ls` aliases, table/`wide`/`json` output, the CLI
   `Reporter` (lines, or a progress bar on a TTY).
 - Done when: golden tests for each command, including errors with hints and

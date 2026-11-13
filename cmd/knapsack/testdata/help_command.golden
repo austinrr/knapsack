@@ -3,5 +3,9 @@
 Print the knapsack version
 
 Usage:
-  knapsack version
+  knapsack version [flags]
+
+Global Flags:
+      --config string   use this config file instead of the default
+  -v, --verbose         show the underlying cause of errors
 # stderr:

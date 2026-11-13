@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: profile "forever" already uses <home>/wow/_forever_/Interface/AddOns
+hint: each AddOns folder can belong to only one profile

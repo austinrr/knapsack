@@ -1,0 +1,6 @@
+# exit: 2
+# stdout:
+# stderr:
+error: config is in use by another knapsack process
+hint: wait for it to finish, then try again
+cause: lock <home>/config/config.lock: locked by another process

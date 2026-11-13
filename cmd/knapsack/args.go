@@ -36,3 +36,17 @@ func unknownCommandError(cmd *cobra.Command, name string) error {
 	}
 	return fmt.Errorf("%s", msg)
 }
+
+// exactArgs is the Args validator for leaf commands that take exactly one
+// positional argument, described by what (e.g. "profile name").
+func exactArgs(what string) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		switch {
+		case len(args) == 0:
+			return fmt.Errorf("%s needs a %s", cmd.CommandPath(), what)
+		case len(args) > 1:
+			return fmt.Errorf("%s takes one %s, got %d arguments", cmd.CommandPath(), what, len(args))
+		}
+		return nil
+	}
+}

@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: --flavor retail doesn't match the path, which is in _forever_
+hint: leave out --flavor to use forever

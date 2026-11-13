@@ -123,6 +123,16 @@ func All() []Flavor {
 	return all
 }
 
+// Names returns every flavor's name in display order, for messages and
+// shell completion.
+func Names() []string {
+	names := make([]string, len(table))
+	for i, row := range table {
+		names[i] = string(row.flavor)
+	}
+	return names
+}
+
 // Parse returns the flavor named s. Unknown names are an error that lists
 // the valid ones.
 func Parse(s string) (Flavor, error) {
@@ -131,11 +141,7 @@ func Parse(s string) (Flavor, error) {
 			return row.flavor, nil
 		}
 	}
-	var names []string
-	for _, f := range All() {
-		names = append(names, string(f))
-	}
-	return "", fmt.Errorf("unknown flavor %q (want one of %s)", s, strings.Join(names, ", "))
+	return "", fmt.Errorf("unknown flavor %q (want one of %s)", s, strings.Join(Names(), ", "))
 }
 
 // Client returns the flavor's row of the client data table. It reports false

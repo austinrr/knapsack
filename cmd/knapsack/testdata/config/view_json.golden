@@ -1,0 +1,23 @@
+# exit: 0
+# stdout:
+{
+  "current_profile": "forever",
+  "profiles": {
+    "forever": {
+      "name": "forever",
+      "current": true,
+      "flavor": "forever",
+      "path": "<home>/wow/_forever_/Interface/AddOns",
+      "addons": [
+        "github:austinrr/baganator-mirror",
+        "wago:VBNBxKx5"
+      ]
+    }
+  },
+  "sources": {
+    "curseforge": {
+      "api_key": "REDACTED"
+    }
+  }
+}
+# stderr:
