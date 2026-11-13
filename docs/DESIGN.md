@@ -4,7 +4,7 @@ Status: draft · Last updated: 2026-11-13
 
 Knapsack is a small, cross-platform command-line addon manager for World of
 Warcraft. It installs, updates and removes addons for one or more game clients
-(Retail, Classic, Classic Era, Forever, …) from GitHub, CurseForge and Wago.
+(Retail, Classic, Classic Era, Anniversary, Forever) from GitHub, CurseForge and Wago.
 
 The guiding principle is **simplicity and refinement over features**. Every
 feature has to justify the code, tests and docs it adds.
@@ -47,7 +47,8 @@ feature has to justify the code, tests and docs it adds.
 | Term | Meaning |
 |---|---|
 | **Profile** | A named target: an AddOns directory plus a flavor. E.g. `forever`. |
-| **Flavor** | The game client type, named after the client folder: `retail`, `classic`, `classic_era`, `forever`. Decides which release files and TOCs are compatible. |
+| **Flavor** | The game client type, named after the client folder: `retail`, `classic`, `classic_era`, `anniversary`, `forever`. Decides which release files and TOCs are compatible. |
+| **Game type** | The client's own name for what it runs, used in TOC suffixes and `AllowLoadGameType`: `standard`, `forever`, `mists`, `vanilla`, … Each flavor maps to one game type and one family (`mainline` or `classic`). |
 | **Addon** | One thing the user asked for, identified by a **Ref**. May install several folders. |
 | **Ref** | `source:id`, e.g. `github:austinrr/baganator-mirror`, `curseforge:12345`, `wago:VBNBxKx5`. |
 | **Source** | A provider that can turn a Ref + flavor into a downloadable release. |
@@ -172,7 +173,7 @@ knapsack/
     paths/               config/state/cache locations; KNAPSACK_HOME
     config/              profiles + desired addons; Store with Load/Save
     state/               installed releases + owned folders; Store with Load/Save
-    flavor/              Flavor type, client-folder mapping, TOC suffix rules
+    flavor/              Flavor type and the client data table (§6.4); reads .build.info
     ref/                 Ref parsing and normalization (refs and URLs)
     source/              Source interface, Release type, Registry, sentinel errors
       github/
@@ -355,13 +356,19 @@ package flavor
 // Flavor names match the client folder: _retail_ → retail, and so on.
 type Flavor string
 const (
-    Retail     Flavor = "retail"
-    Classic    Flavor = "classic"     // progression Classic (_classic_)
-    ClassicEra Flavor = "classic_era" // _classic_era_
-    Forever    Flavor = "forever"     // _forever_
+    Retail      Flavor = "retail"      // _retail_
+    Classic     Flavor = "classic"     // _classic_ (currently Mists)
+    ClassicEra  Flavor = "classic_era" // _classic_era_
+    Anniversary Flavor = "anniversary" // _anniversary_ (TBC Anniversary)
+    Forever     Flavor = "forever"     // _forever_ (and _classic_beta_)
 )
 func Parse(s string) (Flavor, error)          // unknown values are rejected
 func FromPath(addonsDir string) (Flavor, bool) // …/_forever_/Interface/AddOns → Forever
+func (f Flavor) Client() Client               // the row of the client data table (§6.4)
+
+// ClientInterface reads the installed client's version from .build.info in
+// the WoW folder and returns its Interface number (1.60.1 → 16001).
+func ClientInterface(addonsDir string, f Flavor) (int, bool)
 
 package ref
 type Ref struct {
@@ -476,23 +483,56 @@ report `close World of Warcraft and retry`.
 ### 6.4 TOC parsing and flavor validation
 
 `toc.Parse(r io.Reader) (File, error)` reads `## Key: Value` headers. It
-handles `## Interface` lists (`## Interface: 110205, 11507, 50500`), a UTF-8
-BOM and CRLF line endings.
+handles `## Interface` lists (`## Interface: 120105, 16001, 50504, 11509`),
+repeated `AllowLoadGameType`/`ExcludeLoadGameType` lines (later lines append),
+a UTF-8 BOM and CRLF line endings.
 
-Validation is intentionally lenient. Interface numbers change with every
-patch, and players routinely run addons marked out of date, so Knapsack
-rejects only what is clearly wrong:
+Validation **mirrors what the game client does**, as documented on
+[warcraft.wiki.gg/wiki/TOC_format](https://warcraft.wiki.gg/wiki/TOC_format)
+and implemented in WowUp. Knapsack doesn't invent its own rules.
 
-| Folder contains | Result |
+**Step 1: pick the TOC the client would load.** For each addon folder, the
+client uses the first match of:
+
+1. `<Folder>_<GameType>.toc` for its game type or an alias (Forever:
+   `_Forever` or `_Camelot`)
+2. `<Folder>_<Family>.toc` for its family (`_Mainline` or `_Classic`)
+3. `<Folder>.toc`
+
+**Step 2: check that TOC.**
+
+| Condition | Result |
 |---|---|
-| A flavor-suffixed TOC for this flavor (`Foo_Vanilla.toc`, `Foo_Mainline.toc`, …) | OK |
-| Flavor-suffixed TOCs, **none** for this flavor | **Error.** This is the OpenMap case |
-| Only a plain `Foo.toc` | OK. **Warn** if no `## Interface` value matches the flavor's expected major version |
 | No `.toc` at all | **Error.** Not an addon folder |
+| `ExcludeLoadGameType` names this game type or its family, or `AllowLoadGameType` names only other recognized types | **Error.** The client will never load it |
+| No `## Interface` value is in this game type's range | **Error.** Built for a different game (e.g. only `120105` on Forever's `16001`). This is the OpenMap case |
+| A value is in range but none equals the client's Interface number | **Warning.** Out of date; WoW loads it only with "Load out of date AddOns" enabled |
+| A value equals the client's Interface number | OK |
 
-The flavor → TOC suffix and flavor → Interface major version mappings live in
-one table in `flavor`, as data. The exact values for Forever still need
-confirming (§13).
+`AllowLoadGameType` follows the client's quirk: if none of the listed types
+are recognized, the condition passes.
+
+**The client data table** lives in `flavor` as plain data, the only place
+that knows about specific game versions:
+
+| Flavor | Client folders | Game type (aliases) | Family | Interface range | `.build.info` product |
+|---|---|---|---|---|---|
+| `retail` | `_retail_` | `standard` | `mainline` | 100000 and up | `wow` |
+| `classic` | `_classic_` | `mists` | `classic` | 50000–59999 | `wow_classic` |
+| `classic_era` | `_classic_era_` | `vanilla` | `classic` | 11000–11999 | `wow_classic_era` |
+| `anniversary` | `_anniversary_` | `tbc` | `classic` | 20000–29999 | see §13 |
+| `forever` | `_forever_`, `_classic_beta_` | `forever` (`camelot`) | `mainline` | 16000–16999 | `wowf` |
+
+When Blizzard changes what a folder runs (`_classic_` has been Cataclysm and
+is now Mists), only this table changes.
+
+**The exact Interface number comes from the installed client, not the
+table.** The game records its version in `.build.info` in the WoW folder
+(`1.60.1.70938` for Forever), and the Interface number follows from it:
+major·10000 + minor·100 + patch, giving `16001`. The same formula gives
+retail's `120105` and Mists' `50504`. Reading it means nothing goes stale when
+a patch ships. If `.build.info` is missing or unreadable, Knapsack skips the
+out-of-date warning and still applies every error check.
 
 ### 6.5 App layer
 
@@ -870,11 +910,9 @@ later.
 
 ## 13. Open questions
 
-1. **Forever TOC rules**: what TOC suffix and `## Interface` major version
-   does the Forever client use? Profile flavor is inferred from the
-   `_forever_` folder name (§8.4), as in the LemonUp fork, but TOC validation
-   (§6.4) still needs the exact values. The same applies to confirming the
-   Classic and Classic Era values.
+1. **`.build.info` product codes**: `wowf` (Forever) is confirmed from a
+   real install. Confirm the codes for the other clients, Anniversary in
+   particular, when implementing `flavor.ClientInterface`.
 2. **Importing existing installs**: should there be a one-time
    `knapsack import` from LemonUp's state, or does `add` for each addon cover
    it?
