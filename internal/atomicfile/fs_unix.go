@@ -4,6 +4,12 @@ package atomicfile
 
 import "os"
 
+// rename is os.Rename. On Unix it replaces the target atomically even while
+// other processes have it open.
+func rename(oldpath, newpath string) error {
+	return os.Rename(oldpath, newpath)
+}
+
 // syncDir flushes a directory's entries, making a rename in it durable.
 func syncDir(dir string) error {
 	d, err := os.Open(dir)

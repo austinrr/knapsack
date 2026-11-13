@@ -134,3 +134,55 @@ func TestWriteOverDirectory(t *testing.T) {
 	}
 	assertOnlyFile(t, dir, "target")
 }
+
+// Replacing a file never loosens the permissions it already had.
+func TestWriteKeepsTighterPerm(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("no Unix permissions on Windows")
+	}
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte("api_key = 1"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := atomicfile.Write(path, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Errorf("mode = %v, want 0600 kept", got)
+	}
+}
+
+// Writing through a symlink replaces the file it points to and keeps the
+// link, as with a config linked from a dotfiles repo.
+func TestWriteThroughSymlink(t *testing.T) {
+	t.Parallel()
+	dotfiles := t.TempDir()
+	target := filepath.Join(dotfiles, "config.toml")
+	if err := os.WriteFile(target, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("can't create symlinks here: %v", err) // Windows without developer mode
+	}
+
+	if err := atomicfile.Write(link, []byte("new"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Error("the symlink was replaced by a regular file")
+	}
+	if got := readFile(t, target); got != "new" {
+		t.Errorf("link target contents = %q, want %q", got, "new")
+	}
+	assertOnlyFile(t, dotfiles, "config.toml")
+}

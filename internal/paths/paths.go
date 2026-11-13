@@ -1,5 +1,3 @@
-// Package paths resolves where Knapsack keeps its config, state and cache.
-// It's the only package that calls os.UserConfigDir or os.UserCacheDir.
 package paths
 
 import (
@@ -22,8 +20,11 @@ type Paths struct {
 	CacheDir string
 }
 
-// Resolve works out the default paths. getenv is os.Getenv in production
-// and a fake in tests, so nothing here reads global state directly.
+// Resolve works out the default paths. getenv supplies KNAPSACK_HOME: it's
+// os.Getenv in production and a fake in tests. Without KNAPSACK_HOME, the
+// defaults come from os.UserConfigDir and os.UserCacheDir, which read the
+// real environment (XDG_CONFIG_HOME, HOME, AppData), so tests always set
+// KNAPSACK_HOME.
 //
 // With KNAPSACK_HOME set, everything lives under it:
 // $KNAPSACK_HOME/config and $KNAPSACK_HOME/cache. Otherwise Knapsack uses
@@ -71,11 +72,12 @@ func (p Paths) WithConfigFile(file string) (Paths, error) {
 	return p, nil
 }
 
-// ConfigLock is held by commands that change config without touching a
-// profile. It sits next to the config file, so --config moves it too, and it
-// can't collide with a profile's lock in StateDir.
+// ConfigLock is held by every command that writes config.toml. It lives in
+// Knapsack's own config directory, beside StateDir rather than in it, so it
+// can't collide with a profile's lock. It stays there with --config, so
+// Knapsack never creates files next to a config the user put elsewhere.
 func (p Paths) ConfigLock() string {
-	return p.ConfigFile + ".lock"
+	return filepath.Join(filepath.Dir(p.StateDir), "config.lock")
 }
 
 // StateFile is the state file for a profile. profile must already be a valid

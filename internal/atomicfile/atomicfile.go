@@ -1,10 +1,7 @@
-// Package atomicfile replaces files so readers see either the old contents or
-// the new, never a partial write: write a temp file in the same directory,
-// fsync it, then rename it over the target.
 package atomicfile
 
 import (
-	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -15,7 +12,7 @@ import (
 // Write atomically replaces path with data. The parent directory must exist.
 func Write(path string, data []byte, perm fs.FileMode) error {
 	return WriteFunc(path, perm, func(w io.Writer) error {
-		_, err := io.Copy(w, bytes.NewReader(data))
+		_, err := w.Write(data)
 		return err
 	})
 }
@@ -23,8 +20,23 @@ func Write(path string, data []byte, perm fs.FileMode) error {
 // WriteFunc atomically replaces path with whatever write produces, such as an
 // encoder streaming into w. If write or any later step fails, path is left
 // as it was and the temp file is removed. The parent directory must exist.
+//
+// If path is a symlink, the file it points to is replaced and the link is
+// kept, so a config file linked from a dotfiles repo stays linked.
+//
+// When replacing an existing file, the new file's permissions are perm with
+// any bits the old file didn't have removed. A write never loosens
+// permissions the user tightened, such as on a config holding API keys.
 func WriteFunc(path string, perm fs.FileMode, write func(w io.Writer) error) (err error) {
-	dir, base := filepath.Split(path)
+	target, err := resolve(path)
+	if err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	if info, err := os.Stat(target); err == nil {
+		perm &= info.Mode().Perm()
+	}
+
+	dir, base := filepath.Split(target)
 	if dir == "" {
 		dir = "."
 	}
@@ -57,12 +69,23 @@ func WriteFunc(path string, perm fs.FileMode, write func(w io.Writer) error) (er
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
-	if err := os.Rename(tmp.Name(), path); err != nil {
+	if err := rename(tmp.Name(), target); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
-	// The rename itself is durable only once the directory is synced.
-	if err := syncDir(dir); err != nil {
-		return fmt.Errorf("write %s: sync directory: %w", path, err)
-	}
+	// Syncing the directory makes the rename itself durable. It's best
+	// effort: the new contents are already in place, and some filesystems
+	// (FUSE, network mounts) reject directory syncs. Reporting failure here
+	// would make callers think a committed write didn't happen.
+	_ = syncDir(dir)
 	return nil
+}
+
+// resolve follows symlinks in path. A path that doesn't exist yet is
+// returned as is.
+func resolve(path string) (string, error) {
+	target, err := filepath.EvalSymlinks(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return path, nil
+	}
+	return target, err
 }

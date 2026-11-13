@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+
 	"github.com/austinrr/knapsack/internal/paths"
 )
 
@@ -25,8 +27,8 @@ func TestResolveHome(t *testing.T) {
 		StateDir:   filepath.Join(home, "config", "state"),
 		CacheDir:   filepath.Join(home, "cache"),
 	}
-	if got != want {
-		t.Errorf("Resolve() =\n  %+v\nwant\n  %+v", got, want)
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("Resolve() mismatch (-want +got):\n%s", diff)
 	}
 }
 
@@ -70,8 +72,8 @@ func TestResolveDefault(t *testing.T) {
 		StateDir:   filepath.Join(configDir, "knapsack", "state"),
 		CacheDir:   filepath.Join(cacheDir, "knapsack"),
 	}
-	if got != want {
-		t.Errorf("Resolve() =\n  %+v\nwant\n  %+v", got, want)
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("Resolve() mismatch (-want +got):\n%s", diff)
 	}
 }
 
@@ -98,8 +100,9 @@ func TestWithConfigFile(t *testing.T) {
 	if p.ConfigFile == file {
 		t.Error("WithConfigFile modified the receiver")
 	}
-	if got.ConfigLock() != file+".lock" {
-		t.Errorf("ConfigLock = %q, want it next to the config file", got.ConfigLock())
+	// The config lock stays in Knapsack's own directory.
+	if got.ConfigLock() != p.ConfigLock() {
+		t.Errorf("ConfigLock moved to %q with --config, want %q", got.ConfigLock(), p.ConfigLock())
 	}
 
 	if _, err := p.WithConfigFile(""); err == nil {
@@ -120,6 +123,9 @@ func TestProfileFiles(t *testing.T) {
 	}
 	if got, want := p.ProfileLock("forever"), filepath.Join(state, "forever.lock"); got != want {
 		t.Errorf("ProfileLock = %q, want %q", got, want)
+	}
+	if got, want := p.ConfigLock(), filepath.Join(home, "config", "config.lock"); got != want {
+		t.Errorf("ConfigLock = %q, want %q", got, want)
 	}
 	// A profile named "config" doesn't share the config lock.
 	if p.ProfileLock("config") == p.ConfigLock() {

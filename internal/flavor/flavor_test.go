@@ -1,9 +1,10 @@
 package flavor_test
 
 import (
-	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 
 	"github.com/austinrr/knapsack/internal/flavor"
 )
@@ -103,8 +104,8 @@ func TestClient(t *testing.T) {
 			if !ok {
 				t.Fatalf("Client() ok = false")
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Client() =\n  %+v\nwant\n  %+v", got, tt.want)
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("Client() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
@@ -114,7 +115,7 @@ func TestClientUnknown(t *testing.T) {
 	t.Parallel()
 	for _, f := range []flavor.Flavor{"bogus", "Retail", ""} {
 		got, ok := f.Client()
-		if ok || !reflect.DeepEqual(got, flavor.Client{}) {
+		if ok || !cmp.Equal(got, flavor.Client{}) {
 			t.Errorf("Flavor(%q).Client() = %+v, %v; want zero Client, false", f, got, ok)
 		}
 		// The zero Range must not accept real Interface numbers.
