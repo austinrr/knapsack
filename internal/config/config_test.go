@@ -88,7 +88,6 @@ func TestSaveGolden(t *testing.T) {
 
 	golden := filepath.Join("testdata", "config.golden")
 	if *update {
-		//nolint:gosec // G703: golden is the constant testdata/config.golden
 		if err := os.WriteFile(golden, []byte(got), 0o600); err != nil {
 			t.Fatal(err)
 		}
