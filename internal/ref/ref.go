@@ -53,8 +53,12 @@ func Parse(s string) (Ref, error) {
 	if s == "" {
 		return Ref{}, ErrEmpty
 	}
-	if host, path, ok := splitURL(s); ok {
-		return parseURL(s, host, path)
+	// git@github.com:owner/repo.git, from GitHub's SSH clone button.
+	if len(s) >= len(sshPrefix) && strings.EqualFold(s[:len(sshPrefix)], sshPrefix) {
+		return normalize(GitHub, s[len(sshPrefix):], s)
+	}
+	if raw, ok := asURL(s); ok {
+		return parseURL(s, raw)
 	}
 
 	source, id, ok := strings.Cut(s, ":")
@@ -87,10 +91,13 @@ func normalize(source, id, input string) (Ref, error) {
 	return Ref{Source: source, ID: norm}, nil
 }
 
+const sshPrefix = "git@github.com:"
+
 var (
-	// GitHub user and org names: letters, digits and single inner hyphens,
-	// at most 39 characters.
-	githubOwner = regexp.MustCompile(`^[a-z0-9](?:-?[a-z0-9]){0,38}$`)
+	// GitHub user and org names: letters, digits and hyphens, not starting
+	// with a hyphen, at most 39 characters. New accounts can't end in a
+	// hyphen or contain "--", but some older ones do, so those are allowed.
+	githubOwner = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,38}$`)
 	// GitHub repository names: letters, digits, '.', '-' and '_'.
 	githubRepo = regexp.MustCompile(`^[a-z0-9._-]{1,100}$`)
 	// CurseForge slugs, e.g. "deadly-boss-mods".
@@ -100,23 +107,27 @@ var (
 )
 
 // normalizeGitHub lower-cases owner/repo, because GitHub treats it
-// case-insensitively, and drops a trailing ".git" or "/".
+// case-insensitively, and drops a trailing ".git" or "/". Errors quote the
+// text as typed.
 func normalizeGitHub(id string) (string, error) {
-	id = strings.ToLower(strings.TrimSuffix(id, "/"))
-	id = strings.TrimSuffix(id, ".git")
+	id = strings.TrimSuffix(id, "/")
+	if strings.HasSuffix(strings.ToLower(id), ".git") {
+		id = id[:len(id)-len(".git")]
+	}
 	owner, repo, ok := strings.Cut(id, "/")
 	if !ok || strings.Contains(repo, "/") {
 		return "", errors.New("github id must be owner/repo")
 	}
-	if !githubOwner.MatchString(owner) {
+	lowOwner, lowRepo := strings.ToLower(owner), strings.ToLower(repo)
+	if !githubOwner.MatchString(lowOwner) {
 		return "", fmt.Errorf("invalid github owner %q", owner)
 	}
 	// GitHub doesn't allow a repo name ending in ".git", so a second suffix
 	// left after trimming one is an error rather than something to strip.
-	if !githubRepo.MatchString(repo) || repo == "." || repo == ".." || strings.HasSuffix(repo, ".git") {
+	if !githubRepo.MatchString(lowRepo) || lowRepo == "." || lowRepo == ".." || strings.HasSuffix(lowRepo, ".git") {
 		return "", fmt.Errorf("invalid github repository %q", repo)
 	}
-	return owner + "/" + repo, nil
+	return lowOwner + "/" + lowRepo, nil
 }
 
 // normalizeCurseForge accepts a numeric project ID, without leading zeros so
@@ -129,11 +140,11 @@ func normalizeCurseForge(id string) (string, error) {
 		}
 		return strconv.FormatUint(n, 10), nil
 	}
-	id = strings.ToLower(id)
-	if !curseSlug.MatchString(id) {
+	slug := strings.ToLower(id)
+	if !curseSlug.MatchString(slug) {
 		return "", fmt.Errorf("invalid curseforge id or slug %q", id)
 	}
-	return id, nil
+	return slug, nil
 }
 
 // normalizeWago keeps the ID's case, because Wago IDs are case-sensitive.
@@ -144,25 +155,20 @@ func normalizeWago(id string) (string, error) {
 	return id, nil
 }
 
-// splitURL reports whether s looks like a URL, with or without a scheme
-// ("https://github.com/o/r" or "github.com/o/r"), and returns its lower-cased
-// host (without "www.") and its path.
-func splitURL(s string) (host, path string, ok bool) {
-	raw := s
-	if !strings.Contains(s, "://") {
-		// Only treat a scheme-less string as a URL when it starts with a
-		// known host, so "github:owner/repo" stays a ref.
-		first, _, _ := strings.Cut(s, "/")
-		if _, known := urlHosts[strings.TrimPrefix(strings.ToLower(first), "www.")]; !known {
-			return "", "", false
-		}
-		raw = "https://" + s
+// asURL reports whether s is meant as a URL and returns it with a scheme.
+// Anything containing "://" is a URL. Without a scheme, s is a URL only when
+// it starts with a known host ("github.com/o/r"), so "github:owner/repo"
+// stays a ref.
+func asURL(s string) (string, bool) {
+	if strings.Contains(s, "://") {
+		return s, true
 	}
-	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" {
-		return "", "", false
+	first, _, _ := strings.Cut(s, "/")
+	host, _, _ := strings.Cut(first, ":") // drop a port
+	if _, known := urlHosts[strings.TrimPrefix(strings.ToLower(host), "www.")]; !known {
+		return "", false
 	}
-	return strings.TrimPrefix(strings.ToLower(u.Hostname()), "www."), u.Path, true
+	return "https://" + s, true
 }
 
 // urlHosts maps each known host to the source whose URLs it serves.
@@ -174,20 +180,41 @@ var urlHosts = map[string]string{
 	"addons.wago.io":        Wago,
 }
 
-// parseURL turns a known source URL into a Ref. Anything after the addon's
-// own path (releases, files, tabs, query strings) is ignored.
-func parseURL(input, host, path string) (Ref, error) {
+// githubPages are GitHub's own top-level pages, which look like
+// github.com/<owner>/<repo> but aren't repositories.
+var githubPages = map[string]bool{
+	"about": true, "apps": true, "collections": true, "enterprise": true,
+	"events": true, "explore": true, "features": true, "issues": true,
+	"login": true, "marketplace": true, "new": true, "notifications": true,
+	"orgs": true, "pricing": true, "pulls": true, "search": true,
+	"settings": true, "sponsors": true, "topics": true, "trending": true,
+}
+
+// parseURL turns a known source URL into a Ref. input is the text as typed
+// and raw the same URL with a scheme. Anything after the addon's own path
+// (releases, files, tabs, query strings) is ignored.
+func parseURL(input, raw string) (Ref, error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return Ref{}, fmt.Errorf("invalid addon URL %q: %w", input, err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return Ref{}, fmt.Errorf("invalid addon URL %q: want an http or https link", input)
+	}
+	host := strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
 	source, ok := urlHosts[host]
 	if !ok {
 		return Ref{}, fmt.Errorf("invalid addon URL %q: unsupported host %q (want github.com, curseforge.com or addons.wago.io)", input, host)
 	}
-	segs := strings.FieldsFunc(path, func(r rune) bool { return r == '/' })
+	// EscapedPath keeps %2F and %2E escaped, so they fail validation
+	// instead of decoding into extra path segments.
+	segs := strings.FieldsFunc(u.EscapedPath(), func(r rune) bool { return r == '/' })
 
 	var id string
 	switch source {
 	case GitHub:
 		// github.com/<owner>/<repo>[/...]
-		if len(segs) >= 2 {
+		if len(segs) >= 2 && !githubPages[strings.ToLower(segs[0])] {
 			id = segs[0] + "/" + segs[1]
 		}
 	case CurseForge:
