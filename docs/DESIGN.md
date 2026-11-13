@@ -219,6 +219,7 @@ Knapsack does the same, so its files are where users already expect them.
 ```
 <config>/knapsack/
   config.toml           # profiles, addon refs, preferences, API keys
+  config.toml.lock      # held by config commands that touch no profile
   state/
     forever.toml        # what's installed in each profile
     forever.lock        # held while a command runs against this profile
@@ -342,7 +343,9 @@ Every command that reads or writes a profile holds `state/<profile>.lock`
 (via `gofrs/flock`) for its whole duration. A second Knapsack process, such as
 a scheduled run or the TUI, fails fast with
 `error: profile "forever" is in use by another knapsack process` rather than
-corrupting state. Profile-agnostic config commands lock `config.lock` instead.
+corrupting state. Profile-agnostic config commands lock `config.toml.lock`
+instead. It sits next to the config file, so `--config` moves it too, and a
+profile named `config` can't collide with it.
 
 ### 5.6 Cache
 
