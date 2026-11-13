@@ -1,0 +1,3 @@
+# Keep LF line endings in the repository and working tree on every OS,
+# so golden files and other fixtures compare byte for byte.
+* text=auto eol=lf

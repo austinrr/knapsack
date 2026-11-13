@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -60,9 +59,8 @@ func checkGolden(t *testing.T, name string, r result) {
 	if err != nil {
 		t.Fatalf("read golden file (run with -update to create it): %v", err)
 	}
-	// Normalize line endings so golden files checked out with CRLF on
-	// Windows still match.
-	want := strings.ReplaceAll(string(wantBytes), "\r\n", "\n")
+	// .gitattributes checks golden files out with LF on every OS.
+	want := string(wantBytes)
 
 	if got != want {
 		t.Errorf("output differs from %s (run with -update to accept):\n--- want\n%s\n--- got\n%s", path, want, got)

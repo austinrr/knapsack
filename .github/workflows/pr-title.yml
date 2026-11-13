@@ -1,0 +1,59 @@
+name: PR Title
+
+on:
+  pull_request:
+    # `edited` fires when the title changes. `synchronize` makes sure the
+    # latest commit always has a status, so a required check is never stuck
+    # waiting.
+    types: [opened, edited, reopened, ready_for_review, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  lint-title:
+    name: Lint title
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    # Draft titles are still in flux. The check re-runs on ready_for_review.
+    if: github.event.pull_request.draft != true
+    steps:
+      - name: Validate PR title against conventional commits
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          echo "PR title: $PR_TITLE"
+
+          # Keep in sync with docs/CONTRIBUTING.md.
+          # <type>(<scope>)?!?: <subject>, where the subject has no leading
+          # or trailing whitespace.
+          PATTERN='^(feat|fix|perf|refactor|docs|test|chore|revert)(\(([a-z0-9-]+)\))?(!)?: ([^[:space:]](.*[^[:space:]])?)$'
+
+          if [[ ! "$PR_TITLE" =~ $PATTERN ]]; then
+            echo "::error::PR title doesn't match '<type>(<scope>): <description>'."
+            echo "Types: feat, fix, perf, refactor, docs, test, chore, revert."
+            echo "Scope is optional, lowercase (letters, digits, hyphens)."
+            echo "For a revert, use: revert: <original title>"
+            echo "See docs/CONTRIBUTING.md."
+            exit 1
+          fi
+
+          SUBJECT="${BASH_REMATCH[5]}"
+
+          if [[ "$SUBJECT" =~ \.$ ]]; then
+            echo "::error::The description shouldn't end with a period."
+            exit 1
+          fi
+
+          if [[ "$SUBJECT" =~ ^[A-Z] ]]; then
+            echo "::error::The description should start with a lowercase letter."
+            exit 1
+          fi
+
+          if (( ${#PR_TITLE} > 70 )); then
+            echo "::error::The title is ${#PR_TITLE} characters; the limit is 70."
+            exit 1
+          fi
+
+          echo "PR title is valid."
