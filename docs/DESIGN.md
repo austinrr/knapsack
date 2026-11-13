@@ -360,7 +360,7 @@ const (
     Classic     Flavor = "classic"     // _classic_ (currently Mists)
     ClassicEra  Flavor = "classic_era" // _classic_era_
     Anniversary Flavor = "anniversary" // _anniversary_ (TBC Anniversary)
-    Forever     Flavor = "forever"     // _forever_ (and _classic_beta_)
+    Forever     Flavor = "forever"     // _forever_
 )
 func Parse(s string) (Flavor, error)          // unknown values are rejected
 func FromPath(addonsDir string) (Flavor, bool) // …/_forever_/Interface/AddOns → Forever
@@ -521,7 +521,7 @@ that knows about specific game versions:
 | `classic` | `_classic_` | `mists` | `classic` | 50000–59999 | `wow_classic` |
 | `classic_era` | `_classic_era_` | `vanilla` | `classic` | 11000–11999 | `wow_classic_era` |
 | `anniversary` | `_anniversary_` | `tbc` | `classic` | 20000–29999 | see §13 |
-| `forever` | `_forever_`, `_classic_beta_` | `forever` (`camelot`) | `mainline` | 16000–16999 | `wowf` |
+| `forever` | `_forever_` | `forever` (`camelot`) | `mainline` | 16000–16999 | `wowf` |
 
 When Blizzard changes what a folder runs (`_classic_` has been Cataclysm and
 is now Mists), only this table changes.
