@@ -101,6 +101,7 @@ GitHub SDKs (go-github), git libraries, ORMs/SQLite.
 | `golangci-lint` v2 | Linting (config in §10). Installed as a binary, as its docs recommend |
 | `govulncheck` | Dependency vulnerability scan. Pinned as a `tool` dependency in `go.mod` |
 | `goreleaser` | Cross-platform release builds. Pinned as a `tool` dependency |
+| `git-cliff` | Changelog and next-version calculation from conventional-commit PR titles. Runs in CI only |
 | GitHub Actions | CI on Linux, Windows and macOS |
 | `Makefile` | `make lint`, `make test`, `make build`. Thin wrappers only; CI runs the same commands |
 
@@ -145,9 +146,9 @@ GitHub SDKs (go-github), git libraries, ORMs/SQLite.
 
    | Package | May import (internal) |
    |---|---|
-   | `flavor`, `ref`, `toc`, `paths` | nothing internal |
+   | `flavor`, `ref`, `toc`, `paths`, `atomicfile`, `lock` | nothing internal |
    | `httpx` | nothing internal |
-   | `config`, `state` | `flavor`, `ref` |
+   | `config`, `state` | `flavor`, `ref`, `atomicfile` |
    | `install` | `flavor`, `toc` |
    | `source` | `flavor`, `ref` |
    | `source/*` | `source`, `flavor`, `httpx` |
@@ -181,6 +182,8 @@ knapsack/
       wago/
     install/             verify → extract → validate → swap (filesystem only)
     toc/                 .toc parsing
+    atomicfile/          atomic file writes (temp file, fsync, rename)
+    lock/                per-profile and config locks (wraps gofrs/flock)
     httpx/               shared HTTP client (timeouts, User-Agent) and Download
     tui/                 later
   testdata/              shared fixtures (sample zips, TOCs, API responses)
@@ -555,6 +558,9 @@ func (a *App) Check(ctx context.Context, sel Selector) ([]Plan, error)
 func (a *App) List(ctx context.Context, sel Selector) ([]Installed, error)
 func (a *App) Info(ctx context.Context, profile, name string) (Details, error)
 
+// Profile use cases behind `knapsack config …`: SetProfile, Profiles,
+// UseProfile, CurrentProfile, DeleteProfile, ViewConfig.
+
 // Selector picks what a bulk operation covers.
 type Selector struct {
     Profiles []string // one profile, or every profile for --all-profiles
@@ -885,26 +891,263 @@ Code conventions:
 Running the test matrix on all three OSes matters: path handling, renames and
 file locking differ, especially on Windows.
 
-**Releases**: tagging `vX.Y.Z` triggers `go tool goreleaser`, which builds
-linux/windows/darwin × amd64/arm64, generates checksums and a changelog, and
-publishes a GitHub release. The version is injected with `-ldflags` and shown
-by `knapsack version`. Package-manager publishing (AUR, Homebrew, Scoop) comes
-later.
+A separate **PR Title** check validates conventional-commit titles
+(`docs/CONTRIBUTING.md`).
+
+**Releases** use semantic versioning (`vMAJOR.MINOR.PATCH`; see
+`docs/CONTRIBUTING.md` for bump rules and the pre-1.0 policy). A manually
+triggered **Release Cut** workflow computes the next version from commit
+types with git-cliff, generates the changelog, and creates the tag. It then
+calls the release workflow directly (`workflow_call`), since a tag pushed
+with the workflow's own token doesn't trigger other workflows. The release
+workflow runs goreleaser, which builds linux/windows/darwin × amd64/arm64,
+generates checksums, and publishes a GitHub release with git-cliff's notes.
+The version is injected with `-ldflags` and shown by `knapsack version`.
+Package-manager publishing (AUR, Homebrew, Scoop) comes later.
 
 ---
 
-## 12. Milestones
+## 12. Milestones and PR plan
 
 | # | Scope | Done when |
 |---|---|---|
-| **M0** | Skeleton: module, Cobra root per §8.7, `version`, Makefile, CI, lint config | CI green on all three OSes |
-| **M1** | `paths`, `config`, `flavor`, `ref`; `config` profile commands | Profiles round-trip through TOML with tests |
-| **M2** | `toc`, `install`, `state`, locking | Installs a local zip atomically, with rollback and cleanup tests |
-| **M3** | `httpx`, GitHub source; `add`, `remove`, `list`, `info` | Installs the author's mirror repos into Forever |
-| **M4** | `update` (incl. `--prune`), `check`, `-A`; concurrency | Daily-driver replacement for the LemonUp fork |
-| **M5** | goreleaser, first `v0.1.0` release | Binaries downloadable for all three OSes |
-| **M6** | CurseForge and Wago sources; ETag cache | Behind API-key config |
-| **M7** | `knapsack tui` on the same `app` layer | Feature parity with the CLI |
+| **M0** | Skeleton, test harness, CI | CI green on all three OSes |
+| **M1** | Leaf packages, config, profile commands | Profiles can be managed end to end from the CLI |
+| **M2** | TOC rules, installer, state | A local zip installs atomically, with rollback and cleanup tests |
+| **M3** | HTTP, GitHub source, `add`/`remove`/`list`/`info` | Installs the author's mirror repos into Forever |
+| **M4** | `update`, `check`, `-A` | Daily-driver replacement for the LemonUp fork |
+| **M5** | Release tooling, `v0.1.0` | Binaries downloadable for all three OSes |
+| **M6** | CurseForge, Wago, ETag cache | Planned in detail after v0.1.0 |
+| **M7** | `knapsack tui` | Planned in detail after v0.1.0 |
+
+### 12.1 PR conventions
+
+Each PR is sized so one Claude session can build, test and review it
+without losing track. That means one clear concern, usually one package or
+one command group.
+
+- **Size**: aim for under ~500 lines of non-test code. Tests may be larger.
+  If a PR grows past that, split it rather than stretch it.
+- **Self-contained**: `make lint test` passes, every new exported identifier
+  has a doc comment, and nothing is half-wired. A package with no callers yet
+  is fine; a command that does nothing isn't.
+- **Spec first**: each PR lists the sections of this doc it implements. The
+  doc is the spec. If implementation shows the design is wrong, the PR
+  updates the doc in the same change and says so in its description.
+- **Tests in the same PR** as the code, following §9. No "tests later" PRs.
+- **Out of scope stays out**: each PR names what it must *not* do yet, to
+  prevent scope creep.
+- **Branch per PR**, squash-merged to `main` in order. A PR depends only on
+  PRs before it in this list. Branch names, PR titles and versioning follow
+  `docs/CONTRIBUTING.md`. Each PR below suggests a title.
+
+### 12.2 PRs
+
+#### M0 — Skeleton
+
+**PR 1 — Module, root command and test harness**
+- Title: `feat: add module skeleton and version command`
+- Implements: §3 (tooling), §8.7 (Cobra conventions), §8.6 (exit codes)
+- `go.mod` (`go 1.26`; `govulncheck` and `goreleaser` as `tool`
+  dependencies), `cmd/knapsack` with `main.go` and `root.go`, `knapsack
+  version` (version injected through `-ldflags`, `dev` otherwise), Makefile,
+  `.golangci.yml` from §10, `.gitignore`.
+- Test harness in `cmd/knapsack`: a helper that runs the root command with
+  args and env, captures stdout, stderr and the exit code, and compares them
+  with golden files (`-update` regenerates).
+- Done when: `knapsack version` works and has a golden test; unknown commands
+  exit 2 with a one-line error.
+- Not yet: global flags beyond what `version` needs; any `internal/` package.
+
+**PR 2 — CI**
+- Title: `chore(ci): add test matrix and PR title check`
+- Implements: §11 (CI only)
+- GitHub Actions workflow: Linux, Windows and macOS matrix running the five
+  CI steps. Cache Go modules and the build cache.
+- Also: the PR Title workflow from `docs/CONTRIBUTING.md`, and repository
+  settings allowing squash merges only, with the PR title as the commit message.
+- Done when: CI is green on all three OSes for PR 1's code, and a badly
+  formatted PR title fails the check.
+- Not yet: release workflow.
+
+#### M1 — Foundations and profiles
+
+**PR 3 — `flavor`**
+- Title: `feat(flavor): add flavor type and client data table`
+- Implements: §5.7 (Flavor), §6.4 (client data table only)
+- `Flavor`, `Parse`, `FromPath`, `Client()` and the data table: client
+  folders, game type and aliases, family, Interface range, product code.
+- Done when: table-driven tests cover every flavor, every client folder, and
+  Windows and Unix paths in `FromPath`.
+- Not yet: `ClientInterface` (`.build.info`), which comes in PR 9.
+
+**PR 4 — `ref`**
+- Title: `feat(ref): parse and normalize addon refs and urls`
+- Implements: §5.7 (Ref), §8.5 (refs, URLs, normalization)
+- `Parse` for `source:id` and GitHub, CurseForge and Wago URLs;
+  normalization (lower-cased GitHub IDs, trailing slashes, `.git`);
+  `String`, `ShortName`.
+- Done when: table tests cover valid and invalid input for each source, and
+  a fuzz test checks `Parse(r.String())` round-trips.
+- Not yet: resolving short names against installed addons (that needs state).
+
+**PR 5 — `paths`, `atomicfile`, `lock`**
+- Title: `feat: add paths, atomic writes and locking`
+- Implements: §5.1 (directories, `KNAPSACK_HOME`), §5.3 (atomic writes),
+  §5.5 (locking)
+- Three small leaf packages. `lock` returns a sentinel `ErrLocked` when
+  another process holds the lock; it doesn't know about user-facing text.
+- Done when: tests cover `KNAPSACK_HOME` overrides, atomic-write failure
+  leaving the old file intact, and a second lock attempt failing fast.
+- Not yet: anything that uses them.
+
+**PR 6 — `config` store**
+- Title: `feat(config): load, validate and save config.toml`
+- Implements: §5.2
+- `config.Config` types, `Store` with `Load`/`Save` (through `atomicfile`),
+  validation (known flavors, valid refs, existing current profile), env-var
+  precedence for API keys, `0600` when a key is present, stable key order.
+- Done when: round-trip tests, a golden test of the written TOML, and tests
+  for every validation error.
+- Not yet: profile commands.
+
+**PR 7 — `app` scaffolding and `config` commands**
+- Title: `feat(config): add profile commands`
+- Implements: §6.5 (`New`, `Options`), §6.6 (`UserError`), §8.1 (profile
+  commands), §8.3 (`-p`, `-o`, `-v`, `--config`, `KNAPSACK_PROFILE`), §8.6
+  (error rendering)
+- `app.New`, profile use cases (set, list, use, current, delete, view),
+  `UserError`, error rendering and exit codes in `main`, the six
+  `config` subcommands with table and `-o json` output.
+- Done when: golden tests for every subcommand, including errors with hints
+  (unknown profile, flavor not inferable from the path).
+- Not yet: addon commands; state files (`delete-profile` removing a state
+  file is added in PR 10).
+
+#### M2 — Installing from a local zip
+
+**PR 8 — `toc`**
+- Title: `feat(toc): parse toc files`
+- Implements: §6.4 (parsing)
+- `toc.Parse`: headers, Interface lists, repeated
+  `AllowLoadGameType`/`ExcludeLoadGameType`, BOM, CRLF.
+- Done when: table tests from real-world TOCs in `testdata/` (including
+  Baganator's multi-Interface TOC) and a fuzz test that never panics.
+- Not yet: choosing between TOC files or validating them.
+
+**PR 9 — Client interface and TOC validation**
+- Title: `feat(install): validate addons against the game client`
+- Implements: §6.4 (steps 1 and 2, `.build.info`)
+- `flavor.ClientInterface` reading `.build.info`; TOC selection (game type,
+  then family, then plain); the validation rules table, as
+  `install.Validate(folderPath, flavor, clientInterface)`.
+- Done when: one test case per row of the validation table, TOC selection
+  precedence tests, and a `.build.info` fixture test (resolves open question
+  1 for the clients there are fixtures for).
+- Not yet: extraction or installing.
+
+**PR 10 — `state` store**
+- Title: `feat(state): load and save per-profile state`
+- Implements: §5.3, §5.4
+- `state.State` types, `Store` with `Load`/`Save`/`Rename`/`Delete`, schema
+  version check. Wires `config delete-profile` to remove the state file.
+- Done when: round-trip and golden TOML tests, an unknown schema version
+  gives a clear error.
+- Not yet: anything writing state after an install.
+
+**PR 11 — Extraction**
+- Title: `feat(install): extract archives safely into staging`
+- Implements: §6.3 (steps 2–3)
+- Extract a zip into a staging folder: zip-slip, absolute path and symlink
+  rejection; wrapper-folder normalization.
+- Done when: tests build zips in-test covering each rejection and each
+  normalization case.
+- Not yet: swapping into AddOns.
+
+**PR 12 — Install, swap, rollback, cleanup**
+- Title: `feat(install): swap folders atomically with rollback`
+- Implements: §6.3 (steps 1, 4–7, `Install`, `Remove`, `Cleanup`, Windows
+  retries)
+- `install.Install` tying extraction, validation, conflict checks and the
+  swap together; rollback on failure; `Cleanup` of leftovers; `Remove`.
+- Done when: tests for multi-folder addons, conflict refusal and `Force`,
+  rollback after an injected failure mid-swap, and cleanup of leftovers.
+  Passes on Windows CI.
+- Not yet: HTTP or the app layer.
+
+#### M3 — GitHub and the first addon commands
+
+**PR 13 — `httpx`**
+- Title: `feat(httpx): add http client and verified downloads`
+- Implements: §6.2
+- `NewClient` (timeouts, User-Agent, limited retries) and `Download` (stream
+  to a file, SHA-256 verify).
+- Done when: `httptest` tests for checksum match and mismatch, truncated
+  bodies, retry limits and cancellation.
+- Not yet: any source.
+
+**PR 14 — `source` and GitHub**
+- Title: `feat(source): add source registry and github source`
+- Implements: §6.1, §7 (GitHub resolution)
+- `Source` interface, `Release`, `Registry`, sentinel errors, and
+  `source/github` with asset selection and digests. GitHub token discovery
+  (`GITHUB_TOKEN`, `GH_TOKEN`, `gh auth token`) lives in `cmd/knapsack`
+  wiring and is passed in.
+- Done when: fixture-based tests for each asset-selection rule, 404, 401,
+  rate limiting, and a missing digest.
+- Not yet: CurseForge and Wago.
+
+**PR 15 — `app` addon use cases**
+- Title: `feat(app): add, remove, list and describe addons`
+- Implements: §6.5 (`Add`, `Remove`, `List`, `Info`, `Reporter`), §5.4
+  (write order), §5.5 (locking), §8.4 and §8.5 (behavior and short names)
+- Use cases with locking, cleanup before each operation, the fixed write
+  order, short-name resolution, and per-addon results.
+- Done when: `app` tests with a fake source on a temp `KNAPSACK_HOME`, covering
+  partial failures, adopting an addon that's in state but not config, and
+  lock contention.
+- Not yet: CLI commands; `update` and `check`.
+
+**PR 16 — `add`, `remove`, `list`, `info` commands**
+- Title: `feat: add add, remove, list and info commands`
+- Implements: §8.1, §8.4, §8.6 for these four commands
+- Commands, `rm`/`ls` aliases, table/`wide`/`json` output, the CLI
+  `Reporter` (lines, or a progress bar on a TTY).
+- Done when: golden tests for each command, including errors with hints and
+  `-o json`; a manual run installs the author's mirror repos into Forever.
+- Not yet: `update`, `check`, `-A`.
+
+#### M4 — Bulk updates
+
+**PR 17 — `app` `Update` and `Check`**
+- Title: `feat(app): update and check addons in bulk`
+- Implements: §6.5 (`Update`, `Check`, `Selector`, concurrency), §5.3
+  (identity comparison), §8.4 (`update`, `check`, `--prune`, `--force`)
+- Parallel resolve and download, serial installs, `--prune`, multi-profile
+  `Selector`.
+- Done when: `app` tests for install-missing, upgrade, no-op when the
+  SHA-256 matches, prune, partial failure, and several profiles. Passes with
+  `-race`.
+- Not yet: CLI commands.
+
+**PR 18 — `update` and `check` commands, `-A`**
+- Title: `feat: add update and check commands`
+- Implements: §8.1, §8.2, §8.6 (`check` exit code 1)
+- Commands, `-A/--all-profiles` on `update`, `check` and `list`, output
+  grouped by profile with summaries.
+- Done when: golden tests for single-profile and `-A` output, the exit codes
+  of `check`, and flag conflicts (`-A` with `-p`).
+
+#### M5 — First release
+
+**PR 19 — Release**
+- Title: `chore: add release cut and goreleaser`
+- Implements: §11 (releases)
+- `cliff.toml`, the Release Cut workflow (version bump from commit types,
+  changelog, tag, dry-run option), the release workflow it calls
+  (`.goreleaser.yaml`), and install instructions and usage in the README.
+- Done when: a `v0.1.0` tag produces binaries for linux/windows/darwin ×
+  amd64/arm64 with checksums.
 
 ---
 
