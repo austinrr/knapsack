@@ -8,9 +8,10 @@ on:
 permissions:
   contents: read
 
-# A newer push to the same branch or PR cancels the run in progress.
+# A newer push to a PR cancels its run in progress. Pushes to main group by
+# commit so every commit on main gets its own result.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -24,23 +25,34 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
         go: [stable]
         include:
-          # The oldest Go release go.mod allows (DESIGN.md §3).
+          # The minimum Go release, read from the go directive in go.mod
+          # (DESIGN.md §3).
           - os: ubuntu-latest
-            go: oldstable
+            go: minimum
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: ${{ matrix.go }}
+          go-version: ${{ matrix.go != 'minimum' && matrix.go || '' }}
+          go-version-file: ${{ matrix.go == 'minimum' && 'go.mod' || '' }}
       - name: Build
         run: go build ./...
       - name: Test
         run: go test -race ./...
 
   lint:
-    name: Lint
+    # Lint once per target OS so files behind build constraints
+    # (*_windows.go, *_darwin.go) are checked too. `run` also checks the
+    # formatters in .golangci.yml, so there's no separate fmt step.
+    name: Lint (${{ matrix.goos }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        goos: [linux, windows, darwin]
+    env:
+      GOOS: ${{ matrix.goos }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -50,14 +62,6 @@ jobs:
         with:
           # Keep in sync with the version developers run locally.
           version: v2.15.0
-      - name: Check formatting
-        run: |
-          diff=$(go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 fmt --diff)
-          if [ -n "$diff" ]; then
-            echo "$diff"
-            echo "::error::Code is not formatted. Run 'make fmt'."
-            exit 1
-          fi
 
   tidy:
     name: Go mod tidy
@@ -69,12 +73,7 @@ jobs:
         with:
           go-version: stable
       - name: Check go.mod and go.sum are tidy
-        run: |
-          go mod tidy
-          if ! git diff --exit-code go.mod go.sum; then
-            echo "::error::go.mod or go.sum is not tidy. Run 'go mod tidy'."
-            exit 1
-          fi
+        run: make tidy
 
   vuln:
     name: Vulnerability scan
@@ -86,4 +85,4 @@ jobs:
         with:
           go-version: stable
       - name: govulncheck
-        run: go tool govulncheck ./...
+        run: make vuln
