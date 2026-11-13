@@ -35,9 +35,6 @@ type Client struct {
 	// GameType is the client's own name for what it runs, used in TOC
 	// suffixes and AllowLoadGameType, e.g. "forever".
 	GameType string
-	// Aliases are other names the client accepts for GameType, e.g.
-	// "camelot" for Forever.
-	Aliases []string
 	// Family is the TOC family the game type belongs to.
 	Family Family
 	// Interface is the range of ## Interface values built for this game.
@@ -107,7 +104,6 @@ var table = []struct {
 	{Forever, Client{
 		Folder:    "_forever_",
 		GameType:  "forever",
-		Aliases:   []string{"camelot"},
 		Family:    FamilyMainline,
 		Interface: Range{Min: 16000, Max: 16999},
 		Product:   "wowf",
@@ -150,10 +146,9 @@ func Parse(s string) (Flavor, error) {
 func (f Flavor) Client() (Client, bool) {
 	for _, row := range table {
 		if row.flavor == f {
-			c := row.client
-			// Copy the slice so callers can't modify the table.
-			c.Aliases = append([]string(nil), c.Aliases...)
-			return c, true
+			// Client holds only values, so returning it copies it and
+			// callers can't modify the table.
+			return row.client, true
 		}
 	}
 	return Client{}, false
