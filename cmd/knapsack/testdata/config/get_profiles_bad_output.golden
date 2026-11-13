@@ -1,4 +1,4 @@
 # exit: 2
 # stdout:
 # stderr:
-error: unknown output format "yaml" (want json)
+error: invalid argument "yaml" for "-o, --output" flag: unknown output format (want json)

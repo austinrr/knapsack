@@ -72,7 +72,8 @@ func renderError(w io.Writer, err error, verbose bool) {
 	msg := "error: " + err.Error() + "\n"
 	var ue *app.UserError
 	if errors.As(err, &ue) {
-		msg = "error: " + ue.Msg + "\n"
+		// The error line is err.Error(), not ue.Msg, so context wrapped
+		// around the UserError is kept.
 		if ue.Hint != "" {
 			msg += "hint: " + ue.Hint + "\n"
 		}

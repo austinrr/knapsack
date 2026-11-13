@@ -19,7 +19,8 @@ A profile is one game's AddOns folder and the addons you want in it.
 
 Commands that change config rewrite config.toml in a fixed layout, so
 comments in the file are not kept.`,
-		Args: subcommandArgs,
+		Args:              subcommandArgs,
+		PersistentPreRunE: c.buildApp,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return cmd.Help()
 		},
@@ -50,19 +51,18 @@ profile created becomes the current profile.`,
   knapsack config set-profile beta --path ~/wow-beta/AddOns --flavor retail`,
 		Args: exactArgs("profile name"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			a, err := c.App()
-			if err != nil {
-				return err
-			}
 			req.Name = args[0]
-			res, err := a.SetProfile(cmd.Context(), req)
+			res, err := c.app.SetProfile(cmd.Context(), req)
 			if err != nil {
 				return err
 			}
 			out := &printer{w: cmd.OutOrStdout()}
 			verb := "modified"
-			if res.Created {
+			switch {
+			case res.Created:
 				verb = "created"
+			case !res.Changed:
+				verb = "unchanged"
 			}
 			out.printf("Profile %q %s (%s, %s).\n", res.Profile.Name, verb, res.Profile.Flavor, res.Profile.Path)
 			if res.MadeCurrent {
@@ -73,11 +73,7 @@ profile created becomes the current profile.`,
 	}
 	cmd.Flags().StringVar(&req.Path, "path", "", "the game's Interface/AddOns folder (required for a new profile)")
 	cmd.Flags().StringVar(&req.Flavor, "flavor", "", "the game client, if the path doesn't show it")
-	var names []string
-	for _, f := range flavor.All() {
-		names = append(names, string(f))
-	}
-	_ = cmd.RegisterFlagCompletionFunc("flavor", cobra.FixedCompletions(names, cobra.ShellCompDirectiveNoFileComp))
+	_ = cmd.RegisterFlagCompletionFunc("flavor", cobra.FixedCompletions(flavor.Names(), cobra.ShellCompDirectiveNoFileComp))
 	_ = cmd.MarkFlagDirname("path")
 	return cmd
 }
@@ -106,11 +102,7 @@ func newGetProfilesCmd(c *cli) *cobra.Command {
 		Short: "List profiles",
 		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			a, err := c.App()
-			if err != nil {
-				return err
-			}
-			profiles, err := a.Profiles(cmd.Context())
+			profiles, err := c.app.Profiles(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -148,11 +140,7 @@ func newUseProfileCmd(c *cli) *cobra.Command {
 		Short: "Set the current profile",
 		Args:  exactArgs("profile name"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			a, err := c.App()
-			if err != nil {
-				return err
-			}
-			if err := a.UseProfile(cmd.Context(), args[0]); err != nil {
+			if err := c.app.UseProfile(cmd.Context(), args[0]); err != nil {
 				return err
 			}
 			out := &printer{w: cmd.OutOrStdout()}
@@ -168,11 +156,7 @@ func newCurrentProfileCmd(c *cli) *cobra.Command {
 		Short: "Print the current profile",
 		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			a, err := c.App()
-			if err != nil {
-				return err
-			}
-			name, err := a.CurrentProfile(cmd.Context())
+			name, err := c.app.CurrentProfile(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -192,11 +176,7 @@ func newDeleteProfileCmd(c *cli) *cobra.Command {
 If it was the current profile, no profile is current afterwards.`,
 		Args: exactArgs("profile name"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			a, err := c.App()
-			if err != nil {
-				return err
-			}
-			res, err := a.DeleteProfile(cmd.Context(), args[0])
+			res, err := c.app.DeleteProfile(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
@@ -226,11 +206,7 @@ func newViewCmd(c *cli) *cobra.Command {
 		Short: "Print the config, with API keys redacted",
 		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			a, err := c.App()
-			if err != nil {
-				return err
-			}
-			cfg, err := a.ViewConfig(cmd.Context())
+			cfg, err := c.app.ViewConfig(cmd.Context())
 			if err != nil {
 				return err
 			}

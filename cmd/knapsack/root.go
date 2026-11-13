@@ -8,9 +8,7 @@ import (
 	"github.com/austinrr/knapsack/internal/paths"
 )
 
-// cli holds the global flags and the App built from them. The App is built
-// on first use, after flags are parsed, so commands like version and help
-// never touch the filesystem.
+// cli holds the global flags and the App built from them.
 type cli struct {
 	env        env
 	configFile string
@@ -19,23 +17,21 @@ type cli struct {
 	app *app.App
 }
 
-// App returns the App, building it the first time from the environment and
-// --config.
-func (c *cli) App() (*app.App, error) {
-	if c.app != nil {
-		return c.app, nil
-	}
+// buildApp builds the App from the environment and --config. Command
+// groups that need it call it from PersistentPreRunE, after flags are
+// parsed (DESIGN.md §8.7); version and help never do.
+func (c *cli) buildApp(*cobra.Command, []string) error {
 	p, err := paths.Resolve(c.env.getenv)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if c.configFile != "" {
 		if p, err = p.WithConfigFile(c.configFile); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	c.app = app.New(app.Options{Paths: p, Config: config.NewStore(p.ConfigFile)})
-	return c.app, nil
+	return nil
 }
 
 // newRootCmd builds the complete command tree. Commands are constructed

@@ -65,6 +65,13 @@ func TestConfigCommands(t *testing.T) {
 			args: []string{"config", "set-profile", "custom", "--path", plain, "--flavor", "classic_beta"}},
 		{name: "config/set_profile_bad_name",
 			args: []string{"config", "set-profile", "Forever", "--path", forever}},
+		{name: "config/set_profile_unchanged", setup: [][]string{addForever},
+			args: []string{"config", "set-profile", "forever"}},
+		// Changing an existing profile never makes it current, even when
+		// none is.
+		{name: "config/set_profile_modify_not_current",
+			setup: [][]string{addForever, addRetail, {"config", "delete-profile", "forever"}},
+			args:  []string{"config", "set-profile", "retail", "--path", classic}},
 		{name: "config/set_profile_same_path", setup: [][]string{addForever},
 			args: []string{"config", "set-profile", "again", "--path", forever + "/"}},
 
@@ -127,6 +134,7 @@ func TestConfigLocked(t *testing.T) {
 	}{
 		{"config/locked", []string{"config", "set-profile", "forever", "--path", forever}},
 		{"config/locked_verbose", []string{"-v", "config", "set-profile", "forever", "--path", forever}},
+		{"config/profile_locked", []string{"config", "delete-profile", "forever"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -135,7 +143,12 @@ func TestConfigLocked(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			l, err := lock.Acquire(p.ConfigLock())
+			path := p.ConfigLock()
+			if tc.name == "config/profile_locked" {
+				s.mustRun(addForever...)
+				path = p.ProfileLock("forever")
+			}
+			l, err := lock.Acquire(path)
 			if err != nil {
 				t.Fatal(err)
 			}

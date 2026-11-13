@@ -15,15 +15,29 @@ import (
 // the formats it supports. The default, "", is a human-readable table.
 // Commands that change things don't take -o, so it's never silently ignored.
 func addOutputFlag(cmd *cobra.Command, dst *string, formats ...string) {
-	cmd.Flags().StringVarP(dst, "output", "o", "", "output format: "+strings.Join(formats, " or "))
+	cmd.Flags().VarP(&outputFormat{dst: dst, formats: formats}, "output", "o",
+		"output format: "+strings.Join(formats, " or "))
 	_ = cmd.RegisterFlagCompletionFunc("output", cobra.FixedCompletions(formats, cobra.ShellCompDirectiveNoFileComp))
-	cmd.PreRunE = func(*cobra.Command, []string) error {
-		if *dst != "" && !slices.Contains(formats, *dst) {
-			return fmt.Errorf("unknown output format %q (want %s)", *dst, strings.Join(formats, " or "))
-		}
-		return nil
-	}
 }
+
+// outputFormat is a flag value that rejects unsupported formats while flags
+// are parsed, before the command runs. It implements pflag.Value.
+type outputFormat struct {
+	dst     *string
+	formats []string
+}
+
+func (o *outputFormat) String() string { return *o.dst }
+
+func (o *outputFormat) Set(s string) error {
+	if !slices.Contains(o.formats, s) {
+		return fmt.Errorf("unknown output format (want %s)", strings.Join(o.formats, " or "))
+	}
+	*o.dst = s
+	return nil
+}
+
+func (o *outputFormat) Type() string { return "format" }
 
 // writeJSON writes v as indented JSON.
 func writeJSON(w io.Writer, v any) error {

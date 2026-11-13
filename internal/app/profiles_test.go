@@ -147,3 +147,40 @@ func TestViewConfigRedacts(t *testing.T) {
 		t.Errorf("stored key = %q after view, want it unchanged", got)
 	}
 }
+
+// A change that changes nothing doesn't rewrite config, so comments the
+// user wrote survive.
+func TestNoOpKeepsComments(t *testing.T) {
+	t.Parallel()
+	a, store, addons := newApp(t)
+	ctx := context.Background()
+	if _, err := a.SetProfile(ctx, app.SetProfileRequest{Name: "forever", Path: addons}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(store.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	withComment := append([]byte("# my notes\n"), data...)
+	if err := os.WriteFile(store.Path(), withComment, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := a.SetProfile(ctx, app.SetProfileRequest{Name: "forever", Path: addons})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Changed {
+		t.Error("SetProfile with the same settings reported Changed")
+	}
+	if err := a.UseProfile(ctx, "forever"); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.ReadFile(store.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(withComment) {
+		t.Errorf("no-op commands rewrote config:\n%s", after)
+	}
+}

@@ -2,7 +2,9 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,6 +35,9 @@ type SetProfileRequest struct {
 type SetProfileResult struct {
 	Profile ProfileInfo
 	Created bool
+	// Changed is false when the profile already had these settings; config
+	// isn't rewritten then, so its comments survive.
+	Changed bool
 	// MadeCurrent is true when this became the current profile, which
 	// happens for the first profile created.
 	MadeCurrent bool
@@ -51,41 +56,47 @@ func (a *App) SetProfile(ctx context.Context, req SetProfileRequest) (SetProfile
 	}
 
 	var res SetProfileResult
-	err := a.changeConfig(func(c *config.Config) error {
-		p, exists := c.Profiles[req.Name]
-		if !exists && req.Path == "" {
-			return &UserError{
-				Msg:  fmt.Sprintf("profile %q doesn't exist yet, so --path is required", req.Name),
-				Hint: "pass --path with the game's Interface/AddOns folder",
+	err := a.withProfileLock(req.Name, func() error {
+		changed, err := a.changeConfig(func(c *config.Config) error {
+			p, exists := c.Profiles[req.Name]
+			if !exists && req.Path == "" {
+				return &UserError{
+					Msg:  fmt.Sprintf("profile %q doesn't exist yet, so --path is required", req.Name),
+					Hint: "pass --path with the game's Interface/AddOns folder",
+				}
 			}
-		}
-		if req.Path != "" {
-			path, err := addonsDir(req.Path)
+			if req.Path != "" {
+				path, err := addonsDir(req.Path)
+				if err != nil {
+					return err
+				}
+				p.Path = path
+			}
+			f, err := chooseFlavor(req.Flavor, p.Path, p.Flavor)
 			if err != nil {
 				return err
 			}
-			p.Path = path
-		}
-		f, err := chooseFlavor(req.Flavor, p.Path, p.Flavor)
-		if err != nil {
-			return err
-		}
-		p.Flavor = f
-		if other := profileWithPath(c, p.Path, req.Name); other != "" {
-			return &UserError{
-				Msg:  fmt.Sprintf("profile %q already uses %s", other, p.Path),
-				Hint: "each AddOns folder can belong to only one profile",
+			p.Flavor = f
+			if other := profileWithPath(c, p.Path, req.Name); other != "" {
+				return &UserError{
+					Msg:  fmt.Sprintf("profile %q already uses %s", other, p.Path),
+					Hint: "each AddOns folder can belong to only one profile",
+				}
 			}
-		}
 
-		c.Profiles[req.Name] = p
-		res.Created = !exists
-		if len(c.Profiles) == 1 && c.CurrentProfile == "" {
-			c.CurrentProfile = req.Name
-			res.MadeCurrent = true
-		}
-		res.Profile = profileInfo(c, req.Name)
-		return nil
+			c.Profiles[req.Name] = p
+			res.Created = !exists
+			// Only the first profile created becomes current. Changing an
+			// existing one never does, even when none is current.
+			if !exists && len(c.Profiles) == 1 && c.CurrentProfile == "" {
+				c.CurrentProfile = req.Name
+				res.MadeCurrent = true
+			}
+			res.Profile = profileInfo(c, req.Name)
+			return nil
+		})
+		res.Changed = changed
+		return err
 	})
 	return res, err
 }
@@ -98,12 +109,17 @@ func addonsDir(path string) (string, error) {
 		return "", fmt.Errorf("resolve path: %w", err)
 	}
 	info, err := os.Stat(abs)
-	if err != nil || !info.IsDir() {
+	switch {
+	case errors.Is(err, fs.ErrNotExist) || err == nil && !info.IsDir():
 		return "", &UserError{
 			Msg:  fmt.Sprintf("%s is not a directory", abs),
 			Hint: "pass --path with the game's Interface/AddOns folder",
 			Err:  err,
 		}
+	case err != nil:
+		// Permission denied and the like: the folder may well exist, so
+		// say what actually went wrong.
+		return "", fmt.Errorf("check --path: %w", err)
 	}
 	return abs, nil
 }
@@ -135,16 +151,8 @@ func chooseFlavor(explicit, path string, current flavor.Flavor) (flavor.Flavor, 
 	}
 	return "", &UserError{
 		Msg:  fmt.Sprintf("can't tell the flavor from %s: it's not inside a client folder such as _retail_", path),
-		Hint: "pass --flavor: one of " + flavorNames(),
+		Hint: "pass --flavor: one of " + strings.Join(flavor.Names(), ", "),
 	}
-}
-
-func flavorNames() string {
-	var names []string
-	for _, f := range flavor.All() {
-		names = append(names, string(f))
-	}
-	return strings.Join(names, ", ")
 }
 
 // profileWithPath returns another profile already using path, or "".
@@ -189,13 +197,14 @@ func (a *App) UseProfile(ctx context.Context, name string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return a.changeConfig(func(c *config.Config) error {
+	_, err := a.changeConfig(func(c *config.Config) error {
 		if _, ok := c.Profiles[name]; !ok {
 			return unknownProfile(name)
 		}
 		c.CurrentProfile = name
 		return nil
 	})
+	return err
 }
 
 // CurrentProfile returns the current profile's name.
@@ -227,16 +236,19 @@ func (a *App) DeleteProfile(ctx context.Context, name string) (DeleteProfileResu
 		return DeleteProfileResult{}, err
 	}
 	var res DeleteProfileResult
-	err := a.changeConfig(func(c *config.Config) error {
-		if _, ok := c.Profiles[name]; !ok {
-			return unknownProfile(name)
-		}
-		delete(c.Profiles, name)
-		if c.CurrentProfile == name {
-			c.CurrentProfile = ""
-			res.WasCurrent = true
-		}
-		return nil
+	err := a.withProfileLock(name, func() error {
+		_, err := a.changeConfig(func(c *config.Config) error {
+			if _, ok := c.Profiles[name]; !ok {
+				return unknownProfile(name)
+			}
+			delete(c.Profiles, name)
+			if c.CurrentProfile == name {
+				c.CurrentProfile = ""
+				res.WasCurrent = true
+			}
+			return nil
+		})
+		return err
 	})
 	return res, err
 }
