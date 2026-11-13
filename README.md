@@ -18,6 +18,11 @@ knapsack check -A        # what's outdated, across every profile
 knapsack update -A       # update everything, everywhere
 ```
 
+## Contributing
+
+See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for branch names, PR titles
+and versioning.
+
 ## License
 
 [MIT](LICENSE)
