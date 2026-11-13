@@ -1,4 +1,4 @@
 # exit: 0
 # stdout:
-knapsack dev
+knapsack v0.0.0-test
 # stderr:

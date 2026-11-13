@@ -100,7 +100,7 @@ GitHub SDKs (go-github), git libraries, ORMs/SQLite.
 | `gofmt` / `goimports` | Formatting (enforced through golangci-lint formatters) |
 | `golangci-lint` v2 | Linting (config in §10). Installed as a binary, as its docs recommend |
 | `govulncheck` | Dependency vulnerability scan. Pinned as a `tool` dependency in `go.mod` |
-| `goreleaser` | Cross-platform release builds. Pinned as a `tool` dependency |
+| `goreleaser` | Cross-platform release builds. Pinned as a `tool` dependency when release tooling lands (PR 19) |
 | `git-cliff` | Changelog and next-version calculation from conventional-commit PR titles. Runs in CI only |
 | GitHub Actions | CI on Linux, Windows and macOS |
 | `Makefile` | `make lint`, `make test`, `make build`. Thin wrappers only; CI runs the same commands |

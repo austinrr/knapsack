@@ -3,6 +3,7 @@
 A small, cross-platform World of Warcraft addon manager
 
 Usage:
+  knapsack [flags]
   knapsack [command]
 
 Available Commands:

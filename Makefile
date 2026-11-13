@@ -1,7 +1,7 @@
 # Thin wrappers around the go toolchain. CI runs the same commands.
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-LDFLAGS := -X main.version=$(VERSION)
+LDFLAGS := -X main.buildVersion=$(VERSION)
 
 .PHONY: all build test lint fmt vuln tidy
 

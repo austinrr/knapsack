@@ -20,13 +20,17 @@ type result struct {
 	Code   int
 }
 
+// testVersion is the version every golden test runs with, so golden files
+// don't depend on how the test binary was built.
+const testVersion = "v0.0.0-test"
+
 // runCLI runs the CLI in-process with args and returns its output and exit
 // code.
 func runCLI(t *testing.T, args ...string) result {
 	t.Helper()
 
 	var stdout, stderr bytes.Buffer
-	code := run(context.Background(), args, &stdout, &stderr)
+	code := run(context.Background(), args, env{stdout: &stdout, stderr: &stderr, version: testVersion})
 	return result{Stdout: stdout.String(), Stderr: stderr.String(), Code: code}
 }
 
