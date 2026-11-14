@@ -5,15 +5,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strconv"
 	"strings"
 	"sync/atomic"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -211,7 +210,7 @@ func TestRetryConnectionReset(t *testing.T) {
 		err       error
 		wantCalls int
 	}{
-		{fmt.Errorf("read tcp: %w", syscall.ECONNRESET), 2},
+		{&net.OpError{Op: "read", Net: "tcp", Err: os.NewSyscallError("read", resetErrno)}, 2},
 		{errors.New("no such host"), 1},
 	}
 	for _, tt := range tests {
@@ -268,12 +267,14 @@ func TestDownloadCancelled(t *testing.T) {
 // resets the timer, so a slow but steady body doesn't.
 func TestDownloadStalled(t *testing.T) {
 	t.Parallel()
-	const stall = 100 * time.Millisecond
+	// Gaps of a tenth of the timeout leave plenty of margin on a busy CI
+	// runner, while the whole body takes longer than the timeout.
+	const stall = 500 * time.Millisecond
 	url, _ := serve(t, func(w http.ResponseWriter, r *http.Request) {
-		for range 4 { // 4 × 40ms is longer than the stall timeout
+		for range 12 { // 12 × 50ms is longer than the stall timeout
 			_, _ = io.WriteString(w, "x")
 			w.(http.Flusher).Flush()
-			time.Sleep(40 * time.Millisecond)
+			time.Sleep(50 * time.Millisecond)
 		}
 		if r.URL.Query().Has("hang") {
 			<-r.Context().Done()
@@ -307,5 +308,53 @@ func TestDownloadTooLarge(t *testing.T) {
 			t.Errorf("chunked=%v: error = %v, want ErrTooLarge", chunked, err)
 		}
 		assertEmpty(t, dir)
+	}
+}
+
+// A GET with http.NoBody is as retryable as one with a nil body.
+func TestRetryNoBody(t *testing.T) {
+	t.Parallel()
+	fake := &fakeTransport{n: 1, err: &net.OpError{Op: "read", Net: "tcp", Err: os.NewSyscallError("read", resetErrno)}}
+	tr := &transport{base: fake, userAgent: "knapsack/test", backoff: time.Millisecond}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.invalid/", http.NoBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := tr.RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if fake.calls != 2 {
+		t.Errorf("calls = %d, want 2", fake.calls)
+	}
+}
+
+// A malformed expected hash is the source's mistake, not a corrupt file,
+// and nothing is downloaded.
+func TestDownloadBadExpectedSum(t *testing.T) {
+	t.Parallel()
+	url, calls := serve(t, ok)
+	for _, want := range []string{"sha256:" + sumOf(body), sumOf(body)[:10], strings.Repeat("z", 64)} {
+		_, _, err := Download(context.Background(), testClient(), url, t.TempDir(), want)
+		if err == nil || errors.Is(err, ErrChecksum) || !strings.Contains(err.Error(), "isn't 64 hex digits") {
+			t.Errorf("want %q: error = %v, want a bad-hash error", want, err)
+		}
+	}
+	if n := calls.Load(); n != 0 {
+		t.Errorf("made %d requests, want none", n)
+	}
+}
+
+// Waiting for headers and retrying don't count as a stalled body.
+func TestStallTimerStartsAfterHeaders(t *testing.T) {
+	t.Parallel()
+	url, _ := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(300 * time.Millisecond) // longer than the stall timeout
+		ok(w, r)
+	})
+	lim := limits{size: maxDownloadSize, stall: 100 * time.Millisecond}
+	if _, _, err := download(context.Background(), testClient(), url, t.TempDir(), "", lim); err != nil {
+		t.Errorf("slow headers: %v", err)
 	}
 }

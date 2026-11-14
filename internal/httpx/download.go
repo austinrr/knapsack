@@ -60,23 +60,25 @@ type limits struct {
 }
 
 func download(ctx context.Context, c *http.Client, url, dir, wantSHA256 string, lim limits) (path, sum string, err error) {
-	// Cancel the request with ErrStalled if no data arrives for a while.
+	if wantSHA256 != "" && !isSHA256(wantSHA256) {
+		// The source's data is wrong, not the file, so this isn't
+		// ErrChecksum.
+		return "", "", fmt.Errorf("download %s: expected sha256 %q isn't 64 hex digits", url, wantSHA256)
+	}
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
-	stall := time.AfterFunc(lim.stall, func() { cancel(ErrStalled) })
-	defer stall.Stop()
-	// wrap reports why the request was cancelled, rather than the bare
-	// "context canceled" the transport returns.
+	// wrap adds the URL, and reports why the request was cancelled rather
+	// than the bare "context canceled" the transport returns.
 	wrap := func(err error) error {
 		if cause := context.Cause(ctx); cause != nil {
-			return fmt.Errorf("download %s: %w", url, cause)
+			err = cause
 		}
 		return fmt.Errorf("download %s: %w", url, err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return "", "", fmt.Errorf("download %s: %w", url, err)
+		return "", "", wrap(err)
 	}
 	resp, err := c.Do(req)
 	if err != nil {
@@ -91,11 +93,11 @@ func download(ctx context.Context, c *http.Client, url, dir, wantSHA256 string, 
 	}
 
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", "", err
+		return "", "", wrap(err)
 	}
 	f, err := os.CreateTemp(dir, "download-*.zip")
 	if err != nil {
-		return "", "", err
+		return "", "", wrap(err)
 	}
 	defer func() {
 		if err != nil {
@@ -104,9 +106,18 @@ func download(ctx context.Context, c *http.Client, url, dir, wantSHA256 string, 
 		}
 	}()
 
+	// Cancel with ErrStalled if the body stops arriving. The timer starts
+	// once headers are in, so connecting and retries don't count against
+	// it (they have their own timeouts), and is reset after every read
+	// and write, so a slow disk doesn't count either.
+	stall := time.AfterFunc(lim.stall, func() { cancel(ErrStalled) })
+	defer stall.Stop()
+	progress := func() { stall.Reset(lim.stall) }
+
 	h := sha256.New()
-	body := &progressReader{r: io.LimitReader(resp.Body, lim.size+1), onRead: func() { stall.Reset(lim.stall) }}
-	n, err := io.Copy(io.MultiWriter(f, h), body)
+	body := &progressReader{r: io.LimitReader(resp.Body, lim.size+1), onProgress: progress}
+	dst := &progressWriter{w: io.MultiWriter(f, h), onProgress: progress}
+	n, err := io.Copy(dst, body)
 	if err != nil {
 		return "", "", wrap(err)
 	}
@@ -119,7 +130,7 @@ func download(ctx context.Context, c *http.Client, url, dir, wantSHA256 string, 
 		return "", "", fmt.Errorf("download %s: got %d of %d bytes: %w", url, n, resp.ContentLength, io.ErrUnexpectedEOF)
 	}
 	if err := f.Close(); err != nil {
-		return "", "", err
+		return "", "", wrap(err)
 	}
 
 	sum = hex.EncodeToString(h.Sum(nil))
@@ -129,16 +140,37 @@ func download(ctx context.Context, c *http.Client, url, dir, wantSHA256 string, 
 	return f.Name(), sum, nil
 }
 
-// progressReader calls onRead after every read that returns data.
+// isSHA256 reports whether s is a SHA-256 in hex, in either case.
+func isSHA256(s string) bool {
+	if len(s) != sha256.Size*2 {
+		return false
+	}
+	_, err := hex.DecodeString(s)
+	return err == nil
+}
+
+// progressReader calls onProgress after every read that returns data.
 type progressReader struct {
-	r      io.Reader
-	onRead func()
+	r          io.Reader
+	onProgress func()
 }
 
 func (p *progressReader) Read(b []byte) (int, error) {
 	n, err := p.r.Read(b)
 	if n > 0 {
-		p.onRead()
+		p.onProgress()
 	}
+	return n, err
+}
+
+// progressWriter calls onProgress after every write.
+type progressWriter struct {
+	w          io.Writer
+	onProgress func()
+}
+
+func (p *progressWriter) Write(b []byte) (int, error) {
+	n, err := p.w.Write(b)
+	p.onProgress()
 	return n, err
 }

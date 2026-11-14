@@ -468,13 +468,15 @@ need a far longer wait, which the source reports instead.
 There's no overall request timeout, which would cut off a large download on a
 slow link. Connecting (10 s), the TLS handshake (10 s) and waiting for
 response headers (30 s) time out, and `Download` fails with `ErrStalled` when
-the body stops arriving for 60 s.
+the body stops arriving for 60 s. That timer starts once headers are in and
+resets after every read and write, so retries and a slow disk don't count.
 
 `Download` writes to a temp file in `dir` (the cache directory), hashing as
 it writes. It fails with `*StatusError` for any status but 200, `ErrChecksum`
 when the SHA-256 differs, `io.ErrUnexpectedEOF` for a body shorter than its
-`Content-Length`, and `ErrTooLarge` past 1 GiB. No file is left behind on
-error.
+`Content-Length`, and `ErrTooLarge` past 1 GiB. An expected hash that isn't
+64 hex digits is a separate error, before any request: it's the source's data
+that's wrong, not the file. No file is left behind on error.
 
 ### 6.3 Installer (filesystem only)
 

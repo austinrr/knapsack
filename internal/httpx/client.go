@@ -2,10 +2,9 @@ package httpx
 
 import (
 	"context"
-	"errors"
+	"io"
 	"net"
 	"net/http"
-	"syscall"
 	"time"
 )
 
@@ -48,7 +47,8 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		req.Header.Set("User-Agent", t.userAgent)
 	}
 
-	retryable := (req.Method == http.MethodGet || req.Method == http.MethodHead) && req.Body == nil
+	noBody := req.Body == nil || req.Body == http.NoBody
+	retryable := (req.Method == http.MethodGet || req.Method == http.MethodHead) && noBody
 	wait := t.backoff
 	for attempt := 0; ; attempt++ {
 		resp, err := t.base.RoundTrip(req)
@@ -56,7 +56,10 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 			return resp, err
 		}
 		if resp != nil {
-			_ = resp.Body.Close() // discarded; a retry follows
+			// Drain a little so the connection can be reused for the
+			// retry; an error page is small.
+			_, _ = io.CopyN(io.Discard, resp.Body, 4<<10)
+			_ = resp.Body.Close()
 		}
 		if err := sleep(req.Context(), wait); err != nil {
 			return nil, err
@@ -70,7 +73,7 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 // limits, which need a much longer wait, is returned as it is.
 func shouldRetry(resp *http.Response, err error) bool {
 	if err != nil {
-		return errors.Is(err, syscall.ECONNRESET)
+		return isReset(err)
 	}
 	return resp.StatusCode >= 500
 }
