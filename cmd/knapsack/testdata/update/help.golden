@@ -1,0 +1,28 @@
+# exit: 0
+# stdout:
+Make the profile match its config: install addons in config that aren't
+installed, and upgrade those whose newest release isn't the one installed.
+Releases are compared by checksum, not by version.
+
+With no addons named, it covers every addon in the profile. It never
+changes config, and never uninstalls anything unless --prune is given.
+
+Usage:
+  knapsack update [addon...] [flags]
+
+Examples:
+  knapsack update
+  knapsack update baganator-mirror
+  knapsack update -A --prune
+
+Flags:
+  -A, --all-profiles     act on every profile
+      --force            replace folders in AddOns that no addon owns
+  -h, --help             help for update
+  -p, --profile string   profile to act on (default $KNAPSACK_PROFILE, then the current profile)
+      --prune            uninstall addons that are installed but no longer in config
+
+Global Flags:
+      --config string   use this config file instead of the default
+  -v, --verbose         show progress and the underlying cause of errors
+# stderr:

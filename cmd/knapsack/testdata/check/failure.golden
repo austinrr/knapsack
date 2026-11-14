@@ -1,0 +1,10 @@
+# exit: 2
+# stdout:
+ADDON                             INSTALLED  AVAILABLE  ACTION
+github:austinrr/baganator-mirror  -          v1         install
+github:austinrr/gone              -          -          failed
+
+1 install, 1 failed
+# stderr:
+error: github austinrr/gone: no such repository, or it has no releases: not found
+hint: check the ref; a repository with no releases yet also counts as not found

@@ -1,0 +1,7 @@
+# exit: 0
+# stdout:
+ADDON                             INSTALLED  AVAILABLE  ACTION
+github:austinrr/baganator-mirror  v1         v1         -
+
+Everything is up to date.
+# stderr:

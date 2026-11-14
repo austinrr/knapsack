@@ -1,0 +1,25 @@
+# exit: 0
+# stdout:
+[
+  {
+    "profile": "forever",
+    "ref": "github:austinrr/baganator-mirror",
+    "status": "installed",
+    "version": "v1",
+    "installed_at": "<time>",
+    "folders": [
+      "Baganator"
+    ]
+  },
+  {
+    "profile": "retail",
+    "ref": "github:austinrr/retail-only",
+    "status": "installed",
+    "version": "v1",
+    "installed_at": "<time>",
+    "folders": [
+      "RetailOnly"
+    ]
+  }
+]
+# stderr:

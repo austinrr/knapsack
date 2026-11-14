@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/austinrr/knapsack/internal/paths"
@@ -43,6 +44,25 @@ type sandbox struct {
 	home   string
 	env    map[string]string // extra environment variables
 	github *httptest.Server  // fake GitHub, serving fakeReleases
+
+	mu     sync.Mutex
+	bumped map[string]bool // repos whose newest release is v2, not v1
+}
+
+// bump publishes a new release, v2, of repo on the fake GitHub.
+func (s *sandbox) bump(repo string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.bumped[repo] = true
+}
+
+func (s *sandbox) version(repo string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.bumped[repo] {
+		return "v2"
+	}
+	return "v1"
 }
 
 // clientDirs are the AddOns folders every sandbox has, relative to home.
@@ -61,9 +81,10 @@ func newSandbox(t *testing.T) *sandbox {
 			t.Fatal(err)
 		}
 	}
-	gh := httptest.NewServer(http.HandlerFunc(serveFakeGitHub))
-	t.Cleanup(gh.Close)
-	return &sandbox{t: t, home: home, github: gh}
+	s := &sandbox{t: t, home: home, bumped: map[string]bool{}}
+	s.github = httptest.NewServer(http.HandlerFunc(s.serveFakeGitHub))
+	t.Cleanup(s.github.Close)
+	return s
 }
 
 // fakeReleases are the addons the fake GitHub has, by repo: each maps
@@ -75,15 +96,17 @@ var fakeReleases = map[string]map[string]string{
 }
 
 // serveFakeGitHub answers /repos/<repo>/releases/latest with a release of
-// one zip, and serves the zip at /download/<repo>.zip.
-func serveFakeGitHub(w http.ResponseWriter, r *http.Request) {
+// one zip, and serves the zip at /download/<repo>.zip. No digest is
+// published, so update and check download to compare.
+func (s *sandbox) serveFakeGitHub(w http.ResponseWriter, r *http.Request) {
 	if repo, ok := strings.CutPrefix(r.URL.Path, "/download/"); ok {
-		folders, ok := fakeReleases[strings.TrimSuffix(repo, ".zip")]
+		repo = strings.TrimSuffix(repo, ".zip")
+		folders, ok := fakeReleases[repo]
 		if !ok {
 			http.NotFound(w, r)
 			return
 		}
-		_, _ = w.Write(fakeZip(folders))
+		_, _ = w.Write(fakeZip(folders, s.version(repo)))
 		return
 	}
 	repo, ok := strings.CutSuffix(strings.TrimPrefix(r.URL.Path, "/repos/"), "/releases/latest")
@@ -91,9 +114,10 @@ func serveFakeGitHub(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
 		return
 	}
-	name := path.Base(repo) + "-v1.zip"
+	version := s.version(repo)
+	name := path.Base(repo) + "-" + version + ".zip"
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"tag_name": "v1",
+		"tag_name": version,
 		"assets": []map[string]string{{
 			"name":                 name,
 			"browser_download_url": "http://" + r.Host + "/download/" + repo + ".zip",
@@ -101,13 +125,14 @@ func serveFakeGitHub(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// fakeZip builds a release zip with a TOC per folder.
-func fakeZip(folders map[string]string) []byte {
+// fakeZip builds a release zip with a TOC per folder. The version is in
+// each TOC, so every version's checksum differs.
+func fakeZip(folders map[string]string, version string) []byte {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	for _, f := range slices.Sorted(maps.Keys(folders)) {
 		w, _ := zw.Create(f + "/" + f + ".toc")
-		_, _ = fmt.Fprintf(w, "## Interface: %s\n## Title: %s\n## Author: Someone\n", folders[f], f)
+		_, _ = fmt.Fprintf(w, "## Interface: %s\n## Title: %s\n## Author: Someone\n## Version: %s\n", folders[f], f, version)
 	}
 	_ = zw.Close()
 	return buf.Bytes()
@@ -221,6 +246,7 @@ type cliCase struct {
 	config string            // written as config.toml before setup, if set
 	env    map[string]string // extra environment variables
 	setup  [][]string
+	after  func(*sandbox) // runs after setup, before args
 	args   []string
 }
 
@@ -236,6 +262,9 @@ func runCases(t *testing.T, cases []cliCase) {
 			}
 			for _, step := range tc.setup {
 				s.mustRun(step...)
+			}
+			if tc.after != nil {
+				tc.after(s)
 			}
 			checkGolden(t, tc.name, s.run(tc.args...))
 		})

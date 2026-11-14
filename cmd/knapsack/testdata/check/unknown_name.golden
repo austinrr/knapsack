@@ -1,0 +1,9 @@
+# exit: 2
+# stdout:
+ADDON  INSTALLED  AVAILABLE  ACTION
+nope   -          -          failed
+
+1 failed
+# stderr:
+error: "nope" isn't in profile "forever"
+hint: list its addons with: knapsack list

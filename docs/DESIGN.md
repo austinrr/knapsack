@@ -690,8 +690,9 @@ type Selector struct {
   SHA-256 matches state's (§5.3): with a SHA-256 published by the source,
   that's known without downloading; otherwise the release is downloaded and
   hashed, and `Check` does the same just to compare. `Update` prunes before
-  installing, so freed folders are available, and never changes config. A
-  named addon that's only in state is an error without `--prune`, with a
+  installing, so freed folders are available, and never changes config.
+  Without `--prune`, addons only in state come back as `not in config`, so
+  the CLI can say they're left installed; a named one is an error, with a
   hint to add it back or prune it.
 - **Several profiles** are processed in turn, with results grouped by
   profile. A failure that stops one profile (lock held, unknown profile)
@@ -704,7 +705,7 @@ type Selector struct {
   `EventDownloading`, `EventInstalled`, `EventRemoved`, `EventSkipped`,
   `EventWarned` and `EventFailed`, each naming the profile and ref.
   Implementations **must be safe for concurrent use**. Download byte counts
-  come with the progress bar in PR 18. The CLI prints lines or a progress bar on a
+  come with the progress bar, in a follow-up to PR 18. The CLI prints lines or a progress bar on a
   TTY, the TUI sends Bubble Tea messages, and tests use `NopReporter` or a
   recording fake.
 
@@ -910,12 +911,18 @@ forever: 1 upgrade · retail: 1 install
   with the addon's ref, and so does
   each step (resolving, downloading) with `-v`. An empty `list` prints a note
   on stderr and nothing on stdout. Times are shown in UTC (RFC 3339).
+- `update` prints a line per addon it installs, upgrades or removes, then a
+  summary (`1 upgraded, 3 up to date`). `check` prints the table in §8.2,
+  then a summary (`1 upgrade, 1 prune`, or `Everything is up to date.`).
+  Under `-A`, lines are prefixed with the profile, tables get a `PROFILE`
+  column, and the summary has one group per profile. `-A` ignores
+  `KNAPSACK_PROFILE`, and with no profiles it's an error.
 - Exit codes follow the `diff`/`grep` and `kubectl diff` convention:
 
   | Code | Meaning |
   |---|---|
   | `0` | Success (for `check`: everything up to date) |
-  | `1` | `check` only: changes are pending |
+  | `1` | `check` only: changes are pending (prune candidates count only with `check --prune`) |
   | `2` | Any error, including usage errors and partial failures |
 
 - No interactive prompts. Anything destructive needs an explicit flag:
@@ -1291,6 +1298,8 @@ one command group.
   grouped by profile with summaries.
 - Done when: golden tests for single-profile and `-A` output, the exit codes
   of `check`, and flag conflicts (`-A` with `-p`).
+- Not yet: the progress bar on a TTY, which needs download byte counts from
+  `httpx`. It's a follow-up PR before the release.
 
 #### M5 — First release
 

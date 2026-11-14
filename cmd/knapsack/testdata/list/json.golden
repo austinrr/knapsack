@@ -2,6 +2,7 @@
 # stdout:
 [
   {
+    "profile": "forever",
     "ref": "github:austinrr/baganator-mirror",
     "status": "installed",
     "version": "v1",

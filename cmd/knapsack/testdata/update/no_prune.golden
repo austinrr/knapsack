@@ -1,0 +1,5 @@
+# exit: 0
+# stdout:
+1 up to date, 1 not in config
+Addons not in config are left installed; `knapsack update --prune` removes them.
+# stderr:

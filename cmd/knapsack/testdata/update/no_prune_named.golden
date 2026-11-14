@@ -1,0 +1,6 @@
+# exit: 2
+# stdout:
+1 failed
+# stderr:
+error: "details-mirror" is installed in profile "forever" but isn't in its config
+hint: add it back with `knapsack add`, or uninstall it with `knapsack update --prune`

@@ -8,12 +8,14 @@ Usage:
 
 Available Commands:
   add         Add addons to the profile and install them
+  check       Show what update would do, without changing anything
   completion  Generate the autocompletion script for the specified shell
   config      Manage profiles and config.toml
   help        Help about any command
   info        Show details of one addon
   list        List the profile's addons
   remove      Uninstall addons and remove them from the profile
+  update      Install missing addons and upgrade outdated ones
   version     Print the knapsack version
 
 Flags:
