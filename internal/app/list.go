@@ -45,35 +45,26 @@ type Installed struct {
 // alone, without the network, so it's instant (DESIGN.md §8.4). Config's
 // addons come first, in config order, then any only in state.
 func (a *App) List(ctx context.Context, sel Selector) ([]Installed, error) {
-	profiles := sel.Profiles
-	if len(profiles) == 0 {
-		profiles = []string{""}
-	}
 	var out []Installed
-	for _, profile := range profiles {
-		err := a.withProfile(ctx, profile, readOnly, func(s *session) error {
-			refs := s.known()
-			if len(sel.Addons) > 0 {
-				known := refs
-				refs = nil
-				for _, name := range sel.Addons {
-					r, err := findAddon(s, known, name)
-					if err != nil {
-						return err
-					}
-					refs = dedupe(append(refs, r))
+	err := a.eachProfile(ctx, sel.Profiles, readOnly, func(s *session) error {
+		refs := s.known()
+		if len(sel.Addons) > 0 {
+			known := refs
+			refs = nil
+			for _, name := range sel.Addons {
+				r, err := findAddon(s, known, name)
+				if err != nil {
+					return err
 				}
+				refs = dedupe(append(refs, r))
 			}
-			for _, r := range refs {
-				out = append(out, installedInfo(s, r))
-			}
-			return nil
-		})
-		if err != nil {
-			return out, err
 		}
-	}
-	return out, nil
+		for _, r := range refs {
+			out = append(out, installedInfo(s, r))
+		}
+		return nil
+	})
+	return out, err
 }
 
 func installedInfo(s *session, r ref.Ref) Installed {
