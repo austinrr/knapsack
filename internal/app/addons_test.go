@@ -106,12 +106,14 @@ func (r *recorder) Event(e app.Event) {
 	r.events = append(r.events, e)
 }
 
+// kinds lists the events for ref, without Progress, whose number depends
+// on how the download was chunked.
 func (r *recorder) kinds(ref ref.Ref) []app.EventKind {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	var out []app.EventKind
 	for _, e := range r.events {
-		if e.Ref == ref {
+		if e.Ref == ref && e.Kind != app.EventProgress {
 			out = append(out, e.Kind)
 		}
 	}
@@ -645,5 +647,24 @@ func TestInfoMainFolder(t *testing.T) {
 	}
 	if d.Title != "BugSack" {
 		t.Errorf("Title = %q, want BugSack", d.Title)
+	}
+}
+
+// Downloads report their bytes, ending with the whole archive.
+func TestAddReportsProgress(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	e.src.publish(t, "o/details", "Details")
+	e.mustAdd(t, mustRef(t, "github:o/details"))
+
+	var last app.Event
+	for _, ev := range e.rec.events {
+		if ev.Kind == app.EventProgress {
+			last = ev
+		}
+	}
+	size := int64(len(e.src.zips["o/details"]))
+	if last.Done != size || last.Total != size || last.Version != "v1" {
+		t.Errorf("last progress = %d of %d (%s), want %d of %d (v1)", last.Done, last.Total, last.Version, size, size)
 	}
 }

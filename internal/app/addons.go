@@ -210,7 +210,10 @@ func (a *App) fetch(ctx context.Context, s *session, r ref.Ref, mode fetchMode) 
 		return f // it would be installed either way
 	}
 	a.report(Event{Kind: EventDownloading, Profile: s.name, Ref: r, Version: rel.Version})
-	f.path, f.sum, f.err = httpx.Download(ctx, a.http, rel.DownloadURL, a.paths.CacheDir, rel.SHA256)
+	progress := func(done, total int64) {
+		a.report(Event{Kind: EventProgress, Profile: s.name, Ref: r, Version: rel.Version, Done: done, Total: total})
+	}
+	f.path, f.sum, f.err = httpx.Download(ctx, a.http, rel.DownloadURL, a.paths.CacheDir, rel.SHA256, progress)
 	if f.err == nil && had {
 		f.current = f.sum == installed.SHA256
 	}

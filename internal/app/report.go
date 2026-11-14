@@ -18,9 +18,11 @@ type EventKind int
 const (
 	EventResolving   EventKind = iota // looking up the newest release
 	EventDownloading                  // downloading it
+	EventProgress                     // bytes downloaded so far, in Done and Total
 	EventInstalled                    // installed
 	EventRemoved                      // uninstalled
 	EventSkipped                      // nothing to do; Message says why
+	EventChecked                      // Check knows the plan; Message is its action
 	EventWarned                       // installed with a warning in Message
 	EventFailed                       // failed; Err says why
 )
@@ -34,6 +36,9 @@ type Event struct {
 	Version string // the release, once resolved
 	Message string // for Skipped and Warned
 	Err     error  // for Failed
+	// Done and Total are bytes downloaded and expected, for Progress.
+	// Total is -1 when the server doesn't say.
+	Done, Total int64
 }
 
 // NopReporter ignores every event.

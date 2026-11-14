@@ -49,9 +49,17 @@ const (
 // The body is hashed as it's written, so the file is read only once. A body
 // shorter than its Content-Length, or one that stops arriving for a
 // minute, is an error.
-func Download(ctx context.Context, c *http.Client, url, dir, wantSHA256 string) (path, sum string, err error) {
-	return download(ctx, c, url, dir, wantSHA256, limits{size: maxDownloadSize, stall: stallTimeout})
+//
+// onProgress, if not nil, is called after each read with the bytes
+// received so far and the total, which is -1 when the server doesn't say.
+// It's called on Download's goroutine, so it should be quick.
+func Download(ctx context.Context, c *http.Client, url, dir, wantSHA256 string, onProgress Progress) (path, sum string, err error) {
+	return download(ctx, c, url, dir, wantSHA256, onProgress, limits{size: maxDownloadSize, stall: stallTimeout})
 }
+
+// Progress receives a download's byte counts: done so far, of total (-1
+// when unknown).
+type Progress func(done, total int64)
 
 // limits are Download's limits, smaller in tests.
 type limits struct {
@@ -59,7 +67,7 @@ type limits struct {
 	stall time.Duration
 }
 
-func download(ctx context.Context, c *http.Client, url, dir, wantSHA256 string, lim limits) (path, sum string, err error) {
+func download(ctx context.Context, c *http.Client, url, dir, wantSHA256 string, onProgress Progress, lim limits) (path, sum string, err error) {
 	if wantSHA256 != "" && !IsSHA256(wantSHA256) {
 		// The source's data is wrong, not the file, so this isn't
 		// ErrChecksum.
@@ -112,11 +120,19 @@ func download(ctx context.Context, c *http.Client, url, dir, wantSHA256 string, 
 	// and write, so a slow disk doesn't count either.
 	stall := time.AfterFunc(lim.stall, func() { cancel(ErrStalled) })
 	defer stall.Stop()
-	progress := func() { stall.Reset(lim.stall) }
+	alive := func() { stall.Reset(lim.stall) }
+	var done int64
+	read := func(n int) {
+		alive()
+		done += int64(n)
+		if onProgress != nil {
+			onProgress(done, resp.ContentLength)
+		}
+	}
 
 	h := sha256.New()
-	body := &progressReader{r: io.LimitReader(resp.Body, lim.size+1), onProgress: progress}
-	dst := &progressWriter{w: io.MultiWriter(f, h), onProgress: progress}
+	body := &progressReader{r: io.LimitReader(resp.Body, lim.size+1), onRead: read}
+	dst := &progressWriter{w: io.MultiWriter(f, h), onWrite: alive}
 	n, err := io.Copy(dst, body)
 	if err != nil {
 		return "", "", wrap(err)
@@ -150,28 +166,29 @@ func IsSHA256(s string) bool {
 	return err == nil
 }
 
-// progressReader calls onProgress after every read that returns data.
+// progressReader calls onRead with the size of every read that returns
+// data.
 type progressReader struct {
-	r          io.Reader
-	onProgress func()
+	r      io.Reader
+	onRead func(n int)
 }
 
 func (p *progressReader) Read(b []byte) (int, error) {
 	n, err := p.r.Read(b)
 	if n > 0 {
-		p.onProgress()
+		p.onRead(n)
 	}
 	return n, err
 }
 
-// progressWriter calls onProgress after every write.
+// progressWriter calls onWrite after every write.
 type progressWriter struct {
-	w          io.Writer
-	onProgress func()
+	w       io.Writer
+	onWrite func()
 }
 
 func (p *progressWriter) Write(b []byte) (int, error) {
 	n, err := p.w.Write(b)
-	p.onProgress()
+	p.onWrite()
 	return n, err
 }

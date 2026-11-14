@@ -219,6 +219,9 @@ func (a *App) Check(ctx context.Context, sel Selector) ([]Plan, error) {
 			default:
 				p.Action = PlanUpgrade
 			}
+			if p.Action != PlanFailed {
+				a.report(Event{Kind: EventChecked, Profile: s.name, Ref: p.Ref, Version: p.Available, Message: string(p.Action)})
+			}
 		}
 		plans = append(plans, out...)
 		return nil

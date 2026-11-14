@@ -109,6 +109,7 @@ changes config, and never uninstalls anything unless --prune is given.`,
 				return err
 			}
 			results, err := c.app.Update(cmd.Context(), sel, opts)
+			c.stopProgress()
 			out := &printer{w: cmd.OutOrStdout()}
 			if err == nil && len(results) == 0 {
 				return noteEmpty(cmd, sc.all)
@@ -196,6 +197,7 @@ on errors, like kubectl diff. Prune candidates count as pending only with
 				return err
 			}
 			plans, err := c.app.Check(cmd.Context(), sel)
+			c.stopProgress()
 			var failed []error
 			pending := false
 			for _, p := range plans {
