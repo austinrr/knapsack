@@ -118,7 +118,7 @@ An addon can be named by its ref (`github:austinrr/baganator-mirror`,
 |---|---|
 | `-p, --profile <name>` | Act on this profile instead of the current one (or `$KNAPSACK_PROFILE`) |
 | `-A, --all-profiles` | Act on every profile (`update`, `check`, `list`) |
-| `-o, --output <format>` | `json`, or `wide` for `list` and `check` (adds the full ref as the source) |
+| `-o, --output <format>` | `json`, or `wide`: the full ref as the source in `list` and `check`, the full AddOns path in `config get-profiles` |
 | `--force` | Replace folders in AddOns that no addon owns (`add`, `update`) |
 | `-v, --verbose` | Show each step and the underlying cause of errors |
 | `--config <file>` | Use another config file |
