@@ -69,6 +69,7 @@ func newApp(e env, p paths.Paths, network bool, reporter app.Reporter) *app.App 
 		Config:   config.NewStore(p.ConfigFile),
 		State:    state.NewStore(p.StateFile),
 		Reporter: reporter,
+		Getenv:   e.getenv,
 	}
 	if network {
 		opts.HTTP = httpx.NewClient(e.version)
@@ -136,6 +137,7 @@ func newRootCmd(c *cli) *cobra.Command {
 		newListCmd(c),
 		newInfoCmd(c),
 		newConfigCmd(c),
+		newSourcesCmd(c),
 		newVersionCmd(c),
 		newSelfUpdateCmd(c),
 	)

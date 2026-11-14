@@ -566,8 +566,8 @@ func TestAddResultOrder(t *testing.T) {
 	}
 }
 
-// A source with no API key gets a hint naming its own config key and
-// environment variable.
+// A source Knapsack can't install from yet says so, and where to see
+// which it can: no keyed source is built yet, so a key wouldn't help.
 func TestAddSourceNotConfigured(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
@@ -576,8 +576,8 @@ func TestAddSourceNotConfigured(t *testing.T) {
 		t.Fatal(err)
 	}
 	var ue *app.UserError
-	if !errors.As(results[0].Err, &ue) || !strings.Contains(ue.Hint, "sources.curseforge.api_key") || !strings.Contains(ue.Hint, "KNAPSACK_CURSEFORGE_API_KEY") {
-		t.Errorf("error = %v, want a hint naming curseforge's key", results[0].Err)
+	if !errors.As(results[0].Err, &ue) || !strings.Contains(ue.Hint, "can't install from curseforge yet") || !strings.Contains(ue.Hint, "knapsack sources") {
+		t.Errorf("error = %v, want a hint that curseforge isn't available yet", results[0].Err)
 	}
 }
 
@@ -705,5 +705,35 @@ func TestAddReportsProgress(t *testing.T) {
 	size := int64(len(e.src.zips["o/details"]))
 	if last.Done != size || last.Total != size || last.Version != "v1" {
 		t.Errorf("last progress = %d of %d (%s), want %d of %d (v1)", last.Done, last.Total, last.Version, size, size)
+	}
+}
+
+// Whether a source is ready is a property of the build, so an App built
+// without network sources, as offline commands are, reports the same.
+func TestSourcesWithoutNetwork(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	p, err := paths.Resolve(func(string) string { return home })
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := app.New(app.Options{Paths: p, Config: config.NewStore(p.ConfigFile), State: state.NewStore(p.StateFile),
+		Getenv: func(k string) string {
+			if k == config.WagoKeyEnv {
+				return "from-env"
+			}
+			return ""
+		}})
+	got, err := a.Sources(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []app.SourceInfo{
+		{Name: "github", Available: true},
+		{Name: "curseforge", NeedsKey: true, Env: config.CurseForgeKeyEnv},
+		{Name: "wago", NeedsKey: true, Key: app.KeyEnv, Env: config.WagoKeyEnv},
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("Sources (-want +got):\n%s", diff)
 	}
 }

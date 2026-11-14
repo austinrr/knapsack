@@ -26,6 +26,9 @@ type Options struct {
 	Releases Releases
 	// Reporter receives progress events. Nil means NopReporter.
 	Reporter Reporter
+	// Getenv reads the environment, for the variables that override API
+	// keys. Nil means an empty environment.
+	Getenv func(string) string
 }
 
 // App runs use cases. It's safe to reuse across commands: it loads fresh
@@ -38,6 +41,7 @@ type App struct {
 	http     *http.Client
 	releases Releases
 	reporter Reporter
+	getenv   func(string) string
 }
 
 // New returns an App using opts.
@@ -45,6 +49,10 @@ func New(opts Options) *App {
 	reporter := opts.Reporter
 	if reporter == nil {
 		reporter = NopReporter{}
+	}
+	getenv := opts.Getenv
+	if getenv == nil {
+		getenv = func(string) string { return "" }
 	}
 	return &App{
 		paths:    opts.Paths,
@@ -54,6 +62,7 @@ func New(opts Options) *App {
 		http:     opts.HTTP,
 		releases: opts.Releases,
 		reporter: reporter,
+		getenv:   getenv,
 	}
 }
 

@@ -54,12 +54,24 @@ func (l *lazyGitHub) LatestAssets(ctx context.Context, id string) (string, []sou
 // (DESIGN.md §5.2). It returns "" when there's none, which still works,
 // with GitHub's lower anonymous rate limit.
 func githubToken(ctx context.Context, getenv func(string) string, ghAuthToken func(context.Context) string) string {
+	token, _ := findGitHubToken(ctx, getenv, ghAuthToken)
+	return token
+}
+
+// findGitHubToken is githubToken, also saying where the token came from:
+// the variable's name, "gh" for the GitHub CLI, or "" for none. It's the
+// one place the order lives, so `knapsack sources` reports what commands
+// use.
+func findGitHubToken(ctx context.Context, getenv func(string) string, ghAuthToken func(context.Context) string) (token, origin string) {
 	for _, k := range []string{"GITHUB_TOKEN", "GH_TOKEN"} {
 		if t := strings.TrimSpace(getenv(k)); t != "" {
-			return t
+			return t, k
 		}
 	}
-	return ghAuthToken(ctx)
+	if t := ghAuthToken(ctx); t != "" {
+		return t, "gh"
+	}
+	return "", ""
 }
 
 // ghAuthToken asks the GitHub CLI for its token, if it's installed and

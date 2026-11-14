@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: Knapsack doesn't store GitHub tokens
+hint: set GITHUB_TOKEN or GH_TOKEN, or log in with `gh auth login`

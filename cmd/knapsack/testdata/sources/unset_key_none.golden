@@ -1,0 +1,4 @@
+# exit: 0
+# stdout:
+There's no wago API key in config.
+# stderr:

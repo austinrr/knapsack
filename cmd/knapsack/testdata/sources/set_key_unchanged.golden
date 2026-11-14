@@ -1,0 +1,5 @@
+# exit: 0
+# stdout:
+The curseforge API key is unchanged.
+# stderr:
+Knapsack can't install from curseforge yet; it will use the key once it can.

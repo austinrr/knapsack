@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: unknown source "nope"
+hint: sources that take an API key: curseforge, wago

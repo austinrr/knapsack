@@ -3,7 +3,6 @@ package app
 import (
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/austinrr/knapsack/internal/install"
 	"github.com/austinrr/knapsack/internal/ref"
@@ -33,8 +32,10 @@ func explain(err error, r ref.Ref) error {
 	case errors.Is(err, source.ErrUnauthorized):
 		hint = "check the token or API key Knapsack is using"
 	case errors.Is(err, source.ErrSourceNotConfigured):
-		hint = fmt.Sprintf("%s needs an API key: set sources.%s.api_key in config, or %s",
-			r.Source, r.Source, "KNAPSACK_"+strings.ToUpper(r.Source)+"_API_KEY")
+		// No keyed source is built yet (DESIGN.md §7), so a key wouldn't
+		// help. When one is, an unregistered source will mean a missing
+		// key, and this should point at `knapsack sources set-key`.
+		hint = fmt.Sprintf("Knapsack can't install from %s yet; `knapsack sources` shows which sources it can", r.Source)
 	case errors.Is(err, install.ErrWrongGame):
 		hint = "the release isn't built for this profile's flavor"
 	case errors.Is(err, source.ErrNoCompatibleRelease):
