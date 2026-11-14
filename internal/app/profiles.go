@@ -80,7 +80,7 @@ func (a *App) SetProfile(ctx context.Context, req SetProfileRequest) (SetProfile
 			if !exists && req.Path == "" {
 				return &UserError{
 					Msg:  fmt.Sprintf("profile %q doesn't exist yet, so --path is required", req.Name),
-					Hint: "pass --path with the game's Interface/AddOns folder",
+					Hint: pathHint(),
 				}
 			}
 			if req.Path != "" {
@@ -127,7 +127,7 @@ func (a *App) nameForPath(req SetProfileRequest) (name, path string, err error) 
 	if req.Path == "" {
 		return "", "", &UserError{
 			Msg:  "set-profile needs --path, or the name of a profile to change",
-			Hint: "pass --path with the game's Interface/AddOns folder",
+			Hint: pathHint(),
 		}
 	}
 	if path, err = addonsDir(req.Path); err != nil {
@@ -223,9 +223,17 @@ func addonsDir(path string) (string, error) {
 		// say what actually went wrong.
 		return "", fmt.Errorf("check --path: %w", err)
 	}
-	for _, sub := range addonsSubdirs(abs) {
-		if isDir(filepath.Join(abs, sub)) {
-			return filepath.Join(abs, sub), nil
+	if sub := addonsSubdir(abs); sub != "" {
+		addons := filepath.Join(abs, sub)
+		if isDir(addons) {
+			return addons, nil
+		}
+		// A client that's never been started has no AddOns folder yet.
+		// The client folder itself must never be the AddOns folder: WoW
+		// wouldn't load addons from it.
+		return "", &UserError{
+			Msg:  fmt.Sprintf("%s has no %s folder yet", abs, sub),
+			Hint: "start that client once, or make the folder: " + Quoted(addons),
 		}
 	}
 	if clients := clientFolders(abs); len(clients) > 0 {
@@ -237,16 +245,16 @@ func addonsDir(path string) (string, error) {
 	return abs, nil
 }
 
-// addonsSubdirs are where AddOns may be below path: Interface/AddOns in a
-// client folder, AddOns in an Interface folder.
-func addonsSubdirs(path string) []string {
+// addonsSubdir is where AddOns is below path: Interface/AddOns in a client
+// folder, AddOns in an Interface folder, or "" for any other folder.
+func addonsSubdir(path string) string {
 	switch {
 	case strings.EqualFold(filepath.Base(path), "Interface"):
-		return []string{"AddOns"}
+		return "AddOns"
 	case flavor.IsClientFolder(filepath.Base(path)):
-		return []string{filepath.Join("Interface", "AddOns")}
+		return filepath.Join("Interface", "AddOns")
 	}
-	return nil
+	return ""
 }
 
 // clientFolders lists the client folders in dir, sorted, when dir is a

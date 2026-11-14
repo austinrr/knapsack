@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -66,7 +66,7 @@ profile for the same client, such as a test copy of the game, needs a name.`,
 		Example: "  knapsack config set-profile --path " + app.Quoted(app.ExampleClientFolder()) + "\n" +
 			"  knapsack config set-profile retail-test --path " + app.Quoted(filepath.Join(filepath.Dir(filepath.Dir(app.ExampleClientFolder())), "WoW Test", "_retail_")),
 		Args: func(cmd *cobra.Command, args []string) error {
-			if err := splitPath(cmd, req.Path, args); err != nil {
+			if err := splitPath(c.rawArgs); err != nil {
 				return err
 			}
 			return maxArgs("profile name")(cmd, args)
@@ -102,7 +102,7 @@ profile for the same client, such as a test copy of the game, needs a name.`,
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&req.Path, "path", "", "the game's Interface/AddOns folder (required for a new profile)")
+	cmd.Flags().StringVar(&req.Path, "path", "", "the game's client folder, such as _retail_, or its Interface/AddOns folder (required for a new profile)")
 	cmd.Flags().StringVar(&req.Flavor, "flavor", "", "the game client, if the path doesn't show it")
 	_ = cmd.RegisterFlagCompletionFunc("flavor", cobra.FixedCompletions(flavor.Names(), cobra.ShellCompDirectiveNoFileComp))
 	_ = cmd.MarkFlagDirname("path")
@@ -110,24 +110,47 @@ profile for the same client, such as a test copy of the game, needs a name.`,
 }
 
 // splitPath catches a --path the shell split at its spaces, as an unquoted
-// C:\Program Files (x86)\… is in cmd.exe: the rest arrives as extra
-// arguments. An argument with \, / or parentheses can only be part of a
-// path, so one of those means a split. A leading valid profile name is
-// kept out of the rejoined path; names are lowercase, so "Files" isn't one.
-func splitPath(cmd *cobra.Command, path string, args []string) error {
-	isPathPart := func(a string) bool { return strings.ContainsAny(a, `\/()`) }
-	if !cmd.Flags().Changed("path") || !slices.ContainsFunc(args, isPathPart) {
+// C:\Program Files (x86)\… is in cmd.exe. It reads the raw arguments,
+// since only their order shows which words followed --path's value: those
+// up to the next flag. They're the rest of the path unless the value is a
+// folder on its own, as with --path …\AddOns retail, a name after the path.
+func splitPath(raw []string) error {
+	value, rest, ok := afterFlag(raw, "--path")
+	if !ok || len(rest) == 0 {
 		return nil
 	}
-	rest := args
-	if config.ValidateProfileName(args[0]) == nil {
-		rest = args[1:]
+	if info, err := os.Stat(value); err == nil && info.IsDir() {
+		return nil
 	}
-	joined := strings.Join(append([]string{path}, rest...), " ")
+	joined := strings.Join(append([]string{value}, rest...), " ")
 	return &app.UserError{
 		Msg:  "the path looks split at its spaces: " + joined,
 		Hint: "put it in quotes: --path " + app.Quoted(joined),
 	}
+}
+
+// afterFlag finds flag in raw (as "--flag value" or "--flag=value") and
+// returns its value and the words after it, up to the next flag or "--".
+func afterFlag(raw []string, flag string) (value string, rest []string, ok bool) {
+	for i, a := range raw {
+		var after []string
+		switch {
+		case a == flag && i+1 < len(raw):
+			value, after = raw[i+1], raw[i+2:]
+		case strings.HasPrefix(a, flag+"="):
+			value, after = strings.TrimPrefix(a, flag+"="), raw[i+1:]
+		default:
+			continue
+		}
+		for _, w := range after {
+			if strings.HasPrefix(w, "-") {
+				break
+			}
+			rest = append(rest, w)
+		}
+		return value, rest, true
+	}
+	return "", nil, false
 }
 
 // profileJSON is the -o json shape of a profile.

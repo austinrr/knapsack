@@ -135,7 +135,7 @@ func executable() (string, error) {
 // the single place where errors are rendered, so tests can drive the whole
 // program without spawning a process.
 func run(ctx context.Context, args []string, e env) int {
-	c := &cli{env: e}
+	c := &cli{env: e, rawArgs: args}
 	root := newRootCmd(c)
 	// Cobra treats nil args as "use os.Args", so always pass a non-nil
 	// slice: run must only ever see the arguments it was given.

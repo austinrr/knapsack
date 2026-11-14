@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: <home>/wow/_xptr_ has no Interface/AddOns folder yet
+hint: start that client once, or make the folder: "<home>/wow/_xptr_/Interface/AddOns"

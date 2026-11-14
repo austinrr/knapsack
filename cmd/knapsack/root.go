@@ -13,7 +13,10 @@ import (
 
 // cli holds the global flags and the App built from them.
 type cli struct {
-	env        env
+	env env
+	// rawArgs are the arguments as given, in order, which cobra's parsed
+	// flags and positional arguments don't keep (splitPath needs it).
+	rawArgs    []string
 	configFile string
 	verbose    bool
 	profile    string // -p, for the commands that take it

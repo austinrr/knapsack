@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: the path looks split at its spaces: /games/World of Warcraft
+hint: put it in quotes: --path "/games/World of Warcraft"
