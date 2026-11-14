@@ -2,4 +2,4 @@
 # stdout:
 # stderr:
 error: curseforge 12345: source not configured
-hint: curseforge needs an API key: set sources.curseforge.api_key in config, or KNAPSACK_CURSEFORGE_API_KEY
+hint: Knapsack can't install from curseforge yet; `knapsack sources` shows which sources it can

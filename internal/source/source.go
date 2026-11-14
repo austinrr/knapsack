@@ -75,6 +75,15 @@ func NewRegistry(sources ...Source) *Registry {
 	return r
 }
 
+// Has reports whether the source called name is available.
+func (reg *Registry) Has(name string) bool {
+	if reg == nil {
+		return false
+	}
+	_, ok := reg.sources[name]
+	return ok
+}
+
 // Resolve finds the newest release of the addon r for f, through the
 // source r names.
 func (reg *Registry) Resolve(ctx context.Context, r ref.Ref, f flavor.Flavor) (Release, error) {

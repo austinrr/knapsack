@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: no API key given
+hint: type it when asked, or pipe it in: `pass show curseforge | knapsack sources set-key curseforge`

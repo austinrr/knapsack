@@ -62,6 +62,20 @@ func githubToken(ctx context.Context, getenv func(string) string, ghAuthToken fu
 	return ghAuthToken(ctx)
 }
 
+// githubTokenOrigin says where githubToken would find a token: the
+// variable's name, "gh" for the GitHub CLI, or "" for none.
+func githubTokenOrigin(ctx context.Context, getenv func(string) string, ghAuthToken func(context.Context) string) string {
+	for _, k := range []string{"GITHUB_TOKEN", "GH_TOKEN"} {
+		if strings.TrimSpace(getenv(k)) != "" {
+			return k
+		}
+	}
+	if ghAuthToken(ctx) != "" {
+		return "gh"
+	}
+	return ""
+}
+
 // ghAuthToken asks the GitHub CLI for its token, if it's installed and
 // logged in. Anything going wrong just means no token. ctx is the
 // command's, so Ctrl-C stops a hung gh too.

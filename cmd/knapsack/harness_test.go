@@ -59,8 +59,14 @@ type sandbox struct {
 	// none. Without a build for this platform when noBuild.
 	latest  string
 	noBuild bool
-	// ghCalls counts how often the CLI asked gh for a token.
+	// ghCalls counts how often the CLI asked gh for a token, and ghToken
+	// is the token gh gives.
 	ghCalls atomic.Int32
+	ghToken string
+	// stdin is what the CLI reads from stdin, typed at a terminal when
+	// terminal is set.
+	stdin    string
+	terminal bool
 }
 
 // bump publishes a new release, v2, of repo on the fake GitHub.
@@ -184,7 +190,11 @@ func (s *sandbox) run(args ...string) result {
 		executable:  s.exe,
 		interactive: s.interactive,
 		githubURL:   s.github.URL,
-		ghAuthToken: func(context.Context) string { s.ghCalls.Add(1); return "" },
+		ghAuthToken: func(context.Context) string { s.ghCalls.Add(1); return s.ghToken },
+
+		stdin:         strings.NewReader(s.stdin),
+		stdinTerminal: s.terminal,
+		readPassword:  func() ([]byte, error) { return []byte(s.stdin), nil },
 	})
 	return result{Stdout: s.normalize(stdout.String()), Stderr: s.normalize(stderr.String()), Code: code}
 }
@@ -285,6 +295,11 @@ type cliCase struct {
 	latest      string
 	interactive bool
 	notReleased bool
+
+	// For set-key: what's on stdin for args, typed at a terminal when
+	// terminal is set.
+	stdin    string
+	terminal bool
 }
 
 func runCases(t *testing.T, cases []cliCase) {
@@ -308,6 +323,7 @@ func runCases(t *testing.T, cases []cliCase) {
 			}
 			s.interactive = s.interactive || tc.interactive
 			s.notReleased = tc.notReleased
+			s.stdin, s.terminal = tc.stdin, tc.terminal
 			checkGolden(t, tc.name, s.run(tc.args...))
 		})
 	}

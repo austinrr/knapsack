@@ -1,0 +1,4 @@
+# exit: 0
+# stdout:
+Removed the curseforge API key from config.
+# stderr:

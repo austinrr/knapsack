@@ -11,6 +11,8 @@ import (
 	"runtime/debug"
 	"syscall"
 
+	"golang.org/x/term"
+
 	"github.com/austinrr/knapsack/internal/app"
 	"github.com/austinrr/knapsack/internal/selfupdate"
 	"github.com/austinrr/knapsack/internal/source/github"
@@ -40,6 +42,11 @@ type env struct {
 	// interactive is whether stderr is a terminal, which the update
 	// notice needs.
 	interactive bool
+	// stdin is where set-key reads a piped key. When stdinTerminal,
+	// readPassword reads a typed one without echoing it instead.
+	stdin         io.Reader
+	stdinTerminal bool
+	readPassword  func() ([]byte, error)
 	// githubURL is GitHub's API, and ghAuthToken asks the GitHub CLI for a
 	// token. Tests replace both, so they never reach the real GitHub.
 	githubURL   string
@@ -71,6 +78,10 @@ func main() {
 		released:    buildVersion != "",
 		executable:  exe,
 		interactive: isTerminal(os.Stderr),
+
+		stdin:         os.Stdin,
+		stdinTerminal: isTerminal(os.Stdin),
+		readPassword:  func() ([]byte, error) { return term.ReadPassword(int(os.Stdin.Fd())) },
 
 		githubURL:   github.DefaultBaseURL,
 		ghAuthToken: ghAuthToken,

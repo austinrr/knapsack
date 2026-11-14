@@ -1,0 +1,19 @@
+# exit: 0
+# stdout:
+[
+  {
+    "name": "github",
+    "status": "ready",
+    "key_from": "GH_TOKEN"
+  },
+  {
+    "name": "curseforge",
+    "status": "not yet",
+    "key_from": "config"
+  },
+  {
+    "name": "wago",
+    "status": "not yet"
+  }
+]
+# stderr:

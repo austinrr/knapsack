@@ -289,7 +289,8 @@ What belongs here:
   Environment variables take precedence (`KNAPSACK_CURSEFORGE_API_KEY`,
   `KNAPSACK_WAGO_API_KEY`), so a config kept in a dotfiles repo can leave
   them empty. When a config contains a key, Knapsack writes it with `0600`
-  permissions.
+  permissions. Keys are global, shared by every profile, and managed with
+  `knapsack sources` (§8.4) rather than by editing the file.
 - **GitHub tokens are never stored.** They come from `GITHUB_TOKEN`,
   `GH_TOKEN` or `gh auth token`, as in the LemonUp fork.
 
@@ -819,6 +820,11 @@ knapsack config current-profile
 knapsack config delete-profile <name>
 knapsack config view
 
+# Sources (shared by every profile)
+knapsack sources                   each source, whether it's ready, and where its key comes from
+knapsack sources set-key <source>  store an API key (prompted, or from stdin)
+knapsack sources unset-key <source>
+
 # Other
 knapsack tui                       (later) interactive interface over the same core
 knapsack version                   the version, and whether a newer one is out
@@ -946,6 +952,18 @@ forever: 1 upgrade · retail: 1 install
   afterwards; Knapsack doesn't guess another.
 - **`config view`** prints config with API keys shown as `REDACTED`, like
   `kubectl config view`.
+- **`sources`** lists every source with a status (`ready`, `needs key`, or
+  `not yet` for one Knapsack can't install from yet) and where its key
+  comes from: config, the environment variable that overrides it, or for
+  GitHub, `GITHUB_TOKEN`, `GH_TOKEN` or `gh` (which listing may run).
+  `sources set-key <source>` stores a key: typed at a prompt that doesn't
+  echo on a terminal, else read from stdin (`pass show cf | knapsack
+  sources set-key curseforge`), never as an argument, which would land in
+  shell history and `ps`, as `gh secret set` and `docker login
+  --password-stdin` avoid. The source is checked before the key is asked
+  for; GitHub is refused, since its token is never stored. Both `set-key`
+  and `unset-key` note on stderr when the environment variable overrides
+  config, and `set-key` when the source isn't built yet.
 
 ### 8.5 Naming addons
 

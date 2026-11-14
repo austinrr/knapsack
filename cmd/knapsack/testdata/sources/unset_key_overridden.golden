@@ -1,0 +1,5 @@
+# exit: 0
+# stdout:
+Removed the curseforge API key from config.
+# stderr:
+KNAPSACK_CURSEFORGE_API_KEY is still set, so Knapsack still has a key.

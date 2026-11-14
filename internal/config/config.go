@@ -100,6 +100,35 @@ type keyedSource struct {
 	field func(*Sources) *Source
 }
 
+// KeyedSource is a source that takes an API key.
+type KeyedSource struct {
+	// Name is the source's name in refs and config: "curseforge".
+	Name string
+	// Env is the environment variable that overrides the key in config.
+	Env string
+}
+
+// KeyedSources returns every source that takes an API key, in file order.
+func KeyedSources() []KeyedSource {
+	out := make([]KeyedSource, len(keyedSources))
+	for i, ks := range keyedSources {
+		out[i] = KeyedSource{Name: ks.name, Env: ks.env}
+	}
+	return out
+}
+
+// SetAPIKey stores key in config for source, or removes it when key is "".
+// It reports false for a source that takes no key.
+func (c *Config) SetAPIKey(source, key string) bool {
+	for _, ks := range keyedSources {
+		if ks.name == source {
+			ks.field(&c.Sources).APIKey = key
+			return true
+		}
+	}
+	return false
+}
+
 // APIKey returns the API key for a source. The environment variable wins
 // over config when it's set. Sources without keys return "".
 func (c *Config) APIKey(source string, getenv func(string) string) string {

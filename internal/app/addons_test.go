@@ -566,8 +566,8 @@ func TestAddResultOrder(t *testing.T) {
 	}
 }
 
-// A source with no API key gets a hint naming its own config key and
-// environment variable.
+// A source Knapsack can't install from yet says so, and where to see
+// which it can: no keyed source is built yet, so a key wouldn't help.
 func TestAddSourceNotConfigured(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
@@ -576,8 +576,8 @@ func TestAddSourceNotConfigured(t *testing.T) {
 		t.Fatal(err)
 	}
 	var ue *app.UserError
-	if !errors.As(results[0].Err, &ue) || !strings.Contains(ue.Hint, "sources.curseforge.api_key") || !strings.Contains(ue.Hint, "KNAPSACK_CURSEFORGE_API_KEY") {
-		t.Errorf("error = %v, want a hint naming curseforge's key", results[0].Err)
+	if !errors.As(results[0].Err, &ue) || !strings.Contains(ue.Hint, "can't install from curseforge yet") || !strings.Contains(ue.Hint, "knapsack sources") {
+		t.Errorf("error = %v, want a hint that curseforge isn't available yet", results[0].Err)
 	}
 }
 
