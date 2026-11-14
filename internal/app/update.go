@@ -169,7 +169,10 @@ type Plan struct {
 	Profile string
 	Name    string // what the user typed, if addons were named
 	Ref     ref.Ref
-	Action  PlanAction
+	// Title is the addon's name from its installed TOC, "" when it isn't
+	// installed or has none.
+	Title  string
+	Action PlanAction
 	// Installed is the installed version, "" when it isn't installed.
 	// Available is the newest release's, "" for prune or a failure.
 	Installed string
@@ -185,46 +188,50 @@ type Plan struct {
 func (a *App) Check(ctx context.Context, sel Selector) ([]Plan, error) {
 	var plans []Plan
 	err := a.eachProfile(ctx, sel.Profiles, readOnly, func(s *session) error {
-		ts := targets(s, sel.Addons)
-		out := make([]Plan, len(ts))
-		var toResolve []ref.Ref
-		var at []int
-		for i, t := range ts {
-			out[i] = Plan{Profile: s.name, Name: t.name, Ref: t.ref, Installed: s.state.Addons[t.ref].Version}
-			switch {
-			case t.err != nil:
-				out[i].Action, out[i].Err = PlanFailed, t.err
-				a.report(Event{Kind: EventFailed, Profile: s.name, Name: t.name, Err: t.err})
-			case t.prune:
-				out[i].Action = PlanPrune
-			default:
-				toResolve = append(toResolve, t.ref)
-				at = append(at, i)
-			}
-		}
-		got := a.fetchAll(ctx, s, toResolve, fetchIdentity)
-		defer discard(got)
-		for j, f := range got {
-			p := &out[at[j]]
-			p.Available = f.release.Version
-			_, installed := s.state.Addons[p.Ref]
-			switch {
-			case f.err != nil:
-				p.Action, p.Err, p.Available = PlanFailed, explain(f.err, p.Ref), ""
-				a.report(Event{Kind: EventFailed, Profile: s.name, Ref: p.Ref, Err: p.Err})
-			case !installed:
-				p.Action = PlanInstall
-			case f.current:
-				p.Action = PlanNone
-			default:
-				p.Action = PlanUpgrade
-			}
-			if p.Action != PlanFailed {
-				a.report(Event{Kind: EventChecked, Profile: s.name, Ref: p.Ref, Version: p.Available, Message: string(p.Action)})
-			}
-		}
-		plans = append(plans, out...)
+		plans = append(plans, a.checkSession(ctx, s, targets(s, sel.Addons))...)
 		return nil
 	})
 	return plans, err
+}
+
+// checkSession is Check for one profile's targets, in their order.
+func (a *App) checkSession(ctx context.Context, s *session, ts []target) []Plan {
+	out := make([]Plan, len(ts))
+	var toResolve []ref.Ref
+	var at []int
+	for i, t := range ts {
+		out[i] = Plan{Profile: s.name, Name: t.name, Ref: t.ref, Installed: s.state.Addons[t.ref].Version, Title: addonTitle(s, t.ref)}
+		switch {
+		case t.err != nil:
+			out[i].Action, out[i].Err = PlanFailed, t.err
+			a.report(Event{Kind: EventFailed, Profile: s.name, Name: t.name, Err: t.err})
+		case t.prune:
+			out[i].Action = PlanPrune
+		default:
+			toResolve = append(toResolve, t.ref)
+			at = append(at, i)
+		}
+	}
+	got := a.fetchAll(ctx, s, toResolve, fetchIdentity)
+	defer discard(got)
+	for j, f := range got {
+		p := &out[at[j]]
+		p.Available = f.release.Version
+		_, installed := s.state.Addons[p.Ref]
+		switch {
+		case f.err != nil:
+			p.Action, p.Err, p.Available = PlanFailed, explain(f.err, p.Ref), ""
+			a.report(Event{Kind: EventFailed, Profile: s.name, Ref: p.Ref, Err: p.Err})
+		case !installed:
+			p.Action = PlanInstall
+		case f.current:
+			p.Action = PlanNone
+		default:
+			p.Action = PlanUpgrade
+		}
+		if p.Action != PlanFailed {
+			a.report(Event{Kind: EventChecked, Profile: s.name, Ref: p.Ref, Version: p.Available, Message: string(p.Action)})
+		}
+	}
+	return out
 }

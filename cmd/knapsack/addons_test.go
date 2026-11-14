@@ -74,6 +74,11 @@ func TestAddonCommands(t *testing.T) {
 		{name: "list/bad_output", setup: [][]string{addForever}, args: []string{"list", "-o", "yaml"}},
 		{name: "list/extra_arg", setup: [][]string{addForever}, args: []string{"list", "baganator"}},
 		{name: "list/missing", config: configWithKey, args: []string{"list"}},
+		// list checks each addon, unless --no-check.
+		{name: "list/update_available", setup: [][]string{addForever, addBaganator, addDetails}, after: bumpBaganator, args: []string{"list"}},
+		{name: "list/no_check", setup: [][]string{addForever, addBaganator}, after: bumpBaganator, args: []string{"list", "--no-check"}},
+		{name: "list/check_failed", config: missingAndGone, args: []string{"list"}},
+		{name: "list/check_failed_json", config: missingAndGone, args: []string{"list", "-o", "json"}},
 		{name: "list/unmanaged_hint", setup: [][]string{addForever, addBaganator}, after: handInstall, args: []string{"list"}},
 		{name: "list/unmanaged_hint_empty", setup: [][]string{addForever}, after: handInstall, args: []string{"list"}},
 		{name: "list/unmanaged_hint_one", setup: [][]string{addRetail}, after: handInstall, args: []string{"list"}},

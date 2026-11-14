@@ -809,7 +809,7 @@ knapsack add <ref|url>...          add to config and install
 knapsack remove <addon>...         uninstall owned folders and remove from config   (alias: rm)
 knapsack update [addon...]         upgrade outdated addons, install missing ones
 knapsack check [addon...]          show what update would do; changes nothing
-knapsack list [--unmanaged]        installed addons; no lookups                    (alias: ls)
+knapsack list [--no-check]         addons, by title, and whether they're up to date  (alias: ls)
 knapsack info <addon>              ref, version, owned folders, TOC flavors, install time
 
 # Profiles
@@ -887,16 +887,26 @@ forever: 1 upgrade · retail: 1 install
   changes (install, upgrade, prune candidates) without making any.
 - **`remove`** deletes only the folders recorded as owned in state, then
   removes the addon from state and config.
-- **`list`** reads config, state and a listing of AddOns. It looks nothing
-  up online, so it's instant. Each addon's status is `installed`,
-  `missing` (in config, not installed) or `not in config` (in state only).
-  Use `check` to see what's outdated. Folders in AddOns that no addon in
+- **`list`** reads config, state and a listing of AddOns, and checks each
+  addon's newest release with the same resolution as `check`. An installed
+  addon is `up to date`, `update available`, or `unknown` when checking
+  failed (the error prints under the table, and `list` exits 2, as `check`
+  does). Otherwise an addon is `not installed` (in config only) or `not in
+  config` (in state only). `--no-check` skips the network, so `list` is
+  instant and installed addons are just `installed`. `check` stays for
+  scripts: its exit code says whether anything is pending.
+  Addons are named by the `## Title` in their installed TOC, with WoW's
+  color and texture codes removed (`toc.Plain`), or by repo name when not
+  installed; commands still take refs and short names. A SOURCE column
+  shows the source's name (`github`), or with `-o wide` the full ref, in
+  both `list` and `check`. Folders in AddOns that no addon in
   state owns are `unmanaged`: installed by hand or by another manager.
   They're listed only with `--unmanaged` (named by folder, with the TOC's
   `## Version`), since most users have many; otherwise a note on stderr
   says how many there are, so a profile made over an existing AddOns
   folder doesn't look empty without explanation, whatever the output
-  format. Hidden folders, files and Knapsack's own working folders don't
+  format, after a blank line under a table. Hidden folders, files and
+  Knapsack's own working folders don't
   count. An AddOns folder that can't be read just has none, so `list`
   still shows config and state.
 - **Update check.** Once a day, any command run with stderr on a terminal
@@ -915,7 +925,7 @@ forever: 1 upgrade · retail: 1 install
   groups like `config`, for a dev build (including a `go build` from a
   checkout, whose pseudo-version or `+dirty` Go stamps), or with
   `KNAPSACK_NO_UPDATE_NOTIFIER` set. This is the one network use
-  outside `add`, `update`, `check` and `self-update`, like gh's update
+  outside `add`, `update`, `check`, `list` and `self-update`, like gh's update
   notifier. The suggested command depends on how Knapsack was installed:
   `self-update`, `go install …@latest`, or the package manager.
 - **`self-update`** replaces the running binary with the latest release's

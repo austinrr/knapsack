@@ -1,0 +1,6 @@
+# exit: 0
+# stdout:
+ADDON      STATUS     VERSION  SOURCE
+Baganator  installed  v1       github
+# stderr:
+Profile forever:

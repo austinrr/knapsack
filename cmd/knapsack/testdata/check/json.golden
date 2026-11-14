@@ -4,6 +4,7 @@
   {
     "profile": "forever",
     "ref": "github:austinrr/baganator-mirror",
+    "title": "Baganator",
     "action": "upgrade",
     "installed": "v1",
     "available": "v2"

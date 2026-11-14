@@ -30,6 +30,44 @@ func (f File) Get(key string) string {
 	return f.headers[strings.ToLower(key)]
 }
 
+// Plain removes the escape sequences WoW draws text with from s, such as a
+// colored ## Title: |cff00ff00Leatrix|r Maps is "Leatrix Maps". It removes
+// colors (|cAARRGGBB and |r), textures (|T…|t) and atlases (|A…|a), and
+// turns || into |. Anything else is kept.
+func Plain(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] != '|' || i+1 == len(s) {
+			b.WriteByte(s[i])
+			continue
+		}
+		switch s[i+1] {
+		case '|':
+			b.WriteByte('|')
+			i++
+		case 'c', 'C':
+			if i+10 <= len(s) {
+				i += 9 // |c and eight hex digits
+			} else {
+				b.WriteByte(s[i])
+			}
+		case 'r', 'R':
+			i++
+		case 'T', 'A':
+			// Skip to the closing |t or |a, if there is one.
+			closing := "|" + strings.ToLower(s[i+1:i+2])
+			if end := strings.Index(s[i+2:], closing); end >= 0 {
+				i += 2 + end + len(closing) - 1
+			} else {
+				b.WriteByte(s[i])
+			}
+		default:
+			b.WriteByte(s[i])
+		}
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
+}
+
 // bom is the UTF-8 byte order mark some editors put at the start of a file.
 const bom = "\xef\xbb\xbf"
 
