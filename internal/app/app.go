@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"net/http"
 
 	"github.com/austinrr/knapsack/internal/config"
 	"github.com/austinrr/knapsack/internal/lock"
 	"github.com/austinrr/knapsack/internal/paths"
+	"github.com/austinrr/knapsack/internal/source"
 	"github.com/austinrr/knapsack/internal/state"
 )
 
@@ -16,19 +18,38 @@ type Options struct {
 	Paths  paths.Paths
 	Config *config.Store
 	State  *state.Store
+	// Sources resolves refs to releases, and HTTP downloads them.
+	Sources *source.Registry
+	HTTP    *http.Client
+	// Reporter receives progress events. Nil means NopReporter.
+	Reporter Reporter
 }
 
 // App runs use cases. It's safe to reuse across commands: it loads fresh
 // config at the start of each one and caches nothing.
 type App struct {
-	paths  paths.Paths
-	config *config.Store
-	state  *state.Store
+	paths    paths.Paths
+	config   *config.Store
+	state    *state.Store
+	sources  *source.Registry
+	http     *http.Client
+	reporter Reporter
 }
 
 // New returns an App using opts.
 func New(opts Options) *App {
-	return &App{paths: opts.Paths, config: opts.Config, state: opts.State}
+	reporter := opts.Reporter
+	if reporter == nil {
+		reporter = NopReporter{}
+	}
+	return &App{
+		paths:    opts.Paths,
+		config:   opts.Config,
+		state:    opts.State,
+		sources:  opts.Sources,
+		http:     opts.HTTP,
+		reporter: reporter,
+	}
 }
 
 // changeConfig runs change on freshly loaded config while holding the

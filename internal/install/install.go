@@ -18,6 +18,9 @@ var (
 	// ErrConflict means a folder the archive installs already exists and
 	// isn't one the addon owned before. Options.Force replaces it.
 	ErrConflict = errors.New("folders already exist and this addon doesn't own them")
+	// ErrOwned means a folder the archive installs belongs to another
+	// addon. Force never replaces it.
+	ErrOwned = errors.New("folders belong to another addon")
 	// ErrInUse means a folder couldn't be moved because a file in it is
 	// open, on Windows usually by the game.
 	ErrInUse = errors.New("folder is in use")
@@ -43,6 +46,9 @@ type Options struct {
 	// Previous are the folders the addon owned before, from state. They
 	// may be replaced, and any the new release no longer has are removed.
 	Previous []string
+	// Others are the folders other addons own. The archive may not
+	// replace any of them, even with Force.
+	Others []string
 	// Force also replaces folders that exist but no addon owns.
 	Force bool
 }
@@ -71,6 +77,17 @@ func Install(ctx context.Context, archivePath, addonsDir string, opts Options) (
 	}
 	if err := errors.Join(errs...); err != nil {
 		return nil, nil, err
+	}
+
+	others := foldSet(opts.Others)
+	var taken []string
+	for _, f := range s.folders {
+		if others[strings.ToLower(f)] {
+			taken = append(taken, f)
+		}
+	}
+	if len(taken) > 0 {
+		return nil, nil, fmt.Errorf("%w: %s", ErrOwned, strings.Join(taken, ", "))
 	}
 
 	onDisk, err := listDir(addonsDir)
