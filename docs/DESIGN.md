@@ -523,18 +523,23 @@ client uses the first match of:
 2. `<Folder>_<Family>.toc` for its family (`_Mainline` or `_Classic`)
 3. `<Folder>.toc`
 
+File names are matched without regard to case, as on Windows and macOS.
+
 **Step 2: check that TOC.**
 
 | Condition | Result |
 |---|---|
 | No `.toc` at all | **Error.** Not an addon folder |
 | `ExcludeLoadGameType` names this game type or its family, or `AllowLoadGameType` names only other recognized types | **Error.** The client will never load it |
-| No `## Interface` value is in this game type's range | **Error.** Built for a different game (e.g. only `120105` on Forever's `16001`). This is the OpenMap case |
+| No `## Interface` line, or no value in this game type's range | **Error.** Built for a different game (e.g. only `120105` on Forever's `16001`). This is the OpenMap case |
 | A value is in range but none equals the client's Interface number | **Warning.** Out of date; WoW loads it only with "Load out of date AddOns" enabled |
 | A value equals the client's Interface number | OK |
 
 `AllowLoadGameType` follows the client's quirk: if none of the listed types
-are recognized, the condition passes.
+are recognized, the condition passes. "Recognized" means the client's full
+list from the wiki (`standard`, `forever`, `plunderstorm`, `wowhack`,
+`vanilla`, `tbc`, `wrath`, `cata`, `mists`, and the families `mainline` and
+`classic`), which includes game types Knapsack has no flavor for.
 
 **The client data table** lives in `flavor` as plain data, the only place
 that knows about specific game versions:
@@ -1184,8 +1189,9 @@ one command group.
 ## 13. Open questions
 
 1. **`.build.info` product codes**: `wowf` (Forever) is confirmed from a
-   real install. Confirm the codes for the other clients, Anniversary in
-   particular, when implementing `flavor.ClientInterface`.
+   real install, which is the fixture in `internal/flavor/testdata`. The
+   other codes come from WowUp and still need a real file to confirm;
+   Anniversary's is unknown, so its out-of-date check is skipped.
 2. **Importing existing installs**: should there be a one-time
    `knapsack import` from LemonUp's state, or does `add` for each addon cover
    it?

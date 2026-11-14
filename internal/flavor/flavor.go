@@ -110,6 +110,22 @@ var table = []struct {
 	}},
 }
 
+// gameTypes are the names the client recognizes in AllowLoadGameType and
+// ExcludeLoadGameType: every game type, including those Knapsack has no
+// flavor for, and both families. From warcraft.wiki.gg/wiki/TOC_format.
+var gameTypes = map[string]bool{
+	"standard": true, "forever": true, "plunderstorm": true, "wowhack": true,
+	"vanilla": true, "tbc": true, "wrath": true, "cata": true, "mists": true,
+	string(FamilyMainline): true, string(FamilyClassic): true,
+}
+
+// KnownGameType reports whether the client recognizes name, lower-cased, as
+// a game type or family. The client ignores names it doesn't recognize in
+// AllowLoadGameType, so validation needs to tell them apart.
+func KnownGameType(name string) bool {
+	return gameTypes[name]
+}
+
 // All returns every supported flavor in display order.
 func All() []Flavor {
 	all := make([]Flavor, len(table))
