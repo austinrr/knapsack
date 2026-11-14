@@ -153,13 +153,10 @@ func nameAddon(name string, r ref.Ref, err error) error {
 // noteEmpty tells the user there's nothing to show, on stderr, so stdout
 // stays empty for scripts, like kubectl. It names the profile, so a wrong
 // -p or $KNAPSACK_PROFILE shows.
-func noteEmpty(cmd *cobra.Command, c *cli, all bool) error {
+func noteEmpty(cmd *cobra.Command, sel app.Selector, all bool) error {
 	note := "No addons in any profile."
 	if !all {
-		note = "No addons in this profile."
-		if name := c.resolvedProfile(cmd.Context()); name != "" {
-			note = fmt.Sprintf("No addons in profile %s.", name)
-		}
+		note = fmt.Sprintf("No addons in profile %s.", sel.Profiles[0])
 	}
 	_, err := fmt.Fprintln(cmd.ErrOrStderr(), note)
 	return err
@@ -257,13 +254,13 @@ add one with add --force to have Knapsack manage it.`,
 				return noteUnmanaged(cmd, listing.Hidden)
 			}
 			if len(list) == 0 {
-				if err := noteEmpty(cmd, c, sc.all); err != nil {
+				if err := noteEmpty(cmd, sel, sc.all); err != nil {
 					return err
 				}
 				return noteUnmanaged(cmd, listing.Hidden)
 			}
 			if !sc.all {
-				if err := noteProfile(cmd, list[0].Profile); err != nil {
+				if err := noteProfile(cmd, sel.Profiles[0]); err != nil {
 					return err
 				}
 			}
