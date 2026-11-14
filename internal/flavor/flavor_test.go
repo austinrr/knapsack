@@ -93,7 +93,7 @@ func TestClient(t *testing.T) {
 			Interface: flavor.Range{Min: 20000, Max: 29999}, Product: "",
 		}},
 		{flavor.Forever, flavor.Client{
-			Folder: "_forever_", GameType: "forever",
+			Folder: "_forever_", GameType: "forever", Aliases: []string{"camelot"},
 			Family: flavor.FamilyMainline, Interface: flavor.Range{Min: 16000, Max: 16999},
 			Product: "wowf",
 		}},
@@ -123,6 +123,28 @@ func TestClientUnknown(t *testing.T) {
 		if got.Interface.Contains(16001) || got.Interface.Contains(120105) {
 			t.Errorf("zero Range %v accepts real Interface numbers", got.Interface)
 		}
+	}
+}
+
+// Client returns a copy, so a caller changing Aliases can't change the table.
+func TestClientReturnsCopy(t *testing.T) {
+	t.Parallel()
+	c, _ := flavor.Forever.Client()
+	c.Aliases[0] = "changed"
+	if again, _ := flavor.Forever.Client(); again.Aliases[0] != "camelot" {
+		t.Errorf("table modified through Client(): alias = %q", again.Aliases[0])
+	}
+}
+
+func TestGameTypes(t *testing.T) {
+	t.Parallel()
+	c, _ := flavor.Forever.Client()
+	if got, want := c.GameTypes(), []string{"forever", "camelot"}; !slices.Equal(got, want) {
+		t.Errorf("GameTypes() = %q, want %q", got, want)
+	}
+	c, _ = flavor.Retail.Client()
+	if got, want := c.GameTypes(), []string{"standard"}; !slices.Equal(got, want) {
+		t.Errorf("GameTypes() = %q, want %q", got, want)
 	}
 }
 

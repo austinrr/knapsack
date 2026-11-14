@@ -36,6 +36,10 @@ type Client struct {
 	// GameType is the client's own name for what it runs, used in TOC
 	// suffixes and AllowLoadGameType, e.g. "forever".
 	GameType string
+	// Aliases are other names the client accepts for GameType, in TOC
+	// suffixes and load rules: "camelot", Forever's internal name, which
+	// addons such as Details use (Details_Camelot.toc).
+	Aliases []string
 	// Family is the TOC family the game type belongs to.
 	Family Family
 	// Interface is the range of ## Interface values built for this game.
@@ -43,6 +47,12 @@ type Client struct {
 	// Product is the product code in .build.info, or "" if not yet known,
 	// in which case the client's exact Interface number can't be read.
 	Product string
+}
+
+// GameTypes returns the game type, then its aliases: every name the client
+// answers to in TOC suffixes and load rules.
+func (c Client) GameTypes() []string {
+	return append([]string{c.GameType}, c.Aliases...)
 }
 
 // Range is an inclusive range of Interface numbers. Use NoMax for a range
@@ -109,6 +119,7 @@ var table = []struct {
 	{Forever, Client{
 		Folder:    "_forever_",
 		GameType:  "forever",
+		Aliases:   []string{"camelot"},
 		Family:    FamilyMainline,
 		Interface: Range{Min: 16000, Max: 16999},
 		Product:   "wowf",
@@ -119,7 +130,7 @@ var table = []struct {
 // ExcludeLoadGameType: every game type, including those Knapsack has no
 // flavor for, and both families. From warcraft.wiki.gg/wiki/TOC_format.
 var gameTypes = map[string]bool{
-	"standard": true, "forever": true, "plunderstorm": true, "wowhack": true,
+	"standard": true, "forever": true, "camelot": true, "plunderstorm": true, "wowhack": true,
 	"vanilla": true, "tbc": true, "wrath": true, "cata": true, "mists": true,
 	string(FamilyMainline): true, string(FamilyClassic): true,
 }
@@ -196,9 +207,11 @@ func Parse(s string) (Flavor, error) {
 func (f Flavor) Client() (Client, bool) {
 	for _, row := range table {
 		if row.flavor == f {
-			// Client holds only values, so returning it copies it and
-			// callers can't modify the table.
-			return row.client, true
+			// Returning the struct copies it, but Aliases would still
+			// share the table's array, so clone it too.
+			c := row.client
+			c.Aliases = slices.Clone(c.Aliases)
+			return c, true
 		}
 	}
 	return Client{}, false

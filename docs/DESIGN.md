@@ -48,7 +48,7 @@ feature has to justify the code, tests and docs it adds.
 |---|---|
 | **Profile** | A named target: an AddOns directory plus a flavor. E.g. `forever`. |
 | **Flavor** | The game client type, named after the client folder: `retail`, `classic`, `classic_era`, `anniversary`, `forever`. Decides which release files and TOCs are compatible. |
-| **Game type** | The client's own name for what it runs, used in TOC suffixes and `AllowLoadGameType`: `standard`, `forever`, `mists`, `vanilla`, … Each flavor maps to one game type and one family (`mainline` or `classic`). |
+| **Game type** | The client's own name for what it runs, used in TOC suffixes and `AllowLoadGameType`: `standard`, `forever`, `mists`, `vanilla`, … Each flavor maps to one game type, which may have aliases (Forever's `camelot`), and one family (`mainline` or `classic`). |
 | **Addon** | One thing the user asked for, identified by a **Ref**. May install several folders. |
 | **Ref** | `source:id`, e.g. `github:austinrr/baganator-mirror`, `curseforge:12345`, `wago:VBNBxKx5`. |
 | **Source** | A provider that can turn a Ref + flavor into a downloadable release. |
@@ -574,7 +574,8 @@ and implemented in WowUp. Knapsack doesn't invent its own rules.
 **Step 1: pick the TOC the client would load.** For each addon folder, the
 client uses the first match of:
 
-1. `<Folder>_<GameType>.toc` for its game type (`_Forever`, `_Mists`, …)
+1. `<Folder>_<GameType>.toc` for its game type (`_Forever`, `_Mists`, …),
+   then for each alias (Forever: `_Camelot`, as Details ships)
 2. `<Folder>_<Family>.toc` for its family (`_Mainline` or `_Classic`)
 3. `<Folder>.toc`
 
@@ -585,7 +586,7 @@ File names are matched without regard to case, as on Windows and macOS.
 | Condition | Result |
 |---|---|
 | No `.toc` at all | **Error.** Not an addon folder |
-| `ExcludeLoadGameType` names this game type or its family, or `AllowLoadGameType` names only other recognized types | **Error.** The client will never load it |
+| `ExcludeLoadGameType` names this game type, an alias or its family, or `AllowLoadGameType` names only other recognized types | **Error.** The client will never load it |
 | No `## Interface` line, or no value in this game type's range | **Error.** Built for a different game (e.g. only `120105` on Forever's `16001`). This is the OpenMap case |
 | A value is in range but none equals the client's Interface number | **Warning.** Out of date; WoW loads it only with "Load out of date AddOns" enabled |
 | A value equals the client's Interface number | OK |
@@ -599,13 +600,13 @@ list from the wiki (`standard`, `forever`, `plunderstorm`, `wowhack`,
 **The client data table** lives in `flavor` as plain data, the only place
 that knows about specific game versions:
 
-| Flavor | Client folders | Game type | Family | Interface range | `.build.info` product |
+| Flavor | Client folders | Game type (aliases) | Family | Interface range | `.build.info` product |
 |---|---|---|---|---|---|
 | `retail` | `_retail_` | `standard` | `mainline` | 100000 and up | `wow` |
 | `classic` | `_classic_` | `mists` | `classic` | 50000–59999 | `wow_classic` |
 | `classic_era` | `_classic_era_` | `vanilla` | `classic` | 11000–11999 | `wow_classic_era` |
 | `anniversary` | `_anniversary_` | `tbc` | `classic` | 20000–29999 | see §13 |
-| `forever` | `_forever_` | `forever` | `mainline` | 16000–16999 | `wowf` |
+| `forever` | `_forever_` | `forever` (`camelot`) | `mainline` | 16000–16999 | `wowf` |
 
 Each row also lists the **asset markers** that name release files built for
 that client: `mainline`/`retail`, `mists`/`mop`,
