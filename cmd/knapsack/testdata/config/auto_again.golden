@@ -1,9 +1,11 @@
 # exit: 0
 # stdout:
-Found World of Warcraft in <home>/wow:
-  Profile "retail" unchanged (retail, <home>/wow/_retail_/Interface/AddOns).
-  Profile "retail-ptr" unchanged (retail, <home>/wow/_ptr_/Interface/AddOns).
-  Profile "classic" unchanged (classic, <home>/wow/_classic_/Interface/AddOns).
-  Profile "classic-beta" unchanged (classic, <home>/wow/_classic_beta_/Interface/AddOns).
-  Profile "forever" unchanged (forever, <home>/wow/_forever_/Interface/AddOns).
+Found World of Warcraft in ~/wow
+
+PROFILE       CLIENT          RESULT
+retail        _retail_        already set up
+retail-ptr    _ptr_           already set up
+classic       _classic_       already set up
+classic-beta  _classic_beta_  already set up
+forever       _forever_       already set up
 # stderr:

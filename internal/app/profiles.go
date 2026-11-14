@@ -128,7 +128,7 @@ func (a *App) nameForPath(req SetProfileRequest) (name, path string, err error) 
 	if req.Path == "" {
 		return "", "", &UserError{
 			Msg:  "set-profile needs --path, or the name of a profile to change",
-			Hint: pathHint(),
+			Hint: "find the game with `knapsack config set-profile --auto`, or pass a client folder, quoted: --path " + Quoted(ExampleClientFolder()),
 		}
 	}
 	if path, err = addonsDir(req.Path, a.home); err != nil {
@@ -165,8 +165,15 @@ func flavorNameTaken(name, existing string) error {
 		Msg: fmt.Sprintf("profile %q already uses %s", name, existing),
 		Hint: fmt.Sprintf("give this one its own name with `knapsack config set-profile <name> --path …`, or move %q here by naming it: `knapsack config set-profile %s --path …`",
 			name, name),
+		Err: &nameTakenError{name: name, path: existing},
 	}
 }
+
+// nameTakenError is flavorNameTaken's cause, for AutoProfiles to tell it
+// apart.
+type nameTakenError struct{ name, path string }
+
+func (e *nameTakenError) Error() string { return fmt.Sprintf("profile %q uses %s", e.name, e.path) }
 
 // ExampleClientFolder is a client folder where the game usually is on
 // this OS, for hints and help: a profile's --path can be the client

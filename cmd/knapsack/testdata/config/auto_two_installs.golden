@@ -1,0 +1,18 @@
+# exit: 0
+# stdout:
+Found World of Warcraft in 2 places:
+  [1] ~/Games/battlenet/drive_c/Program Files (x86)/World of Warcraft
+  [2] ~/.steam/steam/steamapps/compatdata/123/pfx/drive_c/Program Files (x86)/World of Warcraft
+
+PROFILE       CLIENT              RESULT
+classic-beta  [1] _classic_beta_  created
+forever       [1] _forever_       created
+retail        [2] _retail_        created
+-             [2] _classic_beta_  skipped: "classic-beta" already uses [1] _classic_beta_
+
+Switched to profile "forever".
+
+A second copy of a client needs its own profile name:
+  knapsack config set-profile <name> --path "~/.steam/steam/steamapps/compatdata/123/pfx/drive_c/Program Files (x86)/World of Warcraft/_classic_beta_"
+Or use the existing profile's name there to move it to that copy.
+# stderr:

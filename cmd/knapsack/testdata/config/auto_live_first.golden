@@ -1,8 +1,11 @@
 # exit: 0
 # stdout:
-Found World of Warcraft in <home>/wow2:
-  Profile "classic-beta" created (classic, <home>/wow2/_classic_beta_/Interface/AddOns).
-  Profile "forever" created (forever, <home>/wow2/_forever_/Interface/AddOns).
+Found World of Warcraft in ~/wow2
+
+PROFILE       CLIENT          RESULT
+classic-beta  _classic_beta_  created
+forever       _forever_       created
+
 Switched to profile "forever".
 # stderr:
 Next, add addons: knapsack add github:owner/repo, or a GitHub or Wago link.

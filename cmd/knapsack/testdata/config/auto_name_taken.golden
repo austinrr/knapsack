@@ -1,10 +1,15 @@
 # exit: 0
 # stdout:
-Found World of Warcraft in <home>/wow:
-  Skipped _retail_: profile "retail" already uses <home>/addons
-    hint: give this one its own name with `knapsack config set-profile <name> --path …`, or move "retail" here by naming it: `knapsack config set-profile retail --path …`
-  Profile "retail-ptr" created (retail, <home>/wow/_ptr_/Interface/AddOns).
-  Profile "classic" created (classic, <home>/wow/_classic_/Interface/AddOns).
-  Profile "classic-beta" created (classic, <home>/wow/_classic_beta_/Interface/AddOns).
-  Profile "forever" created (forever, <home>/wow/_forever_/Interface/AddOns).
+Found World of Warcraft in ~/wow
+
+PROFILE       CLIENT          RESULT
+-             _retail_        skipped: "retail" already uses ~/addons
+retail-ptr    _ptr_           created
+classic       _classic_       created
+classic-beta  _classic_beta_  created
+forever       _forever_       created
+
+A second copy of a client needs its own profile name:
+  knapsack config set-profile <name> --path "~/wow/_retail_"
+Or use the existing profile's name there to move it to that copy.
 # stderr:
