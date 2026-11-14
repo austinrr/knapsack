@@ -12,15 +12,34 @@ import (
 	"github.com/austinrr/knapsack/internal/flavor"
 )
 
+// SkipReason is why AutoProfiles made no profile for a client folder.
+type SkipReason string
+
+// The reasons a client folder is skipped.
+const (
+	NotSkipped SkipReason = ""
+	// SkipNoAddOns is a client never started, so it has no
+	// Interface/AddOns folder yet.
+	SkipNoAddOns SkipReason = "no-addons"
+	// SkipNameTaken is a second copy of a client: the profile named after
+	// it already uses another folder. Err wraps a NameTakenError saying
+	// which.
+	SkipNameTaken SkipReason = "name-taken"
+	// SkipFailed is any other problem with the folder; Err says what.
+	SkipFailed SkipReason = "failed"
+)
+
 // AutoProfile is what AutoProfiles did with one client folder.
 type AutoProfile struct {
 	Game   string // the World of Warcraft folder
 	Client string // the client folder in it, as named on disk: "_retail_"
-	// Result is set when a profile was created or already existed. Skipped
-	// says why one wasn't instead: no AddOns folder yet, or Err.
-	Result  SetProfileResult
-	Skipped string
-	Err     error
+	// Result is set when a profile was created or already existed. Skip
+	// says why one wasn't instead.
+	Result SetProfileResult
+	Skip   SkipReason
+	// Err is the error that skipped it, with a hint, for SkipFailed and
+	// SkipNameTaken.
+	Err error
 }
 
 // AutoProfilesResult is what AutoProfiles found and did.
@@ -113,17 +132,19 @@ func (a *App) AutoProfiles(ctx context.Context, game string) (AutoProfilesResult
 		p := AutoProfile{Game: f.game, Client: f.client}
 		dir := filepath.Join(f.game, f.client)
 		if !isDir(filepath.Join(dir, "Interface", "AddOns")) {
-			p.Skipped = "it has no Interface/AddOns folder yet; start that client once, or make the folder"
+			p.Skip = SkipNoAddOns
 			done[f.order] = p
 			continue
 		}
 		r, err := a.SetProfile(ctx, SetProfileRequest{Path: dir})
 		var ue *UserError
+		var taken *NameTakenError
 		switch {
+		case errors.As(err, &taken):
+			p.Skip, p.Err = SkipNameTaken, err
 		case errors.As(err, &ue):
-			// One client can't be added, as a name another folder has:
-			// the others still can.
-			p.Skipped, p.Err = ue.Msg, err
+			// One client can't be added; the others still can.
+			p.Skip, p.Err = SkipFailed, err
 		case err != nil:
 			res.Profiles = partial()
 			return res, err
@@ -135,10 +156,10 @@ func (a *App) AutoProfiles(ctx context.Context, game string) (AutoProfilesResult
 	res.Profiles = done
 	// Every client skipped: say so as an error, so a script that goes on
 	// to add addons stops here.
-	if !slices.ContainsFunc(done, func(p AutoProfile) bool { return p.Skipped == "" }) {
+	if !slices.ContainsFunc(done, func(p AutoProfile) bool { return p.Skip == NotSkipped }) {
 		return res, &UserError{
 			Msg:  "no profiles made: every client folder found was skipped",
-			Hint: "see why above; a client that's never been started needs its Interface/AddOns folder first",
+			Hint: "the table above says why each was skipped, and what to do about it",
 		}
 	}
 	return res, nil

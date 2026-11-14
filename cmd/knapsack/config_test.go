@@ -110,6 +110,8 @@ func TestConfigCommands(t *testing.T) {
 		{name: "config/set_profile_client_without_addons", after: noAddOns("_xptr_"), args: []string{"config", "set-profile", "--path", "{home}/wow/_xptr_"}},
 		// --auto makes a profile per client folder with AddOns in it.
 		{name: "config/auto", after: noAddOns("_xptr_"), args: []string{"config", "set-profile", "--auto", "--path", "{home}/wow"}},
+		// A quoted ~ path, which the shell leaves alone, then a name.
+		{name: "config/set_profile_tilde_then_name", args: []string{"config", "set-profile", "--path", "~/wow/_retail_", "main"}},
 		{name: "config/auto_again", setup: [][]string{{"config", "set-profile", "--auto", "--path", "{home}/wow"}},
 			args: []string{"config", "set-profile", "--auto", "--path", "{home}/wow"}},
 		{name: "config/auto_name_taken", setup: [][]string{{"config", "set-profile", "retail", "--path", plain, "--flavor", "retail"}},
@@ -259,12 +261,16 @@ func TestAutoProfilesSearch(t *testing.T) {
 	if r := s.run("config", "set-profile", "--auto"); r.Code != exitError || !strings.Contains(r.Stderr, "couldn't find World of Warcraft") {
 		t.Errorf("with no game installed:\n%s", r)
 	}
-	addons := filepath.Join(s.home, "Games", "battlenet", "drive_c", "Program Files (x86)", "World of Warcraft", "_forever_", "Interface", "AddOns")
-	if err := os.MkdirAll(addons, 0o700); err != nil {
-		t.Fatal(err)
-	}
+	// Two installs, as with Lutris and Steam: each has _classic_beta_, so
+	// the second copy is skipped and gets a command to name it.
+	lutris := filepath.Join("Games", "battlenet", "drive_c", "Program Files (x86)", "World of Warcraft")
+	steam := filepath.Join(".steam", "steam", "steamapps", "compatdata", "123", "pfx", "drive_c", "Program Files (x86)", "World of Warcraft")
+	game(lutris, "_classic_beta_", "_forever_")(s)
+	game(steam, "_retail_", "_classic_beta_")(s)
 	r := s.run("config", "set-profile", "--auto", "-v")
-	if r.Code != exitOK || !strings.Contains(r.Stdout, `Profile "forever" created`) || !strings.Contains(r.Stderr, "Looked for World of Warcraft in:") {
-		t.Errorf("with a Lutris install:\n%s", r)
+	if !strings.Contains(r.Stderr, "Looked for World of Warcraft in:") {
+		t.Errorf("-v doesn't list where it looked:\n%s", r)
 	}
+	r.Stderr = "" // the places looked are tested in discover
+	checkGolden(t, "config/auto_two_installs", r)
 }

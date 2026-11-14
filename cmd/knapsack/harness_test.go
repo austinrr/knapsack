@@ -272,6 +272,10 @@ func (s *sandbox) writeConfig(contents string) {
 	}
 }
 
+// tildePath matches a path under home shown as ~/… or, in a command to
+// copy, $HOME/…, at the start of a word or quote. Windows shows neither.
+var tildePath = regexp.MustCompile(`(^|[\s"])(~|\$HOME)/`)
+
 // timestamp matches the install times commands print.
 var timestamp = regexp.MustCompile(`\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ`)
 
@@ -290,6 +294,8 @@ func (s *sandbox) normalize(out string) string {
 	for _, h := range []string{strings.ReplaceAll(s.home, `\`, `\\`), s.home, filepath.ToSlash(s.home)} {
 		out = strings.ReplaceAll(out, h, "<home>")
 	}
+	// Paths under home are shown as ~/… or $HOME/… except on Windows.
+	out = tildePath.ReplaceAllString(out, "$1<home>/")
 	if runtime.GOOS == "windows" {
 		out = strings.ReplaceAll(out, `\\`, "/")
 		out = strings.ReplaceAll(out, `\`, "/")

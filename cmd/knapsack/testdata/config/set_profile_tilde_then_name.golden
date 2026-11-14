@@ -1,0 +1,6 @@
+# exit: 0
+# stdout:
+Profile "main" created (retail, <home>/wow/_retail_/Interface/AddOns).
+Switched to profile "main".
+# stderr:
+Next, add addons: knapsack add github:owner/repo, or a GitHub or Wago link.

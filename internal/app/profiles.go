@@ -128,7 +128,7 @@ func (a *App) nameForPath(req SetProfileRequest) (name, path string, err error) 
 	if req.Path == "" {
 		return "", "", &UserError{
 			Msg:  "set-profile needs --path, or the name of a profile to change",
-			Hint: pathHint(),
+			Hint: "find the game with `knapsack config set-profile --auto`, or pass a client folder, quoted: --path " + Quoted(ExampleClientFolder()),
 		}
 	}
 	if path, err = addonsDir(req.Path, a.home); err != nil {
@@ -165,8 +165,17 @@ func flavorNameTaken(name, existing string) error {
 		Msg: fmt.Sprintf("profile %q already uses %s", name, existing),
 		Hint: fmt.Sprintf("give this one its own name with `knapsack config set-profile <name> --path …`, or move %q here by naming it: `knapsack config set-profile %s --path …`",
 			name, name),
+		Err: &NameTakenError{Name: name, Path: existing},
 	}
 }
+
+// NameTakenError is the cause of the error for a profile that would be
+// named after its flavor when that name is a profile for another folder:
+// Name is the profile, and Path the AddOns folder it uses. Match it with
+// errors.As.
+type NameTakenError struct{ Name, Path string }
+
+func (e *NameTakenError) Error() string { return fmt.Sprintf("profile %q uses %s", e.Name, e.Path) }
 
 // ExampleClientFolder is a client folder where the game usually is on
 // this OS, for hints and help: a profile's --path can be the client
@@ -241,7 +250,12 @@ func addonsDir(path, home string) (string, error) {
 
 // expandHome expands a leading ~ to home, the App's home directory. Shells
 // don't expand it inside quotes, which a path with spaces needs.
-func expandHome(path, home string) string {
+func expandHome(path, home string) string { return ExpandHome(path, home) }
+
+// ExpandHome replaces a leading ~ in path with home, as a shell would
+// outside quotes, so a quoted "~/…" works too. Without a home, path is
+// returned as it is.
+func ExpandHome(path, home string) string {
 	if rest, ok := strings.CutPrefix(path, "~"); ok && home != "" && (rest == "" || rest[0] == '/' || rest[0] == filepath.Separator) {
 		return home + rest
 	}
