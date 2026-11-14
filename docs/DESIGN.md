@@ -462,7 +462,19 @@ func Download(ctx context.Context, c *http.Client, url, dir, wantSHA256 string) 
 `httpx.NewClient(version string)` returns an `*http.Client` with sensible
 timeouts and a `User-Agent: knapsack/<version>` header containing no user
 information. It retries idempotent GETs at most twice, only on 5xx responses
-or connection resets.
+or connection resets, with a short backoff. A 429 isn't retried: rate limits
+need a far longer wait, which the source reports instead.
+
+There's no overall request timeout, which would cut off a large download on a
+slow link. Connecting (10 s), the TLS handshake (10 s) and waiting for
+response headers (30 s) time out, and `Download` fails with `ErrStalled` when
+the body stops arriving for 60 s.
+
+`Download` writes to a temp file in `dir` (the cache directory), hashing as
+it writes. It fails with `*StatusError` for any status but 200, `ErrChecksum`
+when the SHA-256 differs, `io.ErrUnexpectedEOF` for a body shorter than its
+`Content-Length`, and `ErrTooLarge` past 1 GiB. No file is left behind on
+error.
 
 ### 6.3 Installer (filesystem only)
 
