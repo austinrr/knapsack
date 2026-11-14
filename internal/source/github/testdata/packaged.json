@@ -1,0 +1,45 @@
+{
+    "tag_name": "v1",
+    "assets": [
+        {
+            "name": "Addon-v1.zip",
+            "browser_download_url": "https://github.com/o/r/releases/download/v1/Addon-v1.zip",
+            "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+            "name": "Addon-v1-classic.zip",
+            "browser_download_url": "https://github.com/o/r/releases/download/v1/Addon-v1-classic.zip",
+            "digest": "sha256:0101010101010101010101010101010101010101010101010101010101010101"
+        },
+        {
+            "name": "Addon-v1-bcc.zip",
+            "browser_download_url": "https://github.com/o/r/releases/download/v1/Addon-v1-bcc.zip",
+            "digest": "sha256:0202020202020202020202020202020202020202020202020202020202020202"
+        },
+        {
+            "name": "Addon-v1-mists.zip",
+            "browser_download_url": "https://github.com/o/r/releases/download/v1/Addon-v1-mists.zip",
+            "digest": "sha256:0303030303030303030303030303030303030303030303030303030303030303"
+        },
+        {
+            "name": "Addon-v1-forever.zip",
+            "browser_download_url": "https://github.com/o/r/releases/download/v1/Addon-v1-forever.zip",
+            "digest": "sha256:0404040404040404040404040404040404040404040404040404040404040404"
+        },
+        {
+            "name": "Addon-v1-nolib.zip",
+            "browser_download_url": "https://github.com/o/r/releases/download/v1/Addon-v1-nolib.zip",
+            "digest": "sha256:0505050505050505050505050505050505050505050505050505050505050505"
+        },
+        {
+            "name": "Addon-v1-nolib-classic.zip",
+            "browser_download_url": "https://github.com/o/r/releases/download/v1/Addon-v1-nolib-classic.zip",
+            "digest": "sha256:0606060606060606060606060606060606060606060606060606060606060606"
+        },
+        {
+            "name": "release.json",
+            "browser_download_url": "https://github.com/o/r/releases/download/v1/release.json",
+            "digest": "sha256:0707070707070707070707070707070707070707070707070707070707070707"
+        }
+    ]
+}

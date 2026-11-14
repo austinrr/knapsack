@@ -1,6 +1,7 @@
 package flavor_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -221,5 +222,41 @@ func TestFromPath(t *testing.T) {
 				t.Errorf("FromPath(%q) = %q, %v; want %q, %v", tt.path, got, ok, tt.want, tt.wantOK)
 			}
 		})
+	}
+}
+
+func TestAssetMarkers(t *testing.T) {
+	t.Parallel()
+	if diff := cmp.Diff([]string{"forever"}, flavor.Forever.AssetMarkers()); diff != "" {
+		t.Errorf("Forever markers (-want +got):\n%s", diff)
+	}
+	// Callers get a copy and can't change the table.
+	m := flavor.Retail.AssetMarkers()
+	m[0] = "changed"
+	if got := flavor.Retail.AssetMarkers()[0]; got != "mainline" {
+		t.Errorf("Retail marker after modifying a copy = %q", got)
+	}
+	if got := flavor.Flavor("ptr").AssetMarkers(); got != nil {
+		t.Errorf("unknown flavor markers = %q, want nil", got)
+	}
+
+	// Every flavor has markers, each marker belongs to one flavor, and all
+	// are in AllAssetMarkers.
+	owner := map[string]flavor.Flavor{}
+	all := flavor.AllAssetMarkers()
+	for _, f := range flavor.All() {
+		markers := f.AssetMarkers()
+		if len(markers) == 0 {
+			t.Errorf("%s has no asset markers", f)
+		}
+		for _, m := range markers {
+			if other, ok := owner[m]; ok {
+				t.Errorf("marker %q belongs to both %s and %s", m, other, f)
+			}
+			owner[m] = f
+			if !slices.Contains(all, m) {
+				t.Errorf("AllAssetMarkers is missing %q", m)
+			}
+		}
 	}
 }
