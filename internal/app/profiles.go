@@ -89,7 +89,7 @@ func (a *App) SetProfile(ctx context.Context, req SetProfileRequest) (SetProfile
 				}
 				p.Path = path
 			}
-			f, err := chooseFlavor(req.Flavor, p.Path, p.Flavor)
+			f, err := chooseFlavor(req.Flavor, p.Path, p.Flavor, req.Path != "")
 			if err != nil {
 				return err
 			}
@@ -139,14 +139,20 @@ func (a *App) nameForPath(req SetProfileRequest) (name, path string, err error) 
 	if name := profileWithPath(c, path, ""); name != "" {
 		return name, path, nil
 	}
-	f, err := chooseFlavor(req.Flavor, path, "")
+	f, err := chooseFlavor(req.Flavor, path, "", true)
 	if err != nil {
 		return "", "", err
 	}
-	if p, exists := c.Profiles[string(f)]; exists {
-		return "", "", flavorNameTaken(string(f), p.Path)
+	// A test client sits beside its live client, which should get the
+	// plain flavor name, so it's named after both: retail-ptr.
+	name = string(f)
+	if l, ok := flavor.Locate(path); ok && l.Test != "" {
+		name += "-" + l.Test
 	}
-	return string(f), path, nil
+	if p, exists := c.Profiles[name]; exists {
+		return "", "", flavorNameTaken(name, p.Path)
+	}
+	return name, path, nil
 }
 
 // flavorNameTaken is the error when a profile would be named after its
@@ -183,29 +189,34 @@ func addonsDir(path string) (string, error) {
 	return abs, nil
 }
 
-// chooseFlavor picks the flavor: the explicit one if given, otherwise the
-// one the path's client folder implies, otherwise current (when updating a
-// profile whose new path has no client folder).
-func chooseFlavor(explicit, path string, current flavor.Flavor) (flavor.Flavor, error) {
-	inferred, ok := flavor.FromPath(path)
+// chooseFlavor picks the flavor: the explicit one if given; otherwise
+// current, the profile's flavor, unless pathGiven, a new path to infer
+// from; otherwise the one the path's client folder implies; otherwise
+// current (a new path with no client folder). An explicit flavor must match
+// a live client folder, but a test client folder's is only a default,
+// which neither --flavor nor a stored flavor has to match: Blizzard has
+// used _classic_beta_ for more than one game.
+func chooseFlavor(explicit, path string, current flavor.Flavor, pathGiven bool) (flavor.Flavor, error) {
+	l, ok := flavor.Locate(path)
 	if explicit != "" {
 		f, err := flavor.Parse(explicit)
 		if err != nil {
 			return "", &UserError{Msg: err.Error()}
 		}
-		if ok && f != inferred {
-			c, _ := inferred.Client()
+		if ok && l.Test == "" && f != l.Flavor {
 			return "", &UserError{
-				Msg:  fmt.Sprintf("--flavor %s doesn't match the path, which is in %s", f, c.Folder),
-				Hint: fmt.Sprintf("leave out --flavor to use %s", inferred),
+				Msg:  fmt.Sprintf("--flavor %s doesn't match the path, which is in %s", f, l.Folder),
+				Hint: fmt.Sprintf("leave out --flavor to use %s", l.Flavor),
 			}
 		}
 		return f, nil
 	}
-	if ok {
-		return inferred, nil
-	}
-	if current != "" {
+	switch {
+	case current != "" && (!pathGiven || ok && l.Test != ""):
+		return current, nil
+	case ok:
+		return l.Flavor, nil
+	case current != "":
 		return current, nil
 	}
 	return "", &UserError{

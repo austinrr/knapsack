@@ -604,9 +604,9 @@ that knows about specific game versions:
 
 | Flavor | Client folders | Game type (aliases) | Family | Interface range | `.build.info` product |
 |---|---|---|---|---|---|
-| `retail` | `_retail_` | `standard` | `mainline` | 100000 and up | `wow` |
-| `classic` | `_classic_` | `mists` | `classic` | 50000–59999 | `wow_classic` |
-| `classic_era` | `_classic_era_` | `vanilla` | `classic` | 11000–11999 | `wow_classic_era` |
+| `retail` | `_retail_`; tests `_ptr_`, `_xptr_`, `_beta_` | `standard` | `mainline` | 100000 and up | `wow`; `wowt`, `wowxptr`, `wow_beta` |
+| `classic` | `_classic_`; tests `_classic_ptr_`, `_classic_beta_` | `mists` | `classic` | 50000–59999 | `wow_classic`; `wow_classic_ptr`, `wow_classic_beta` |
+| `classic_era` | `_classic_era_`; test `_classic_era_ptr_` | `vanilla` | `classic` | 11000–11999 | `wow_classic_era`; `wow_classic_era_ptr` |
 | `anniversary` | `_anniversary_` | `tbc` | `classic` | 20000–29999 | see §13 |
 | `forever` | `_forever_` | `forever` (`camelot`) | `mainline` | 16000–16999 | `wowf` |
 
@@ -619,6 +619,20 @@ and `hardcore` are known markers for clients or realms with no flavor, so
 such files are never mistaken for unmarked ones. A tag Knapsack doesn't know
 still reads as unmarked; the TOC check at install (§6.4) rejects a build for
 the wrong client either way.
+
+A **test client** (PTR or beta) has its own client folder and AddOns, and
+runs the same flavor of addons as its live client, so `…/_ptr_/Interface/
+AddOns` is `retail`. It reads its own product's row in `.build.info` for
+the out-of-date check. A profile for one sits beside the live client's, so
+without a name `set-profile` calls it `retail-ptr`, leaving `retail` for the
+live client. A test folder's flavor is only a default, though: Blizzard has
+used `_classic_beta_` for betas of more than one Classic game, so `--flavor`
+may differ from it (that profile is then `anniversary-beta`), and a stored
+flavor isn't re-inferred from it. A live folder's flavor must match. When a
+beta runs the next expansion,
+its Interface numbers fall outside the flavor's range: the check is
+skipped, and addons built only for the new expansion are refused until the
+range here changes.
 
 When Blizzard changes what a folder runs (`_classic_` has been Cataclysm and
 is now Mists), only this table changes.
@@ -918,9 +932,11 @@ forever: 1 upgrade · retail: 1 install
   per flavor: without one, it's the profile already using `--path`, so
   running the command again is harmless, or else the flavor. If a profile
   of that name already uses another folder, it's an error, not a move: a
-  second install of the same client (a test copy, a PTR with
-  `--flavor retail`) needs its own name, and moving the existing profile
-  means naming it.
+  second install of the same client, such as a test copy, needs its own
+  name, and moving the existing profile means naming it. A test client's
+  folder gets a name of its own, `retail-ptr` (§6.4). Without `--path`,
+  the flavor is never re-inferred: it stays as stored unless `--flavor` is
+  given.
 - **`config set-profile`** on an existing profile changes only the flags given,
   like kubectl's `set-context`. `--path` must be an existing directory, and
   an explicit `--flavor` that contradicts the path's client folder is an
@@ -1393,8 +1409,10 @@ one command group.
 
 1. **`.build.info` product codes**: `wowf` (Forever) is confirmed from a
    real install, which is the fixture in `internal/flavor/testdata`. The
-   other codes come from WowUp and still need a real file to confirm;
-   Anniversary's is unknown, so its out-of-date check is skipped.
+   other codes come from WowUp and still need a real file to confirm, as do
+   the test clients' folders and codes; Anniversary's code is unknown, so
+   its out-of-date check is skipped, and Anniversary and Forever have no
+   known test clients.
 2. **Importing existing installs**: should there be a one-time
    `knapsack import` from LemonUp's state, or does `add` for each addon cover
    it?

@@ -45,12 +45,16 @@ func newSetProfileCmd(c *cli) *cobra.Command {
 
 The flavor is inferred from the client folder in the path (_retail_,
 _classic_, _classic_era_, _anniversary_, _forever_) unless --flavor is
-given. On an existing profile, only the flags you pass change. The first
-profile created becomes the current profile.
+given. Test clients are their live client's flavor: _ptr_, _xptr_ and
+_beta_ are retail, _classic_ptr_ and _classic_beta_ classic, and
+_classic_era_ptr_ classic_era; --flavor can say otherwise for these. On an
+existing profile, only the flags you pass change. The first profile
+created becomes the current profile.
 
 Without a name, the profile is the one already using the path, or else is
-named after its flavor, so most people never need to choose one. A second
-profile for the same flavor, such as a test copy of the game, needs a name.`,
+named after its flavor (retail), or for a test client, its flavor and the
+test (retail-ptr), so most people never need to choose one. A second
+profile for the same client, such as a test copy of the game, needs a name.`,
 		Example: `  knapsack config set-profile --path "/games/World of Warcraft/_forever_/Interface/AddOns"
   knapsack config set-profile forever-test --path ~/wow-test/_forever_/Interface/AddOns`,
 		Args: maxArgs("profile name"),

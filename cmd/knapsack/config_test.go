@@ -12,6 +12,8 @@ const (
 	retail  = "{home}/wow/_retail_/Interface/AddOns"
 	classic = "{home}/wow/_classic_/Interface/AddOns"
 	plain   = "{home}/addons"
+	ptr     = "{home}/wow/_ptr_/Interface/AddOns"
+	beta    = "{home}/wow/_classic_beta_/Interface/AddOns"
 )
 
 // Setup steps shared by many cases.
@@ -87,6 +89,21 @@ func TestConfigCommands(t *testing.T) {
 			args:  []string{"config", "set-profile", "retail", "--path", classic}},
 		{name: "config/set_profile_same_path", setup: [][]string{addForever},
 			args: []string{"config", "set-profile", "again", "--path", forever + "/"}},
+		// A test client is its live client's flavor.
+		{name: "config/set_profile_ptr", setup: [][]string{addRetail}, args: []string{"config", "set-profile", "retail-ptr", "--path", ptr}},
+		// A test folder's flavor is only a default: Blizzard has used
+		// _classic_beta_ for more than one game.
+		{name: "config/set_profile_ptr_explicit_flavor", args: []string{"config", "set-profile", "ptr", "--path", ptr, "--flavor", "forever"}},
+		// Without a name, a test client is named after its flavor and
+		// itself, leaving the flavor's name for the live client.
+		{name: "config/set_profile_ptr_no_name", args: []string{"config", "set-profile", "--path", ptr}},
+		{name: "config/set_profile_retail_after_ptr", setup: [][]string{{"config", "set-profile", "--path", ptr}},
+			args: []string{"config", "set-profile", "--path", retail}},
+		{name: "config/set_profile_beta_other_flavor", args: []string{"config", "set-profile", "--path", beta, "--flavor", "anniversary"}},
+		// A stored flavor stands: changing the profile doesn't re-infer it
+		// from a test folder, so a beta profile made with --flavor keeps it.
+		{name: "config/set_profile_beta_keeps_flavor", setup: [][]string{{"config", "set-profile", "--path", beta, "--flavor", "anniversary"}},
+			args: []string{"config", "set-profile", "--path", beta}},
 
 		// get-profiles
 		{name: "config/get_profiles_empty", args: []string{"config", "get-profiles"}},

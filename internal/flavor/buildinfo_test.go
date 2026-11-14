@@ -3,6 +3,7 @@ package flavor_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/austinrr/knapsack/internal/flavor"
@@ -62,6 +63,47 @@ func TestClientInterface(t *testing.T) {
 				t.Errorf("ClientInterface(%q, %q) = %d, %v; want %d, %v", tt.dir, tt.flavor, got, ok, tt.want, tt.wantOK)
 			}
 		})
+	}
+}
+
+// A test client reads its own product's row, not the live client's: here
+// the PTR's is the only row, so Retail itself has none.
+func TestClientInterfaceTestClient(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile(filepath.Join("testdata", "build.info"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	header := strings.Split(lines[0], "|")
+	col := func(name string) int {
+		for i, h := range header {
+			if strings.HasPrefix(h, name+"!") {
+				return i
+			}
+		}
+		t.Fatalf("no %s column", name)
+		return 0
+	}
+	var row []string
+	for _, l := range lines[1:] {
+		if cells := strings.Split(l, "|"); cells[col("Product")] == "wow" {
+			row = cells
+		}
+	}
+	row[col("Product")], row[col("Version")] = "wowt", "12.0.7.64000"
+	root := filepath.Join(t.TempDir(), "World of Warcraft")
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".build.info"), []byte(lines[0]+"\n"+strings.Join(row, "|")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := flavor.ClientInterface(filepath.Join(root, "_ptr_", "Interface", "AddOns"), flavor.Retail); got != 120007 || !ok {
+		t.Errorf("ClientInterface(_ptr_) = %d, %v; want 120007, true", got, ok)
+	}
+	if got, ok := flavor.ClientInterface(filepath.Join(root, "_retail_", "Interface", "AddOns"), flavor.Retail); ok {
+		t.Errorf("ClientInterface(_retail_) = %d, true; want false, with no wow row", got)
 	}
 }
 

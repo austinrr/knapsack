@@ -79,14 +79,17 @@ func TestClient(t *testing.T) {
 		{flavor.Retail, flavor.Client{
 			Folder: "_retail_", GameType: "standard", Family: flavor.FamilyMainline,
 			Interface: flavor.Range{Min: 100000, Max: flavor.NoMax}, Product: "wow",
+			Tests: []flavor.TestClient{{Name: "ptr", Folder: "_ptr_", Product: "wowt"}, {Name: "xptr", Folder: "_xptr_", Product: "wowxptr"}, {Name: "beta", Folder: "_beta_", Product: "wow_beta"}},
 		}},
 		{flavor.Classic, flavor.Client{
 			Folder: "_classic_", GameType: "mists", Family: flavor.FamilyClassic,
 			Interface: flavor.Range{Min: 50000, Max: 59999}, Product: "wow_classic",
+			Tests: []flavor.TestClient{{Name: "ptr", Folder: "_classic_ptr_", Product: "wow_classic_ptr"}, {Name: "beta", Folder: "_classic_beta_", Product: "wow_classic_beta"}},
 		}},
 		{flavor.ClassicEra, flavor.Client{
 			Folder: "_classic_era_", GameType: "vanilla", Family: flavor.FamilyClassic,
 			Interface: flavor.Range{Min: 11000, Max: 11999}, Product: "wow_classic_era",
+			Tests: []flavor.TestClient{{Name: "ptr", Folder: "_classic_era_ptr_", Product: "wow_classic_era_ptr"}},
 		}},
 		{flavor.Anniversary, flavor.Client{
 			Folder: "_anniversary_", GameType: "tbc", Family: flavor.FamilyClassic,
@@ -200,6 +203,25 @@ func TestRange(t *testing.T) {
 	}
 }
 
+// Locate reports which client folder it found, and whether it's a test
+// client's.
+func TestLocate(t *testing.T) {
+	t.Parallel()
+	for path, want := range map[string]flavor.Location{
+		"/wow/_retail_/Interface/AddOns":       {Flavor: flavor.Retail, Folder: "_retail_", Product: "wow"},
+		`C:\wow\_PTR_\Interface\AddOns`:        {Flavor: flavor.Retail, Folder: "_ptr_", Product: "wowt", Test: "ptr"},
+		"/wow/_classic_beta_/Interface/AddOns": {Flavor: flavor.Classic, Folder: "_classic_beta_", Product: "wow_classic_beta", Test: "beta"},
+		"/wow/_anniversary_/Interface/AddOns":  {Flavor: flavor.Anniversary, Folder: "_anniversary_"},
+	} {
+		if got, ok := flavor.Locate(path); !ok || got != want {
+			t.Errorf("Locate(%s) = %+v, %v; want %+v", path, got, ok, want)
+		}
+	}
+	if got, ok := flavor.Locate("/home/u/addons"); ok {
+		t.Errorf("Locate with no client folder = %+v, true", got)
+	}
+}
+
 func TestFromPath(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -230,11 +252,19 @@ func TestFromPath(t *testing.T) {
 		{"client folder itself", "/wow/_retail_", flavor.Retail, true},
 		{"nearest folder wins", "/backup/_retail_/wow/_forever_/Interface/AddOns", flavor.Forever, true},
 
+		// Test clients are their live client's flavor.
+		{"retail ptr", "/wow/_ptr_/Interface/AddOns", flavor.Retail, true},
+		{"retail xptr", `C:\wow\_xptr_\Interface\AddOns`, flavor.Retail, true},
+		{"retail beta", "/wow/_beta_/Interface/AddOns", flavor.Retail, true},
+		{"classic ptr", "/wow/_classic_ptr_/Interface/AddOns", flavor.Classic, true},
+		{"classic beta", "/wow/_classic_beta_/Interface/AddOns", flavor.Classic, true},
+		{"classic era ptr", "/wow/_Classic_Era_PTR_/Interface/AddOns", flavor.ClassicEra, true},
+
 		// No client folder.
 		{"no client folder", "/home/u/addons", "", false},
 		{"empty", "", "", false},
 		{"substring only", "/wow/my_retail_backup/Interface/AddOns", "", false},
-		{"retired beta", "/wow/_classic_beta_/Interface/AddOns", "", false},
+		{"unknown client folder", "/wow/_alpha_/Interface/AddOns", "", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
