@@ -147,8 +147,8 @@ func TestReplace(t *testing.T) {
 	if got, _ := os.ReadFile(exe); string(got) != "new" {
 		t.Errorf("binary = %q, want new", got)
 	}
-	if info, _ := os.Stat(exe); runtime.GOOS != "windows" && info.Mode().Perm() != 0o711 {
-		t.Errorf("mode = %v, want the old one plus executable bits", info.Mode().Perm())
+	if info, _ := os.Stat(exe); runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
+		t.Errorf("mode = %v, want the old one, 0600", info.Mode().Perm())
 	}
 
 	// A broken archive leaves the binary, and nothing else in its folder.
@@ -187,6 +187,25 @@ func TestSwap(t *testing.T) {
 		if got, _ := os.ReadFile(exe); string(got) != "new" {
 			t.Errorf("windows=%v: binary after a failed swap = %q, want it restored", windows, got)
 		}
+	}
+}
+
+// On Windows, an old binary that's still running can't be deleted. A
+// folder that isn't empty can't either, which stands in for it here.
+func TestSwapOldInUse(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	exe, next := filepath.Join(dir, "knapsack.exe"), filepath.Join(dir, "next")
+	_ = os.WriteFile(exe, []byte("old"), 0o600)
+	_ = os.WriteFile(next, []byte("new"), 0o600)
+	if err := os.MkdirAll(filepath.Join(OldPath(exe), "busy"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := swap(exe, next, true); !errors.Is(err, ErrOldInUse) {
+		t.Errorf("swap = %v, want ErrOldInUse", err)
+	}
+	if got, _ := os.ReadFile(exe); string(got) != "old" {
+		t.Errorf("binary = %q, want it untouched", got)
 	}
 }
 

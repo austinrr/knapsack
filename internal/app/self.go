@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"time"
 
@@ -58,11 +59,17 @@ func (b Build) method() (int, string) {
 			return viaPackageManager, pm
 		}
 		return viaSelfUpdate, ""
-	case b.Version != "dev" && b.Version != "":
+	case b.Version != "dev" && b.Version != "" && !localBuild.MatchString(b.Version):
 		return viaGoInstall, ""
 	}
 	return notUpdatable, ""
 }
+
+// localBuild matches the versions Go stamps on a build from a checkout
+// rather than a tag: a pseudo-version (v0.1.1-0.20261114183000-abcdef123456)
+// or one with uncommitted changes (+dirty). go install @latest would
+// replace work in progress, so these count as dev builds.
+var localBuild = regexp.MustCompile(`\d{14}-[0-9a-f]{12}|\+dirty$`)
 
 // UpdateHint says how to update b, for the notice of a newer release:
 // "run `knapsack self-update`", or the go install command, or the package
@@ -112,9 +119,10 @@ func (a *App) LatestVersion(ctx context.Context, b Build, maxAge time.Duration) 
 		}
 	}
 	version, _, err := a.releases.LatestAssets(ctx, SelfRepo)
-	// A cancelled check, such as one cut short because the command ended,
-	// says nothing about GitHub, so it isn't recorded.
-	if ctx.Err() == nil {
+	// A check the user cancelled says nothing about GitHub, so it isn't
+	// recorded. One that ran out of time is: a network that drops requests
+	// would otherwise cost every command the full timeout.
+	if !errors.Is(ctx.Err(), context.Canceled) {
 		// The cache is a convenience; failing to write it changes nothing
 		// the user asked for.
 		_ = a.writeLatestCheck(latestCheck{CheckedAt: time.Now().UTC(), Version: version})
@@ -201,6 +209,9 @@ func (a *App) SelfUpdate(ctx context.Context, b Build) (SelfUpdated, error) {
 	}
 	defer func() { _ = os.Remove(path) }() // a download; the cache is safe to clear
 	if err := selfupdate.Replace(b.Executable, path); err != nil {
+		if errors.Is(err, selfupdate.ErrOldInUse) {
+			return res, &UserError{Msg: "can't replace " + b.Executable, Hint: "another knapsack is still running; close it and retry", Err: err}
+		}
 		if errors.Is(err, fs.ErrPermission) {
 			return res, &UserError{Msg: "can't replace " + b.Executable,
 				Hint: "you don't have permission to write there; rerun as the user that installed knapsack", Err: err}

@@ -78,7 +78,9 @@ func (s *Source) Resolve(ctx context.Context, id string, f flavor.Flavor) (sourc
 
 // LatestAssets returns the newest release of id ("owner/repo") with all
 // its assets, for a program's own releases rather than an addon's: the tag
-// and an archive per platform.
+// and an archive per platform. An asset whose digest isn't SHA-256 has no
+// SHA256, rather than failing the lookup: the caller uses only one asset,
+// and checks that one has a digest.
 func (s *Source) LatestAssets(ctx context.Context, id string) (string, []source.Asset, error) {
 	rel, err := s.latest(ctx, id)
 	if err != nil {
@@ -88,7 +90,7 @@ func (s *Source) LatestAssets(ctx context.Context, id string) (string, []source.
 	for i, a := range rel.Assets {
 		sum, err := digest(a.Digest)
 		if err != nil {
-			return "", nil, fmt.Errorf("github %s %s: asset %s: %w", id, rel.TagName, a.Name, err)
+			sum = ""
 		}
 		assets[i] = source.Asset{Name: a.Name, URL: a.BrowserDownloadURL, SHA256: sum}
 	}

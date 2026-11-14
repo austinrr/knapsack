@@ -39,6 +39,9 @@ func TestSelfCommands(t *testing.T) {
 		{name: "notice/go_install", latest: newerVersion, interactive: true, notReleased: true, args: []string{"config", "get-profiles"}},
 		{name: "notice/check_failed", interactive: true, args: []string{"config", "get-profiles"}},
 		{name: "notice/not_for_help", latest: newerVersion, interactive: true, args: []string{"help"}},
+		{name: "notice/not_for_help_flag", latest: newerVersion, interactive: true, args: []string{"add", "--help"}},
+		{name: "notice/not_for_group", latest: newerVersion, interactive: true, args: []string{"config"}},
+		{name: "notice/after_dashes", latest: newerVersion, interactive: true, args: []string{"info", "--", "-h"}},
 
 		// self-update
 		{name: "self-update/help", args: []string{"self-update", "--help"}},
@@ -64,8 +67,25 @@ func TestSelfUpdateReplacesBinary(t *testing.T) {
 	if err != nil || string(got) != newBinary(newerVersion) {
 		t.Errorf("binary = %q, %v; want %q", got, err, newBinary(newerVersion))
 	}
-	// Windows has no executable bit.
-	if info, err := os.Stat(s.exe); runtime.GOOS != "windows" && (err != nil || info.Mode().Perm()&0o100 == 0) {
-		t.Errorf("binary mode = %v, %v; want executable", info.Mode(), err)
+	// The sandbox's binary is 0600; Windows has no such modes.
+	if info, err := os.Stat(s.exe); runtime.GOOS != "windows" && (err != nil || info.Mode().Perm() != 0o600) {
+		t.Errorf("binary mode = %v, %v; want the old one, 0600", info.Mode(), err)
+	}
+}
+
+// Within the daily interval, the check doesn't look for a GitHub token,
+// which can mean running gh: a command that needs no network stays
+// instant.
+func TestUpdateCheckCachedSkipsToken(t *testing.T) {
+	t.Parallel()
+	s := newSandbox(t)
+	s.interactive, s.latest = true, newerVersion
+	s.mustRun("config", "get-profiles") // checks, asking for a token
+	if n := s.ghCalls.Load(); n != 1 {
+		t.Fatalf("gh asked %d times by the first check, want 1", n)
+	}
+	s.mustRun("config", "get-profiles")
+	if n := s.ghCalls.Load(); n != 1 {
+		t.Errorf("gh asked %d times in all, want 1: the second run's check was cached", n)
 	}
 }

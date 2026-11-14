@@ -293,11 +293,14 @@ func TestLatestAssets(t *testing.T) {
 		}
 	}
 
-	bad, _ := newSource(t, "", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"tag_name":"v1.0.0","assets":[{"name":"a.tar.gz","digest":"md5:abc"}]}`))
+	// A digest that isn't SHA-256 leaves that asset without one, and
+	// doesn't affect the others.
+	mixed, _ := newSource(t, "", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"tag_name":"v1.0.0","assets":[{"name":"a.sbom","digest":"md5:abc"},{"name":"b.tar.gz","digest":"sha256:` + strings.Repeat("ab", 32) + `"}]}`))
 	})
-	if _, _, err := bad.LatestAssets(context.Background(), "o/r"); err == nil {
-		t.Error("LatestAssets accepted an md5 digest")
+	_, got, err := mixed.LatestAssets(context.Background(), "o/r")
+	if err != nil || len(got) != 2 || got[0].SHA256 != "" || got[1].SHA256 != strings.Repeat("ab", 32) {
+		t.Errorf("LatestAssets with an md5 digest = %+v, %v", got, err)
 	}
 	missing, _ := newSource(t, "", nil)
 	if _, _, err := missing.LatestAssets(context.Background(), "o/missing"); !errors.Is(err, source.ErrNotFound) {

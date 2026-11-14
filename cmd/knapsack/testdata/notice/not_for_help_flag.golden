@@ -1,0 +1,25 @@
+# exit: 0
+# stdout:
+Add addons to the profile's config and install them.
+
+Each addon is a ref (github:owner/repo) or a URL Knapsack recognizes. An
+addon already in config is left alone. Folders already in AddOns that no
+addon owns are refused unless --force is given; folders another addon owns
+are never replaced.
+
+Usage:
+  knapsack add <ref|url>... [flags]
+
+Examples:
+  knapsack add github:austinrr/baganator-mirror
+  knapsack add https://github.com/austinrr/syndicator-mirror -p forever
+
+Flags:
+      --force            replace folders in AddOns that no addon owns
+  -h, --help             help for add
+  -p, --profile string   profile to act on (default $KNAPSACK_PROFILE, then the current profile)
+
+Global Flags:
+      --config string   use this config file instead of the default
+  -v, --verbose         show progress and the underlying cause of errors
+# stderr:

@@ -885,21 +885,26 @@ forever: 1 upgrade · retail: 1 install
   ``knapsack v0.2.0 is available (you have v0.1.0); run `knapsack
   self-update`.`` `version` checks every time, terminal or not, printing
   `v0.2.0 is available; …` on stderr so stdout stays just the version.
-  The answer, or a failed attempt, is cached in `latest-release.json` in
-  the cache directory, so being offline costs one attempt a day. A command
+  The answer, or a failed or timed-out attempt (not one cancelled with
+  Ctrl-C), is cached in `latest-release.json` in the cache directory, so
+  being offline costs one attempt a day. Within the day, the check
+  doesn't look for a GitHub token, so it never runs `gh`. A command
   waits at most 2 s for the check after it finishes, usually not at all,
   and a failed check prints nothing (`version -v` shows why). There's no
-  check in CI (`CI` set), for `help` and `completion`, for a dev build, or
-  with `KNAPSACK_NO_UPDATE_NOTIFIER` set. This is the one network use
+  check in CI (`CI` set), for `help`, `--help`, `completion` and command
+  groups like `config`, for a dev build (including a `go build` from a
+  checkout, whose pseudo-version or `+dirty` Go stamps), or with
+  `KNAPSACK_NO_UPDATE_NOTIFIER` set. This is the one network use
   outside `add`, `update`, `check` and `self-update`, like gh's update
   notifier. The suggested command depends on how Knapsack was installed:
   `self-update`, `go install …@latest`, or the package manager.
 - **`self-update`** replaces the running binary with the latest release's
   archive for its OS and architecture, verified against the SHA-256 GitHub
   publishes for it. The new binary is extracted next to the old one and
-  renamed over it, so a failure leaves the old one; Windows can't replace
-  a running `.exe`, so it's renamed to `.old` first and deleted on the next
-  run. It refuses, with a hint, for a dev build, a `go install` build (no
+  renamed over it with the old one's permissions, so a failure leaves the
+  old one; Windows can't replace a running `.exe`, so it's renamed to
+  `.old` first and deleted on the next run (and if an earlier `.old` is
+  still running, the hint says to close it). It refuses, with a hint, for a dev build, a `go install` build (no
   version set at build time; the hint is `go install …@latest`), and a
   binary under a package manager's directory (Homebrew, Scoop, winget, Nix,
   `/usr/bin`), whose records it would leave wrong. The checksum only
