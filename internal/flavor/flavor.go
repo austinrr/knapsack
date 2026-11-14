@@ -47,6 +47,23 @@ type Client struct {
 	// Product is the product code in .build.info, or "" if not yet known,
 	// in which case the client's exact Interface number can't be read.
 	Product string
+	// Tests are the client's test versions, such as the PTR. Each has its
+	// own client folder and AddOns, and runs the same flavor of addons, so
+	// it's the same flavor here.
+	Tests []TestClient
+}
+
+// TestClient is a test version of a client: a PTR or beta.
+type TestClient struct {
+	// Folder is its client folder, e.g. "_ptr_".
+	Folder string
+	// Product is its product code in .build.info, as Client.Product.
+	Product string
+}
+
+// folders returns the client's own folder and product, then its tests'.
+func (c Client) folders() []TestClient {
+	return append([]TestClient{{Folder: c.Folder, Product: c.Product}}, c.Tests...)
 }
 
 // GameTypes returns the game type, then its aliases: every name the client
@@ -94,6 +111,9 @@ var table = []struct {
 		Family:    FamilyMainline,
 		Interface: Range{Min: 100000, Max: NoMax},
 		Product:   "wow",
+		// The test clients' product codes come from WowUp, unconfirmed
+		// (DESIGN.md §13), as are the folders of the two below.
+		Tests: []TestClient{{"_ptr_", "wowt"}, {"_xptr_", "wowxptr"}, {"_beta_", "wow_beta"}},
 	}, []string{"mainline", "retail"}},
 	{Classic, Client{
 		Folder:    "_classic_",
@@ -101,6 +121,7 @@ var table = []struct {
 		Family:    FamilyClassic,
 		Interface: Range{Min: 50000, Max: 59999},
 		Product:   "wow_classic",
+		Tests:     []TestClient{{"_classic_ptr_", "wow_classic_ptr"}, {"_classic_beta_", "wow_classic_beta"}},
 	}, []string{"mists", "mop"}},
 	{ClassicEra, Client{
 		Folder:    "_classic_era_",
@@ -108,6 +129,7 @@ var table = []struct {
 		Family:    FamilyClassic,
 		Interface: Range{Min: 11000, Max: 11999},
 		Product:   "wow_classic_era",
+		Tests:     []TestClient{{"_classic_era_ptr_", "wow_classic_era_ptr"}},
 	}, []string{"vanilla", "classic", "era", "classic_era"}},
 	{Anniversary, Client{
 		Folder:    "_anniversary_",
@@ -211,6 +233,7 @@ func (f Flavor) Client() (Client, bool) {
 			// share the table's array, so clone it too.
 			c := row.client
 			c.Aliases = slices.Clone(c.Aliases)
+			c.Tests = slices.Clone(c.Tests)
 			return c, true
 		}
 	}
@@ -218,18 +241,35 @@ func (f Flavor) Client() (Client, bool) {
 }
 
 // FromPath detects the flavor from an AddOns directory by finding the client
-// folder in it: …/_forever_/Interface/AddOns is Forever. It understands both
-// / and \ separators on every OS, and matches folder names without regard to
+// folder in it: …/_forever_/Interface/AddOns is Forever, and so is a test
+// client's, so …/_ptr_/Interface/AddOns is Retail. It understands both / and
+// \ separators on every OS, and matches folder names without regard to
 // case, as Windows does. When several path elements are client folders, the
 // one nearest the end wins.
 func FromPath(addonsDir string) (Flavor, bool) {
+	f, _, ok := clientIn(addonsDir)
+	return f, ok
+}
+
+// ClientFolder returns the client folder in an AddOns directory, as
+// FromPath finds it, spelled as in the table: "_ptr_".
+func ClientFolder(addonsDir string) (string, bool) {
+	_, c, ok := clientIn(addonsDir)
+	return c.Folder, ok
+}
+
+// clientIn finds the client folder in addonsDir for FromPath and
+// ClientFolder.
+func clientIn(addonsDir string) (Flavor, TestClient, bool) {
 	parts := strings.FieldsFunc(addonsDir, func(r rune) bool { return r == '/' || r == '\\' })
 	for i := len(parts) - 1; i >= 0; i-- {
 		for _, row := range table {
-			if strings.EqualFold(parts[i], row.client.Folder) {
-				return row.flavor, true
+			for _, c := range row.client.folders() {
+				if strings.EqualFold(parts[i], c.Folder) {
+					return row.flavor, c, true
+				}
 			}
 		}
 	}
-	return "", false
+	return "", TestClient{}, false
 }

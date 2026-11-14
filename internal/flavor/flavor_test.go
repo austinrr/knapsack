@@ -79,14 +79,17 @@ func TestClient(t *testing.T) {
 		{flavor.Retail, flavor.Client{
 			Folder: "_retail_", GameType: "standard", Family: flavor.FamilyMainline,
 			Interface: flavor.Range{Min: 100000, Max: flavor.NoMax}, Product: "wow",
+			Tests: []flavor.TestClient{{Folder: "_ptr_", Product: "wowt"}, {Folder: "_xptr_", Product: "wowxptr"}, {Folder: "_beta_", Product: "wow_beta"}},
 		}},
 		{flavor.Classic, flavor.Client{
 			Folder: "_classic_", GameType: "mists", Family: flavor.FamilyClassic,
 			Interface: flavor.Range{Min: 50000, Max: 59999}, Product: "wow_classic",
+			Tests: []flavor.TestClient{{Folder: "_classic_ptr_", Product: "wow_classic_ptr"}, {Folder: "_classic_beta_", Product: "wow_classic_beta"}},
 		}},
 		{flavor.ClassicEra, flavor.Client{
 			Folder: "_classic_era_", GameType: "vanilla", Family: flavor.FamilyClassic,
 			Interface: flavor.Range{Min: 11000, Max: 11999}, Product: "wow_classic_era",
+			Tests: []flavor.TestClient{{Folder: "_classic_era_ptr_", Product: "wow_classic_era_ptr"}},
 		}},
 		{flavor.Anniversary, flavor.Client{
 			Folder: "_anniversary_", GameType: "tbc", Family: flavor.FamilyClassic,
@@ -230,11 +233,19 @@ func TestFromPath(t *testing.T) {
 		{"client folder itself", "/wow/_retail_", flavor.Retail, true},
 		{"nearest folder wins", "/backup/_retail_/wow/_forever_/Interface/AddOns", flavor.Forever, true},
 
+		// Test clients are their live client's flavor.
+		{"retail ptr", "/wow/_ptr_/Interface/AddOns", flavor.Retail, true},
+		{"retail xptr", `C:\wow\_xptr_\Interface\AddOns`, flavor.Retail, true},
+		{"retail beta", "/wow/_beta_/Interface/AddOns", flavor.Retail, true},
+		{"classic ptr", "/wow/_classic_ptr_/Interface/AddOns", flavor.Classic, true},
+		{"classic beta", "/wow/_classic_beta_/Interface/AddOns", flavor.Classic, true},
+		{"classic era ptr", "/wow/_Classic_Era_PTR_/Interface/AddOns", flavor.ClassicEra, true},
+
 		// No client folder.
 		{"no client folder", "/home/u/addons", "", false},
 		{"empty", "", "", false},
 		{"substring only", "/wow/my_retail_backup/Interface/AddOns", "", false},
-		{"retired beta", "/wow/_classic_beta_/Interface/AddOns", "", false},
+		{"unknown client folder", "/wow/_alpha_/Interface/AddOns", "", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

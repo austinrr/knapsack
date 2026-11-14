@@ -194,9 +194,9 @@ func chooseFlavor(explicit, path string, current flavor.Flavor) (flavor.Flavor, 
 			return "", &UserError{Msg: err.Error()}
 		}
 		if ok && f != inferred {
-			c, _ := inferred.Client()
+			folder, _ := flavor.ClientFolder(path)
 			return "", &UserError{
-				Msg:  fmt.Sprintf("--flavor %s doesn't match the path, which is in %s", f, c.Folder),
+				Msg:  fmt.Sprintf("--flavor %s doesn't match the path, which is in %s", f, folder),
 				Hint: fmt.Sprintf("leave out --flavor to use %s", inferred),
 			}
 		}

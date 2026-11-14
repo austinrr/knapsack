@@ -27,10 +27,16 @@ const buildInfoFile = ".build.info"
 // only thing the exact number is for.
 func ClientInterface(addonsDir string, f Flavor) (int, bool) {
 	c, ok := f.Client()
-	if !ok || c.Product == "" {
+	if !ok {
 		return 0, false
 	}
-	root, ok := wowFolder(addonsDir, c.Folder)
+	// The client folder in the path says which of the flavor's clients
+	// this is, live or a test, and so which product to read.
+	inPath, client, found := clientIn(addonsDir)
+	if !found || inPath != f || client.Product == "" {
+		return 0, false
+	}
+	root, ok := wowFolder(addonsDir, client.Folder)
 	if !ok {
 		return 0, false
 	}
@@ -40,7 +46,7 @@ func ClientInterface(addonsDir string, f Flavor) (int, bool) {
 	}
 	defer func() { _ = file.Close() }() // read-only; nothing to flush
 
-	version, err := productVersion(file, c.Product)
+	version, err := productVersion(file, client.Product)
 	if err != nil {
 		return 0, false
 	}

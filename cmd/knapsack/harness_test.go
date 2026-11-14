@@ -84,6 +84,7 @@ var clientDirs = []string{
 	"wow/_retail_/Interface/AddOns",
 	"wow/_classic_/Interface/AddOns",
 	"wow/_forever_/Interface/AddOns",
+	"wow/_ptr_/Interface/AddOns",
 	"addons", // no client folder, so no flavor can be inferred
 }
 

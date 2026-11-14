@@ -12,6 +12,7 @@ const (
 	retail  = "{home}/wow/_retail_/Interface/AddOns"
 	classic = "{home}/wow/_classic_/Interface/AddOns"
 	plain   = "{home}/addons"
+	ptr     = "{home}/wow/_ptr_/Interface/AddOns"
 )
 
 // Setup steps shared by many cases.
@@ -87,6 +88,9 @@ func TestConfigCommands(t *testing.T) {
 			args:  []string{"config", "set-profile", "retail", "--path", classic}},
 		{name: "config/set_profile_same_path", setup: [][]string{addForever},
 			args: []string{"config", "set-profile", "again", "--path", forever + "/"}},
+		// A test client is its live client's flavor.
+		{name: "config/set_profile_ptr", setup: [][]string{addRetail}, args: []string{"config", "set-profile", "retail-ptr", "--path", ptr}},
+		{name: "config/set_profile_ptr_flavor_mismatch", args: []string{"config", "set-profile", "ptr", "--path", ptr, "--flavor", "forever"}},
 
 		// get-profiles
 		{name: "config/get_profiles_empty", args: []string{"config", "get-profiles"}},

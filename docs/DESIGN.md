@@ -604,9 +604,9 @@ that knows about specific game versions:
 
 | Flavor | Client folders | Game type (aliases) | Family | Interface range | `.build.info` product |
 |---|---|---|---|---|---|
-| `retail` | `_retail_` | `standard` | `mainline` | 100000 and up | `wow` |
-| `classic` | `_classic_` | `mists` | `classic` | 50000–59999 | `wow_classic` |
-| `classic_era` | `_classic_era_` | `vanilla` | `classic` | 11000–11999 | `wow_classic_era` |
+| `retail` | `_retail_`; tests `_ptr_`, `_xptr_`, `_beta_` | `standard` | `mainline` | 100000 and up | `wow`; `wowt`, `wowxptr`, `wow_beta` |
+| `classic` | `_classic_`; tests `_classic_ptr_`, `_classic_beta_` | `mists` | `classic` | 50000–59999 | `wow_classic`; `wow_classic_ptr`, `wow_classic_beta` |
+| `classic_era` | `_classic_era_`; test `_classic_era_ptr_` | `vanilla` | `classic` | 11000–11999 | `wow_classic_era`; `wow_classic_era_ptr` |
 | `anniversary` | `_anniversary_` | `tbc` | `classic` | 20000–29999 | see §13 |
 | `forever` | `_forever_` | `forever` (`camelot`) | `mainline` | 16000–16999 | `wowf` |
 
@@ -619,6 +619,15 @@ and `hardcore` are known markers for clients or realms with no flavor, so
 such files are never mistaken for unmarked ones. A tag Knapsack doesn't know
 still reads as unmarked; the TOC check at install (§6.4) rejects a build for
 the wrong client either way.
+
+A **test client** (PTR or beta) has its own client folder and AddOns, and
+runs the same flavor of addons as its live client, so `…/_ptr_/Interface/
+AddOns` is `retail`. It reads its own product's row in `.build.info` for
+the out-of-date check. A profile for one sits beside the live client's, so
+it needs its own name (`retail-ptr`). When a beta runs the next expansion,
+its Interface numbers fall outside the flavor's range: the check is
+skipped, and addons built only for the new expansion are refused until the
+range here changes.
 
 When Blizzard changes what a folder runs (`_classic_` has been Cataclysm and
 is now Mists), only this table changes.
@@ -1393,8 +1402,10 @@ one command group.
 
 1. **`.build.info` product codes**: `wowf` (Forever) is confirmed from a
    real install, which is the fixture in `internal/flavor/testdata`. The
-   other codes come from WowUp and still need a real file to confirm;
-   Anniversary's is unknown, so its out-of-date check is skipped.
+   other codes come from WowUp and still need a real file to confirm, as do
+   the test clients' folders and codes; Anniversary's code is unknown, so
+   its out-of-date check is skipped, and Anniversary and Forever have no
+   known test clients.
 2. **Importing existing installs**: should there be a one-time
    `knapsack import` from LemonUp's state, or does `add` for each addon cover
    it?
