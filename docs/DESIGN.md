@@ -519,8 +519,7 @@ and implemented in WowUp. Knapsack doesn't invent its own rules.
 **Step 1: pick the TOC the client would load.** For each addon folder, the
 client uses the first match of:
 
-1. `<Folder>_<GameType>.toc` for its game type or an alias (Forever:
-   `_Forever` or `_Camelot`)
+1. `<Folder>_<GameType>.toc` for its game type (`_Forever`, `_Mists`, …)
 2. `<Folder>_<Family>.toc` for its family (`_Mainline` or `_Classic`)
 3. `<Folder>.toc`
 
@@ -540,13 +539,13 @@ are recognized, the condition passes.
 **The client data table** lives in `flavor` as plain data, the only place
 that knows about specific game versions:
 
-| Flavor | Client folders | Game type (aliases) | Family | Interface range | `.build.info` product |
+| Flavor | Client folders | Game type | Family | Interface range | `.build.info` product |
 |---|---|---|---|---|---|
 | `retail` | `_retail_` | `standard` | `mainline` | 100000 and up | `wow` |
 | `classic` | `_classic_` | `mists` | `classic` | 50000–59999 | `wow_classic` |
 | `classic_era` | `_classic_era_` | `vanilla` | `classic` | 11000–11999 | `wow_classic_era` |
 | `anniversary` | `_anniversary_` | `tbc` | `classic` | 20000–29999 | see §13 |
-| `forever` | `_forever_` | `forever` (`camelot`) | `mainline` | 16000–16999 | `wowf` |
+| `forever` | `_forever_` | `forever` | `mainline` | 16000–16999 | `wowf` |
 
 When Blizzard changes what a folder runs (`_classic_` has been Cataclysm and
 is now Mists), only this table changes.
@@ -1005,7 +1004,7 @@ one command group.
 - Title: `feat(flavor): add flavor type and client data table`
 - Implements: §5.7 (Flavor), §6.4 (client data table only)
 - `Flavor`, `Parse`, `FromPath`, `Client()` and the data table: client
-  folders, game type and aliases, family, Interface range, product code.
+  folders, game type, family, Interface range, product code.
 - Done when: table-driven tests cover every flavor, every client folder, and
   Windows and Unix paths in `FromPath`.
 - Not yet: `ClientInterface` (`.build.info`), which comes in PR 9.
