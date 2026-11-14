@@ -151,7 +151,7 @@ GitHub SDKs (go-github), git libraries, ORMs/SQLite.
    | `config`, `state` | `flavor`, `ref`, `atomicfile`, `tomlenc` |
    | `install` | `flavor`, `toc` |
    | `source` | `flavor`, `ref` |
-   | `source/*` | `source`, `flavor`, `httpx` |
+   | `source/*` | `source`, `flavor`, `ref`, `httpx` |
    | `app` | any of the above |
    | `cmd/knapsack`, `tui` | `app` (plus `flavor`, `ref` for parsing input) |
 
@@ -607,11 +607,14 @@ that knows about specific game versions:
 | `forever` | `_forever_` | `forever` | `mainline` | 16000–16999 | `wowf` |
 
 Each row also lists the **asset markers** that name release files built for
-that client: `mainline`/`retail`, `mists`, `vanilla`/`classic`, `tbc`/`bcc`
-and `forever`. `classic` means Classic Era, as in the BigWigs packager's file
-names, not the `_classic_` client. `wrath`, `wotlkc` and `cata` are known
-markers for clients with no flavor, so such files are never mistaken for
-unmarked ones.
+that client: `mainline`/`retail`, `mists`/`mop`,
+`vanilla`/`classic`/`era`/`classic_era`, `tbc`/`bcc` and `forever`. `classic`
+means Classic Era, as in the BigWigs packager's file names, not the
+`_classic_` client. `wrath`, `wotlk`, `wotlkc`, `cata`, `cataclysm`, `sod`
+and `hardcore` are known markers for clients or realms with no flavor, so
+such files are never mistaken for unmarked ones. A tag Knapsack doesn't know
+still reads as unmarked; the TOC check at install (§6.4) rejects a build for
+the wrong client either way.
 
 When Blizzard changes what a folder runs (`_classic_` has been Cataclysm and
 is now Mists), only this table changes.

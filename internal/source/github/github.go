@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/austinrr/knapsack/internal/flavor"
+	"github.com/austinrr/knapsack/internal/httpx"
+	"github.com/austinrr/knapsack/internal/ref"
 	"github.com/austinrr/knapsack/internal/source"
 )
 
@@ -37,7 +39,7 @@ func New(client *http.Client, baseURL, token string) *Source {
 }
 
 // Name implements source.Source.
-func (s *Source) Name() string { return "github" }
+func (s *Source) Name() string { return ref.GitHub }
 
 // release is the part of GitHub's release object Knapsack reads.
 type release struct {
@@ -135,14 +137,17 @@ func isRateLimited(resp *http.Response) bool {
 	return false
 }
 
-// rateLimitReset returns when the rate limit resets, or the zero time if
-// GitHub didn't say.
+// rateLimitReset returns when the rate limit resets, from X-RateLimit-Reset
+// (a Unix time) or, for 429s and secondary limits, Retry-After (seconds
+// from now). It's the zero time if GitHub said neither.
 func rateLimitReset(resp *http.Response) time.Time {
-	secs, err := strconv.ParseInt(resp.Header.Get("X-RateLimit-Reset"), 10, 64)
-	if err != nil {
-		return time.Time{}
+	if secs, err := strconv.ParseInt(resp.Header.Get("X-RateLimit-Reset"), 10, 64); err == nil {
+		return time.Unix(secs, 0)
 	}
-	return time.Unix(secs, 0)
+	if secs, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && secs >= 0 {
+		return time.Now().Add(time.Duration(secs) * time.Second)
+	}
+	return time.Time{}
 }
 
 // chooseAsset picks the release asset for f (DESIGN.md §7):
@@ -155,16 +160,22 @@ func rateLimitReset(resp *http.Response) time.Time {
 // listing the assets seen. Source tarballs are never used: GitHub doesn't
 // list them as assets, and mixed-TOC source trees are what broke OpenMap.
 func chooseAsset(assets []asset, f flavor.Flavor) (asset, error) {
-	var matching, unmarked []asset
+	mine, all := f.AssetMarkers(), flavor.AllAssetMarkers()
+	var matching, unmarked, others []asset
 	for _, a := range assets {
 		base, ok := zipBase(a.Name)
 		if !ok || isNolib(base) {
 			continue
 		}
+		marked := func(markers []string) bool {
+			return slices.ContainsFunc(markers, func(m string) bool { return hasMarker(base, m) })
+		}
 		switch {
-		case slices.ContainsFunc(f.AssetMarkers(), func(m string) bool { return hasMarker(base, m) }):
+		case marked(mine):
 			matching = append(matching, a)
-		case !slices.ContainsFunc(flavor.AllAssetMarkers(), func(m string) bool { return hasMarker(base, m) }):
+		case marked(all):
+			others = append(others, a)
+		default:
 			unmarked = append(unmarked, a)
 		}
 	}
@@ -179,8 +190,11 @@ func chooseAsset(assets []asset, f flavor.Flavor) (asset, error) {
 				source.ErrNoCompatibleRelease, f, names(candidates))
 		}
 	}
-	if len(assets) == 0 {
+	switch {
+	case len(assets) == 0:
 		return asset{}, fmt.Errorf("%w: the release has no assets", source.ErrNoCompatibleRelease)
+	case len(others) > 0:
+		return asset{}, fmt.Errorf("%w: no build for %s, only for other clients: %s", source.ErrNoCompatibleRelease, f, names(others))
 	}
 	return asset{}, fmt.Errorf("%w: no .zip asset for %s among %s", source.ErrNoCompatibleRelease, f, names(assets))
 }
@@ -200,10 +214,11 @@ func hasMarker(base, marker string) bool {
 }
 
 // isNolib reports whether an asset is a -nolib build, which needs its
-// libraries installed separately. The packager puts the marker before any
-// client marker (Addon-1.0-nolib-classic), so it can be anywhere.
+// libraries installed separately. The packager puts the tag before any
+// client marker (Addon-1.0-nolib-classic), so it can be anywhere, but only
+// as a whole word: Foo-nolibrary isn't one.
 func isNolib(base string) bool {
-	return strings.Contains(base, "-nolib") || strings.Contains(base, "_nolib")
+	return slices.Contains(strings.FieldsFunc(base, func(r rune) bool { return r == '-' || r == '_' }), "nolib")
 }
 
 func names(assets []asset) string {
@@ -222,7 +237,7 @@ func digest(d string) (string, error) {
 		return "", nil
 	}
 	hex, ok := strings.CutPrefix(d, "sha256:")
-	if !ok || len(hex) != 64 || strings.Trim(strings.ToLower(hex), "0123456789abcdef") != "" {
+	if !ok || !httpx.IsSHA256(hex) {
 		return "", fmt.Errorf("unsupported digest %q", d)
 	}
 	return strings.ToLower(hex), nil

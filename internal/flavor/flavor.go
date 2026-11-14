@@ -91,14 +91,14 @@ var table = []struct {
 		Family:    FamilyClassic,
 		Interface: Range{Min: 50000, Max: 59999},
 		Product:   "wow_classic",
-	}, []string{"mists"}},
+	}, []string{"mists", "mop"}},
 	{ClassicEra, Client{
 		Folder:    "_classic_era_",
 		GameType:  "vanilla",
 		Family:    FamilyClassic,
 		Interface: Range{Min: 11000, Max: 11999},
 		Product:   "wow_classic_era",
-	}, []string{"vanilla", "classic"}},
+	}, []string{"vanilla", "classic", "era", "classic_era"}},
 	{Anniversary, Client{
 		Folder:    "_anniversary_",
 		GameType:  "tbc",
@@ -134,7 +134,9 @@ func KnownGameType(name string) bool {
 // otherMarkers are asset suffixes for game types Knapsack has no flavor
 // for. An asset with one is for some other client, so it never counts as
 // unmarked.
-var otherMarkers = []string{"wrath", "wotlkc", "cata"}
+// Season of Discovery and Hardcore run on the Classic Era client but get
+// their own builds, so they're here too.
+var otherMarkers = []string{"wrath", "wotlk", "wotlkc", "cata", "cataclysm", "sod", "hardcore"}
 
 // AssetMarkers returns the suffixes that mark a release asset as built for
 // this flavor, such as "forever" in Addon-1.0-forever.zip.
