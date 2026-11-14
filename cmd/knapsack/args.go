@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/austinrr/knapsack/internal/app"
 )
 
 // subcommandArgs is the Args validator for commands that only group
@@ -44,7 +46,7 @@ func exactArgs(what string) cobra.PositionalArgs {
 	return func(cmd *cobra.Command, args []string) error {
 		switch {
 		case len(args) == 0:
-			return fmt.Errorf("%s needs %s %s", cmd.CommandPath(), article(what), what)
+			return missingArgs(cmd, fmt.Sprintf("%s needs %s %s", cmd.CommandPath(), article(what), what))
 		case len(args) > 1:
 			return fmt.Errorf("%s takes one %s, got %d arguments", cmd.CommandPath(), what, len(args))
 		}
@@ -65,8 +67,21 @@ func article(word string) string {
 func minArgs(what string) cobra.PositionalArgs {
 	return func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
-			return fmt.Errorf("%s needs at least one %s", cmd.CommandPath(), what)
+			return missingArgs(cmd, fmt.Sprintf("%s needs at least one %s", cmd.CommandPath(), what))
 		}
 		return nil
 	}
+}
+
+// missingArgs is the error for a command run without the arguments it
+// needs, with a hint showing how it's used: its first example, and where
+// to find the rest. Running a command bare to see what it wants is common,
+// so the answer shouldn't need a second command.
+func missingArgs(cmd *cobra.Command, msg string) error {
+	help := fmt.Sprintf("`%s --help` shows more", cmd.CommandPath())
+	example, _, _ := strings.Cut(strings.TrimSpace(cmd.Example), "\n")
+	if example == "" {
+		return &app.UserError{Msg: msg, Hint: help}
+	}
+	return &app.UserError{Msg: msg, Hint: fmt.Sprintf("for example, `%s`; %s", example, help)}
 }

@@ -2,3 +2,4 @@
 # stdout:
 # stderr:
 error: knapsack info needs an addon
+hint: for example, `knapsack info baganator-mirror`; `knapsack info --help` shows more
