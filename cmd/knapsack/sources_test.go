@@ -34,6 +34,10 @@ func TestSourcesCommands(t *testing.T) {
 		{name: "sources/set_key_overridden", stdin: "cf-secret", env: map[string]string{"KNAPSACK_CURSEFORGE_API_KEY": "env"},
 			args: []string{"sources", "set-key", "curseforge"}},
 		{name: "sources/set_key_empty", stdin: "  \n", args: []string{"sources", "set-key", "curseforge"}},
+		// pass prints the secret first, then other fields.
+		{name: "sources/set_key_pass_output", stdin: "cf-secret\nlogin: me\nurl: console.curseforge.com\n", args: []string{"sources", "set-key", "curseforge"}},
+		{name: "sources/set_key_spaces", stdin: "cf secret\n", args: []string{"sources", "set-key", "curseforge"}},
+		{name: "sources/set_key_not_text", stdin: "cf\xff\xfe", args: []string{"sources", "set-key", "curseforge"}},
 		{name: "sources/set_key_github", stdin: "token", args: []string{"sources", "set-key", "github"}},
 		{name: "sources/set_key_unknown", stdin: "key", args: []string{"sources", "set-key", "nope"}},
 		{name: "sources/set_key_no_args", args: []string{"sources", "set-key"}},
@@ -62,6 +66,13 @@ func TestSetKeyFile(t *testing.T) {
 	if info, err := os.Stat(path); runtime.GOOS != "windows" && (err != nil || info.Mode().Perm() != 0o600) {
 		t.Errorf("config mode = %v, %v; want 0600", info.Mode().Perm(), err)
 	}
+	// Only pass's first line is the key.
+	s.stdin = "cf-secret-2\nlogin: me\n"
+	s.mustRun("sources", "set-key", "curseforge")
+	if data, _ := os.ReadFile(path); !strings.Contains(string(data), `api_key = "cf-secret-2"`) || strings.Contains(string(data), "login") {
+		t.Errorf("config after a pass-style key:\n%s", data)
+	}
+	s.stdin = ""
 	s.mustRun("sources", "unset-key", "curseforge")
 	if data, _ := os.ReadFile(path); strings.Contains(string(data), "cf-secret") {
 		t.Errorf("config still has the key after unset-key:\n%s", data)

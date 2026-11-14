@@ -38,7 +38,8 @@ func sourceStatus(s app.SourceInfo) string {
 func keyFrom(ctx context.Context, e env, s app.SourceInfo) string {
 	switch {
 	case !s.NeedsKey:
-		return githubTokenOrigin(ctx, e.getenv, e.ghAuthToken)
+		_, origin := findGitHubToken(ctx, e.getenv, e.ghAuthToken)
+		return origin
 	case s.Key == app.KeyEnv:
 		return s.Env
 	case s.Key == app.KeyConfig:
@@ -80,7 +81,7 @@ higher rate limit, and never stores it.`,
   knapsack sources set-key curseforge
   pass show curseforge | knapsack sources set-key curseforge`,
 		Args:    subcommandArgs,
-		PreRunE: c.buildNetApp,
+		PreRunE: c.buildApp,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			sources, err := c.app.Sources(cmd.Context())
 			if err != nil {
@@ -121,12 +122,13 @@ func newSetKeyCmd(c *cli) *cobra.Command {
 		Long: `Store a source's API key in config, for every profile.
 
 On a terminal it asks for the key without showing it. Otherwise it reads
-the key from stdin, so it can come from a password manager. It never takes
-the key as an argument, which would leave it in your shell history.`,
+the key's first line from stdin, so it can come from a password manager
+such as pass, which prints the secret first. It never takes the key as an
+argument, which would leave it in your shell history.`,
 		Example: `  knapsack sources set-key curseforge
   pass show curseforge | knapsack sources set-key curseforge`,
 		Args:    exactArgs("source"),
-		PreRunE: c.buildNetApp,
+		PreRunE: c.buildApp,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Checked first, so nobody types a key for a source that
 			// can't take one.
@@ -151,7 +153,7 @@ the key as an argument, which would leave it in your shell history.`,
 			if out.err != nil {
 				return out.err
 			}
-			return noteKey(cmd, c, ks.Name, res, true)
+			return noteKey(cmd, ks.Name, res, true)
 		},
 	}
 }
@@ -162,7 +164,7 @@ func newUnsetKeyCmd(c *cli) *cobra.Command {
 		Short:   "Remove a source's API key from config",
 		Example: `  knapsack sources unset-key curseforge`,
 		Args:    exactArgs("source"),
-		PreRunE: c.buildNetApp,
+		PreRunE: c.buildApp,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ks, err := app.KeyedSource(args[0])
 			if err != nil {
@@ -181,7 +183,7 @@ func newUnsetKeyCmd(c *cli) *cobra.Command {
 			if out.err != nil {
 				return out.err
 			}
-			return noteKey(cmd, c, ks.Name, res, false)
+			return noteKey(cmd, ks.Name, res, false)
 		},
 	}
 }
@@ -189,7 +191,7 @@ func newUnsetKeyCmd(c *cli) *cobra.Command {
 // noteKey adds what affects the key just set or removed, on stderr: an
 // environment variable that overrides config, and for a key just set, a
 // source Knapsack can't install from yet.
-func noteKey(cmd *cobra.Command, c *cli, name string, res app.SetSourceKeyResult, set bool) error {
+func noteKey(cmd *cobra.Command, name string, res app.SetSourceKeyResult, set bool) error {
 	w := cmd.ErrOrStderr()
 	if res.Overridden {
 		msg := "%s is set, so Knapsack uses it instead of config.\n"
@@ -200,18 +202,9 @@ func noteKey(cmd *cobra.Command, c *cli, name string, res app.SetSourceKeyResult
 			return err
 		}
 	}
-	if !set {
-		return nil
-	}
-	sources, err := c.app.Sources(cmd.Context())
-	if err != nil {
+	if set && !res.Available {
+		_, err := fmt.Fprintf(w, "Knapsack can't install from %s yet; it will use the key once it can.\n", name)
 		return err
-	}
-	for _, s := range sources {
-		if s.Name == name && !s.Available {
-			_, err := fmt.Fprintf(w, "Knapsack can't install from %s yet; it will use the key once it can.\n", name)
-			return err
-		}
 	}
 	return nil
 }
@@ -224,7 +217,7 @@ func readKey(cmd *cobra.Command, e env, source string) (string, error) {
 		if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "API key for %s: ", source); err != nil {
 			return "", err
 		}
-		b, err := e.readPassword()
+		b, err := e.readPassword(cmd.Context())
 		_, _ = fmt.Fprintln(cmd.ErrOrStderr()) // the prompt's line; nothing else to report a failure on
 		if err != nil {
 			return "", fmt.Errorf("read the key: %w", err)
@@ -241,7 +234,9 @@ func readKey(cmd *cobra.Command, e env, source string) (string, error) {
 		if len(b) > maxKey {
 			return "", &app.UserError{Msg: fmt.Sprintf("stdin has more than %d bytes, which is too long for an API key", maxKey)}
 		}
-		key = string(b)
+		// Only the first line, as password managers print it: `pass show`
+		// puts the secret first, then fields like login: on later lines.
+		key, _, _ = strings.Cut(string(b), "\n")
 	}
 	key = strings.TrimSpace(key)
 	if key == "" {

@@ -46,7 +46,7 @@ type env struct {
 	// readPassword reads a typed one without echoing it instead.
 	stdin         io.Reader
 	stdinTerminal bool
-	readPassword  func() ([]byte, error)
+	readPassword  func(context.Context) ([]byte, error)
 	// githubURL is GitHub's API, and ghAuthToken asks the GitHub CLI for a
 	// token. Tests replace both, so they never reach the real GitHub.
 	githubURL   string
@@ -79,15 +79,46 @@ func main() {
 		executable:  exe,
 		interactive: isTerminal(os.Stderr),
 
-		stdin:         os.Stdin,
-		stdinTerminal: isTerminal(os.Stdin),
-		readPassword:  func() ([]byte, error) { return term.ReadPassword(int(os.Stdin.Fd())) },
+		stdin: os.Stdin,
+		// term.IsTerminal, not isTerminal: /dev/null and NUL are
+		// character devices too, but not terminals to read a key at.
+		stdinTerminal: term.IsTerminal(int(os.Stdin.Fd())),
+		readPassword:  readPassword,
 
 		githubURL:   github.DefaultBaseURL,
 		ghAuthToken: ghAuthToken,
 	})
 	stop()
 	os.Exit(code)
+}
+
+// readPassword reads a line from the terminal on stdin without echoing it.
+// Ctrl-C cancels ctx, which the read itself can't see, so it's watched
+// here: the terminal gets its echo back, and the read is abandoned to the
+// process's exit. Otherwise the second Ctrl-C would kill the process with
+// echo still off.
+func readPassword(ctx context.Context) ([]byte, error) {
+	fd := int(os.Stdin.Fd())
+	state, err := term.GetState(fd)
+	if err != nil {
+		return nil, err
+	}
+	type result struct {
+		b   []byte
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		b, err := term.ReadPassword(fd)
+		done <- result{b, err}
+	}()
+	select {
+	case r := <-done:
+		return r.b, r.err
+	case <-ctx.Done():
+		_ = term.Restore(fd, state) // the best that can be done; the error is ctx's
+		return nil, ctx.Err()
+	}
 }
 
 // executable is the running binary's path with symlinks resolved, so

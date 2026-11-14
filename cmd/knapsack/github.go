@@ -54,26 +54,24 @@ func (l *lazyGitHub) LatestAssets(ctx context.Context, id string) (string, []sou
 // (DESIGN.md §5.2). It returns "" when there's none, which still works,
 // with GitHub's lower anonymous rate limit.
 func githubToken(ctx context.Context, getenv func(string) string, ghAuthToken func(context.Context) string) string {
-	for _, k := range []string{"GITHUB_TOKEN", "GH_TOKEN"} {
-		if t := strings.TrimSpace(getenv(k)); t != "" {
-			return t
-		}
-	}
-	return ghAuthToken(ctx)
+	token, _ := findGitHubToken(ctx, getenv, ghAuthToken)
+	return token
 }
 
-// githubTokenOrigin says where githubToken would find a token: the
-// variable's name, "gh" for the GitHub CLI, or "" for none.
-func githubTokenOrigin(ctx context.Context, getenv func(string) string, ghAuthToken func(context.Context) string) string {
+// findGitHubToken is githubToken, also saying where the token came from:
+// the variable's name, "gh" for the GitHub CLI, or "" for none. It's the
+// one place the order lives, so `knapsack sources` reports what commands
+// use.
+func findGitHubToken(ctx context.Context, getenv func(string) string, ghAuthToken func(context.Context) string) (token, origin string) {
 	for _, k := range []string{"GITHUB_TOKEN", "GH_TOKEN"} {
-		if strings.TrimSpace(getenv(k)) != "" {
-			return k
+		if t := strings.TrimSpace(getenv(k)); t != "" {
+			return t, k
 		}
 	}
-	if ghAuthToken(ctx) != "" {
-		return "gh"
+	if t := ghAuthToken(ctx); t != "" {
+		return t, "gh"
 	}
-	return ""
+	return "", ""
 }
 
 // ghAuthToken asks the GitHub CLI for its token, if it's installed and

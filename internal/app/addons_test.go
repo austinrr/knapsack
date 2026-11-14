@@ -707,3 +707,33 @@ func TestAddReportsProgress(t *testing.T) {
 		t.Errorf("last progress = %d of %d (%s), want %d of %d (v1)", last.Done, last.Total, last.Version, size, size)
 	}
 }
+
+// Whether a source is ready is a property of the build, so an App built
+// without network sources, as offline commands are, reports the same.
+func TestSourcesWithoutNetwork(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	p, err := paths.Resolve(func(string) string { return home })
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := app.New(app.Options{Paths: p, Config: config.NewStore(p.ConfigFile), State: state.NewStore(p.StateFile),
+		Getenv: func(k string) string {
+			if k == config.WagoKeyEnv {
+				return "from-env"
+			}
+			return ""
+		}})
+	got, err := a.Sources(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []app.SourceInfo{
+		{Name: "github", Available: true},
+		{Name: "curseforge", NeedsKey: true, Env: config.CurseForgeKeyEnv},
+		{Name: "wago", NeedsKey: true, Key: app.KeyEnv, Env: config.WagoKeyEnv},
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("Sources (-want +got):\n%s", diff)
+	}
+}

@@ -957,10 +957,14 @@ forever: 1 upgrade · retail: 1 install
   comes from: config, the environment variable that overrides it, or for
   GitHub, `GITHUB_TOKEN`, `GH_TOKEN` or `gh` (which listing may run).
   `sources set-key <source>` stores a key: typed at a prompt that doesn't
-  echo on a terminal, else read from stdin (`pass show cf | knapsack
-  sources set-key curseforge`), never as an argument, which would land in
-  shell history and `ps`, as `gh secret set` and `docker login
-  --password-stdin` avoid. The source is checked before the key is asked
+  echo on a terminal, else the first line of stdin (`pass show cf |
+  knapsack sources set-key curseforge`; pass prints the secret first),
+  never as an argument, which would land in shell history and `ps`, as `gh
+  secret set` and `docker login --password-stdin` avoid. Ctrl-C at the
+  prompt restores the terminal's echo. A key with spaces, control
+  characters or invalid UTF-8 is refused before it's saved. Whether a
+  source is ready is fixed by the build, not by how the App was made, so
+  these commands don't build network clients. The source is checked before the key is asked
   for; GitHub is refused, since its token is never stored. Both `set-key`
   and `unset-key` note on stderr when the environment variable overrides
   config, and `set-key` when the source isn't built yet.

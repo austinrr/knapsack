@@ -194,7 +194,7 @@ func (s *sandbox) run(args ...string) result {
 
 		stdin:         strings.NewReader(s.stdin),
 		stdinTerminal: s.terminal,
-		readPassword:  func() ([]byte, error) { return []byte(s.stdin), nil },
+		readPassword:  func(context.Context) ([]byte, error) { return []byte(s.stdin), nil },
 	})
 	return result{Stdout: s.normalize(stdout.String()), Stderr: s.normalize(stderr.String()), Code: code}
 }

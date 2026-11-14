@@ -129,18 +129,41 @@ func (c *Config) SetAPIKey(source, key string) bool {
 	return false
 }
 
+// Where an API key comes from, as KeyOrigin reports it.
+const (
+	FromNowhere = ""
+	FromConfig  = "config"
+	FromEnv     = "env"
+)
+
 // APIKey returns the API key for a source. The environment variable wins
 // over config when it's set. Sources without keys return "".
 func (c *Config) APIKey(source string, getenv func(string) string) string {
+	key, _ := c.apiKey(source, getenv)
+	return key
+}
+
+// KeyOrigin says where APIKey's key for a source comes from: FromEnv,
+// FromConfig, or FromNowhere when there's none.
+func (c *Config) KeyOrigin(source string, getenv func(string) string) string {
+	_, origin := c.apiKey(source, getenv)
+	return origin
+}
+
+// apiKey is the one place the environment-over-config rule lives.
+func (c *Config) apiKey(source string, getenv func(string) string) (string, string) {
 	for _, ks := range keyedSources {
-		if ks.name == source {
-			if v := getenv(ks.env); v != "" {
-				return v
-			}
-			return ks.field(&c.Sources).APIKey
+		if ks.name != source {
+			continue
+		}
+		if v := getenv(ks.env); v != "" {
+			return v, FromEnv
+		}
+		if k := ks.field(&c.Sources).APIKey; k != "" {
+			return k, FromConfig
 		}
 	}
-	return ""
+	return "", FromNowhere
 }
 
 // hasSecrets reports whether the config holds an API key, in which case it's

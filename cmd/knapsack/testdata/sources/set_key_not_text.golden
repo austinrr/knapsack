@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: the API key isn't valid text
+hint: an API key is one word with no spaces; check what was pasted or piped in
