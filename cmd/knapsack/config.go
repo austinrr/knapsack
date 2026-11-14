@@ -13,6 +13,7 @@ import (
 
 	"github.com/austinrr/knapsack/internal/app"
 	"github.com/austinrr/knapsack/internal/config"
+	"github.com/austinrr/knapsack/internal/discover"
 	"github.com/austinrr/knapsack/internal/flavor"
 	"github.com/austinrr/knapsack/internal/ref"
 )
@@ -266,8 +267,7 @@ func printAutoProfiles(out *printer, profiles []app.AutoProfile, home string) {
 // sameFolder reports whether a and b are the same path, ignoring case only
 // where the filesystem does, on Windows and macOS.
 func sameFolder(a, b string) bool {
-	a, b = filepath.Clean(a), filepath.Clean(b)
-	return a == b || (runtime.GOOS == "windows" || runtime.GOOS == "darwin") && strings.EqualFold(a, b)
+	return sameName(filepath.Clean(a), filepath.Clean(b))
 }
 
 // hintPath is a path for a command to copy, quoted: one under home starts
@@ -360,10 +360,10 @@ func newGetProfilesCmd(c *cli) *cobra.Command {
 		Long: `List profiles: which is current, each one's flavor, how many addons
 it has, and its folder.
 
-The folder is shortened to the client folder, with ~ for your home and …
-for the usual part of a Wine install (drive_c/Program Files
+The folder is shortened for reading: the client folder, with ~ for your
+home and … for the usual part of a Wine install (drive_c/Program Files
 (x86)/World of Warcraft). -o wide shows each profile's full AddOns path,
-and -o json always has it.`,
+to copy, and -o json always has it.`,
 		Example: `  knapsack config get-profiles
   knapsack config get-profiles -o wide`,
 		Args: noArgs,
@@ -404,27 +404,35 @@ and -o json always has it.`,
 	return cmd
 }
 
-// displayPath shortens a profile's AddOns path for a table. A path in a
-// client folder is shown as that folder, since it's what --path takes, and
-// in a Wine prefix, the standard part from drive_c to World of Warcraft
-// becomes …: ~/Games/battlenet/…/_retail_. A home is ~, as shortPath has it.
+// displayPath shortens a profile's AddOns path for reading in a table, not
+// for copying (-o wide is for that). A client folder's Interface/AddOns is
+// shown as the client folder, and in a Wine prefix, the launcher's default
+// drive_c/Program Files (x86)/World of Warcraft becomes …:
+// ~/Games/battlenet/…/_retail_. Only that one layout is cut, so two
+// installs in one prefix never look the same. A home is ~, as shortPath
+// has it.
 func displayPath(path, home string) string {
 	path = filepath.Clean(path)
 	interfaceDir := filepath.Dir(path)
 	client := filepath.Dir(interfaceDir)
-	if !strings.EqualFold(filepath.Base(path), "AddOns") || !strings.EqualFold(filepath.Base(interfaceDir), "Interface") ||
+	if !sameName(filepath.Base(path), "AddOns") || !sameName(filepath.Base(interfaceDir), "Interface") ||
 		!flavor.IsClientFolder(filepath.Base(client)) {
 		return shortPath(path, home)
 	}
 	sep := string(filepath.Separator)
 	parts := strings.Split(client, sep)
-	// The Wine prefix's drive_c, and the game folder after it.
-	drive := slices.IndexFunc(parts, func(p string) bool { return strings.EqualFold(p, "drive_c") })
-	game := len(parts) - 2
-	if drive > 0 && game > drive && strings.EqualFold(parts[game], "World of Warcraft") {
-		client = strings.Join(parts[:drive], sep) + sep + "…" + sep + parts[len(parts)-1]
+	// …/<prefix>/drive_c/<install dir>/World of Warcraft/<client>
+	if n := len(parts); n >= 5 && sameName(parts[n-2], discover.GameFolder) && sameName(parts[n-3], "Program Files (x86)") &&
+		sameName(parts[n-4], "drive_c") {
+		client = strings.Join(parts[:n-4], sep) + sep + "…" + sep + parts[n-1]
 	}
 	return shortPath(client, home)
+}
+
+// sameName reports whether two names are the same file or folder, ignoring
+// case only where the filesystem does, on Windows and macOS.
+func sameName(a, b string) bool {
+	return a == b || (runtime.GOOS == "windows" || runtime.GOOS == "darwin") && strings.EqualFold(a, b)
 }
 
 func newUseProfileCmd(c *cli) *cobra.Command {

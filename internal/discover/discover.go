@@ -14,8 +14,8 @@ import (
 	"github.com/austinrr/knapsack/internal/flavor"
 )
 
-// gameFolder is the folder the Battle.net launcher installs the game in.
-const gameFolder = "World of Warcraft"
+// GameFolder is the folder the Battle.net launcher installs the game in.
+const GameFolder = "World of Warcraft"
 
 // Candidates returns the places the game folder usually is on goos, for
 // Find. They may be glob patterns. home is the user's home directory, and
@@ -26,13 +26,13 @@ func Candidates(goos, home string, drives []string) []string {
 	case "windows":
 		for _, d := range drives {
 			for _, dir := range []string{"Program Files (x86)", "Program Files", "Games", "Blizzard", ""} {
-				out = append(out, filepath.Join(d, dir, gameFolder))
+				out = append(out, filepath.Join(d, dir, GameFolder))
 			}
 		}
 	case "darwin":
-		out = append(out, filepath.Join("/Applications", gameFolder))
+		out = append(out, filepath.Join("/Applications", GameFolder))
 		if home != "" {
-			out = append(out, filepath.Join(escapeGlob(home), "Applications", gameFolder))
+			out = append(out, filepath.Join(escapeGlob(home), "Applications", GameFolder))
 		}
 	default:
 		// Linux runs the game under Wine, in a prefix whose drive_c is a
@@ -55,7 +55,7 @@ func Candidates(goos, home string, drives []string) []string {
 		}
 		for _, p := range prefixes {
 			for _, dir := range []string{"Program Files (x86)", "Program Files", "Games"} {
-				out = append(out, filepath.Join(home, filepath.FromSlash(p), "drive_c", dir, gameFolder))
+				out = append(out, filepath.Join(home, filepath.FromSlash(p), "drive_c", dir, GameFolder))
 			}
 		}
 	}
