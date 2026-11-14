@@ -1,7 +1,6 @@
 package state
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -31,7 +30,7 @@ func NewStore(pathFor func(profile string) string) *Store {
 	return &Store{pathFor: pathFor}
 }
 
-// fileState mirrors the TOML layout. Refs are strings here and parsed after
+// fileState mirrors the TOML layout, for decoding; encode.go writes it. Refs are strings here and parsed after
 // decoding, so a bad one gets an error that names it.
 type fileState struct {
 	Version int                  `toml:"version"`
@@ -124,10 +123,7 @@ func (s *Store) Save(profile string, st *State) error {
 	if err := st.Validate(); err != nil {
 		return fmt.Errorf("invalid state: %w", err)
 	}
-	data, err := Marshal(st)
-	if err != nil {
-		return fmt.Errorf("save state: %w", err)
-	}
+	data := Marshal(st)
 	path := s.pathFor(profile)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("save state: %w", err)
@@ -136,27 +132,6 @@ func (s *Store) Save(profile string, st *State) error {
 		return fmt.Errorf("save state: %w", err)
 	}
 	return nil
-}
-
-// Marshal returns st as TOML, in the layout Save writes: the schema
-// version, then one table per addon in ref order. It doesn't validate.
-//
-// Unlike config, state is machine-written, so it uses the TOML library's
-// encoder as is. It writes map keys sorted, so output is stable.
-func Marshal(st *State) ([]byte, error) {
-	file := fileState{Version: SchemaVersion, Addons: map[string]fileAddon{}}
-	for r, a := range st.Addons {
-		fa := fileAddon(a)
-		fa.InstalledAt = a.InstalledAt.UTC().Truncate(time.Second)
-		file.Addons[r.String()] = fa
-	}
-	var buf bytes.Buffer
-	enc := toml.NewEncoder(&buf)
-	enc.Indent = ""
-	if err := enc.Encode(file); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
 }
 
 // Rename moves from's state to to, for renaming a profile. It's a no-op if

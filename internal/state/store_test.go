@@ -91,10 +91,7 @@ func TestSaveNormalizesTime(t *testing.T) {
 
 func TestGolden(t *testing.T) {
 	t.Parallel()
-	got, err := state.Marshal(sample(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	got := state.Marshal(sample(t))
 	path := filepath.Join("testdata", "state.golden")
 	if *update {
 		if err := os.WriteFile(path, got, 0o600); err != nil {

@@ -146,9 +146,9 @@ GitHub SDKs (go-github), git libraries, ORMs/SQLite.
 
    | Package | May import (internal) |
    |---|---|
-   | `flavor`, `ref`, `toc`, `paths`, `atomicfile`, `lock` | nothing internal |
+   | `flavor`, `ref`, `toc`, `paths`, `atomicfile`, `lock`, `tomlenc` | nothing internal |
    | `httpx` | nothing internal |
-   | `config`, `state` | `flavor`, `ref`, `atomicfile` |
+   | `config`, `state` | `flavor`, `ref`, `atomicfile`, `tomlenc` |
    | `install` | `flavor`, `toc` |
    | `source` | `flavor`, `ref` |
    | `source/*` | `source`, `flavor`, `httpx` |
@@ -183,6 +183,7 @@ knapsack/
     install/             verify → extract → validate → swap (filesystem only)
     toc/                 .toc parsing
     atomicfile/          atomic file writes (temp file, fsync, rename)
+    tomlenc/             TOML value formatting for the config and state encoders
     lock/                per-profile and config locks (wraps gofrs/flock)
     httpx/               shared HTTP client (timeouts, User-Agent) and Download
     tui/                 later
@@ -312,12 +313,12 @@ reliably worked out from what's on disk.
 ```toml
 version = 1
 
-[addons]
 [addons."github:austinrr/baganator-mirror"]
 version = "851"
 sha256 = "d3775a6bd651…"
 installed_at = 2026-11-13T18:04:05Z
 folders = ["Baganator"]
+
 [addons."wago:VBNBxKx5"]
 version = "11.2.0"
 sha256 = "1ab4…"
@@ -328,8 +329,8 @@ folders = ["Details", "Details_DataStorage", "Details_EncounterDetails"]
 `version` is the schema version, for future migrations. A file with a newer
 one is refused with a hint to upgrade Knapsack. An addon's `version` is its
 release label, shown but never compared, and `sha256` is the identity of the
-installed release. Unlike config, the file is written by the TOML library's
-encoder as is: nobody edits it, so a hand-written layout isn't worth the code.
+installed release. Like config, the file is written in a fixed layout by a
+small hand-written encoder, so it stays easy to read when debugging.
 
 - **"Is an update available?" compares identity, not versions.** An addon is
   outdated when the resolved release's SHA-256 differs from the installed

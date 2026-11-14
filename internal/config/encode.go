@@ -3,7 +3,8 @@ package config
 import (
 	"bytes"
 	"fmt"
-	"strings"
+
+	"github.com/austinrr/knapsack/internal/tomlenc"
 )
 
 // Marshal returns c as TOML, in the same layout Save writes. It doesn't
@@ -20,7 +21,8 @@ func Marshal(c *Config) []byte {
 //
 // It's hand-written because the TOML library indents nested tables, adds an
 // empty [profiles] header, and puts each array on a single line. Profile
-// names are validated to be bare keys, so only string values need escaping.
+// names are validated to be bare keys, so only string values need escaping,
+// which tomlenc.Quote does.
 func encode(buf *bytes.Buffer, c *Config) {
 	section := func() {
 		if buf.Len() > 0 {
@@ -29,22 +31,22 @@ func encode(buf *bytes.Buffer, c *Config) {
 	}
 
 	if c.CurrentProfile != "" {
-		fmt.Fprintf(buf, "current_profile = %s\n", quote(c.CurrentProfile))
+		fmt.Fprintf(buf, "current_profile = %s\n", tomlenc.Quote(c.CurrentProfile))
 	}
 
 	for _, name := range c.ProfileNames() {
 		p := c.Profiles[name]
 		section()
 		fmt.Fprintf(buf, "[profiles.%s]\n", name)
-		fmt.Fprintf(buf, "path = %s\n", quote(p.Path))
-		fmt.Fprintf(buf, "flavor = %s\n", quote(string(p.Flavor)))
+		fmt.Fprintf(buf, "path = %s\n", tomlenc.Quote(p.Path))
+		fmt.Fprintf(buf, "flavor = %s\n", tomlenc.Quote(string(p.Flavor)))
 		if len(p.Addons) == 0 {
 			buf.WriteString("addons = []\n")
 			continue
 		}
 		buf.WriteString("addons = [\n")
 		for _, r := range p.Addons {
-			fmt.Fprintf(buf, "  %s,\n", quote(r.String()))
+			fmt.Fprintf(buf, "  %s,\n", tomlenc.Quote(r.String()))
 		}
 		buf.WriteString("]\n")
 	}
@@ -56,42 +58,6 @@ func encode(buf *bytes.Buffer, c *Config) {
 		}
 		section()
 		fmt.Fprintf(buf, "[sources.%s]\n", ks.name)
-		fmt.Fprintf(buf, "api_key = %s\n", quote(key))
+		fmt.Fprintf(buf, "api_key = %s\n", tomlenc.Quote(key))
 	}
-}
-
-// quote returns s as a TOML basic string. Per the TOML spec, '"', '\' and
-// control characters must be escaped; everything else, including non-ASCII
-// UTF-8, is written as is. (strconv.Quote isn't used because its \x escapes
-// aren't valid TOML.)
-func quote(s string) string {
-	var b strings.Builder
-	b.Grow(len(s) + 2)
-	b.WriteByte('"')
-	for _, r := range s {
-		switch r {
-		case '"':
-			b.WriteString(`\"`)
-		case '\\':
-			b.WriteString(`\\`)
-		case '\b':
-			b.WriteString(`\b`)
-		case '\t':
-			b.WriteString(`\t`)
-		case '\n':
-			b.WriteString(`\n`)
-		case '\f':
-			b.WriteString(`\f`)
-		case '\r':
-			b.WriteString(`\r`)
-		default:
-			if r < 0x20 || r == 0x7f {
-				fmt.Fprintf(&b, `\u%04X`, r)
-			} else {
-				b.WriteRune(r)
-			}
-		}
-	}
-	b.WriteByte('"')
-	return b.String()
 }
