@@ -952,7 +952,7 @@ forever: 1 upgrade · retail: 1 install
   and hint, and the command exits non-zero at the end. A malformed ref is a
   usage error instead: it's caught with the arguments, before any work.
 - `add` and `remove` print one line per addon on stdout (`Added
-  github:austinrr/baganator-mirror 854.`). Warnings go to stderr, prefixed
+  github:austinrr/baganator-mirror 854 to forever.`). Warnings go to stderr, prefixed
   with the addon's ref, and so does
   each step (resolving, downloading) with `-v`. On a terminal without `-v`,
   progress is one status line on stderr, redrawn with `\r` at most every
@@ -962,10 +962,16 @@ forever: 1 upgrade · retail: 1 install
   gets plain lines. An empty `list` prints a note
   on stderr and nothing on stdout. Times are shown in UTC (RFC 3339).
 - `update` prints a line per addon it installs, upgrades or removes, then a
-  summary (`1 upgraded, 3 up to date`). `check` prints the table in §8.2,
-  then a summary (`1 upgrade, 1 prune`, or `Everything is up to date.`).
-  Under `-A`, lines are prefixed with the profile, tables get a `PROFILE`
-  column, and the summary has one group per profile. `-A` ignores
+  summary (`forever: 1 upgraded, 3 up to date`). `check` prints the table in
+  §8.2, then a summary (`forever: 1 upgrade, 1 prune`, or `forever: up to
+  date`). Under `-A`, lines are prefixed with the profile, tables get a
+  `PROFILE` column, and the summary has one group per profile.
+- Human-readable output always names the profile it acted on, so a wrong
+  `-p`, `KNAPSACK_PROFILE` or current profile shows at once: summaries
+  start with it, `add` and `remove` say `to forever` / `from forever`,
+  `list` prints `Profile forever:` on stderr above its table (stdout stays
+  just the table), `info` has a `Profile:` field, and an empty profile is
+  `No addons in profile forever.` JSON already has a `profile` field. `-A` ignores
   `KNAPSACK_PROFILE`, and with no profiles it's an error.
 - Exit codes follow the `diff`/`grep` and `kubectl diff` convention:
 

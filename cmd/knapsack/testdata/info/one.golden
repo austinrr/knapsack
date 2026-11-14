@@ -1,5 +1,6 @@
 # exit: 0
 # stdout:
+Profile:    forever
 Ref:        github:austinrr/details-mirror
 Status:     installed
 Version:    v1
