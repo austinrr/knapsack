@@ -48,9 +48,9 @@ checksum:
   name_template: checksums.txt # SHA-256, goreleaser's default
 
 # Release notes come from git-cliff (cliff.toml), passed with
-# --release-notes, so goreleaser's own changelog is off.
-changelog:
-  disable: true
+# --release-notes, which replaces goreleaser's own changelog. Don't set
+# changelog.disable: it skips the step that reads --release-notes too, and
+# releases go out with no notes.
 
 # The repository comes from the git remote. Only vX.Y.Z tags are released
 # (release.yml checks), so there are no pre-releases.
