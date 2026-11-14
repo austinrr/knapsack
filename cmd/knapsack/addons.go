@@ -16,6 +16,7 @@ import (
 
 func newAddCmd(c *cli) *cobra.Command {
 	var force bool
+	var refs []ref.Ref
 	cmd := &cobra.Command{
 		Use:   "add <ref|url>...",
 		Short: "Add addons to the profile and install them",
@@ -27,10 +28,14 @@ addon owns are refused unless --force is given; folders another addon owns
 are never replaced.`,
 		Example: `  knapsack add github:austinrr/baganator-mirror
   knapsack add https://github.com/austinrr/syndicator-mirror -p forever`,
-		Args:    minArgs("addon"),
-		PreRunE: c.buildNetApp,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			refs := make([]ref.Ref, len(args))
+		// Refs are parsed with the arguments, before any work: a typo is a
+		// usage error, so nothing is installed and gh is never asked for a
+		// token.
+		Args: func(cmd *cobra.Command, args []string) error {
+			if err := minArgs("addon")(cmd, args); err != nil {
+				return err
+			}
+			refs = make([]ref.Ref, len(args))
 			for i, a := range args {
 				r, err := ref.Parse(a)
 				if err != nil {
@@ -38,10 +43,13 @@ are never replaced.`,
 				}
 				refs[i] = r
 			}
+			return nil
+		},
+		PreRunE: c.buildNetApp,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			// Even when err is set, results may hold addons already
+			// installed, so they're printed first.
 			results, err := c.app.Add(cmd.Context(), c.profileName(), refs, force)
-			if err != nil {
-				return err
-			}
 			out := &printer{w: cmd.OutOrStdout()}
 			for _, res := range results {
 				switch res.Action {
@@ -55,7 +63,7 @@ are never replaced.`,
 					// Failures are reported by finish; add never removes.
 				}
 			}
-			return c.finish(cmd, out, results)
+			return finish(out, results, err)
 		},
 	}
 	cmd.Flags().BoolVar(&force, "force", false, "replace folders in AddOns that no addon owns")
@@ -79,51 +87,57 @@ matches one addon.`,
 		PreRunE: c.buildApp,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			results, err := c.app.Remove(cmd.Context(), c.profileName(), args)
-			if err != nil {
-				return err
-			}
 			out := &printer{w: cmd.OutOrStdout()}
 			for _, res := range results {
 				if res.Action == app.ActionRemoved {
 					out.printf("Removed %s.\n", res.Ref)
 				}
 			}
-			return c.finish(cmd, out, results)
+			return finish(out, results, err)
 		},
 	}
 	c.addProfileFlag(cmd)
 	return cmd
 }
 
-// finish reports the failures among results, one error and hint each, on
-// stderr after the successes. Any failure makes the command exit 2 (DESIGN.md
-// §8.6).
-func (c *cli) finish(cmd *cobra.Command, out *printer, results []app.Result) error {
-	if out.err != nil {
-		return out.err
-	}
-	failed := false
+// finish collects a multi-addon command's errors for run to render after
+// the successes, each with its hint (DESIGN.md §8.6): one per failed addon,
+// then err, which stopped the command, then any failure writing stdout. A
+// closed stdout doesn't hide the failures. Any error makes the command exit
+// 2.
+func finish(out *printer, results []app.Result, err error) error {
+	var errs addonErrors
 	for _, res := range results {
-		if res.Err == nil {
-			continue
+		if res.Err != nil {
+			errs = append(errs, nameAddon(res))
 		}
-		failed = true
-		err := res.Err
-		// Name the addon, unless the error already does, as source errors
-		// do ("github owner/repo: …").
-		subject, id := res.Ref.String(), res.Ref.ID
-		if res.Ref == (ref.Ref{}) {
-			subject, id = res.Name, res.Name
-		}
-		if !strings.Contains(err.Error(), id) {
-			err = fmt.Errorf("%s: %w", subject, err)
-		}
-		renderError(cmd.ErrOrStderr(), err, c.verbose)
 	}
-	if failed {
-		return errReported
+	if err != nil {
+		errs = append(errs, err)
 	}
-	return nil
+	if out.err != nil {
+		errs = append(errs, out.err)
+	}
+	if len(errs) == 0 {
+		// Return a literal nil: a nil addonErrors in an error interface
+		// would not be == nil.
+		return nil
+	}
+	return errs
+}
+
+// nameAddon prefixes a failure with the addon it's for, unless it already
+// starts with it: source errors begin "github owner/repo", and lookup
+// errors begin with the quoted name.
+func nameAddon(res app.Result) error {
+	subject, prefix := res.Ref.String(), res.Ref.Source+" "+res.Ref.ID
+	if res.Ref == (ref.Ref{}) {
+		subject, prefix = res.Name, strconv.Quote(res.Name)
+	}
+	if strings.HasPrefix(res.Err.Error(), prefix) {
+		return res.Err
+	}
+	return fmt.Errorf("%s: %w", subject, res.Err)
 }
 
 // installedJSON is one addon in list and info's JSON output.
@@ -290,8 +304,8 @@ func orDash(s string) string {
 }
 
 // lineReporter prints progress on stderr as lines: warnings always, and
-// each step with --verbose. Failures aren't printed here; the command
-// reports them at the end with their hints. A mutex keeps lines from
+// each step with --verbose. Failures and skips aren't printed here; the
+// command reports them at the end, failures with their hints. A mutex keeps lines from
 // interleaving, since events arrive from parallel downloads.
 type lineReporter struct {
 	mu      sync.Mutex
@@ -303,15 +317,13 @@ func (r *lineReporter) Event(e app.Event) {
 	var line string
 	switch {
 	case e.Kind == app.EventWarned:
-		line = "warning: " + e.Message
+		line = "warning: " + e.Ref.String() + ": " + e.Message
 	case !r.verbose:
 		return
 	case e.Kind == app.EventResolving:
 		line = "resolving " + e.Ref.String()
 	case e.Kind == app.EventDownloading:
 		line = "downloading " + e.Ref.String() + " " + e.Version
-	case e.Kind == app.EventSkipped:
-		line = e.Ref.String() + ": " + e.Message
 	default:
 		return
 	}

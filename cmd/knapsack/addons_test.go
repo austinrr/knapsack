@@ -16,6 +16,8 @@ func TestAddonCommands(t *testing.T) {
 		{name: "add/help", args: []string{"add", "--help"}},
 		{name: "add/no_args", setup: [][]string{addForever}, args: []string{"add"}},
 		{name: "add/bad_ref", setup: [][]string{addForever}, args: []string{"add", "notaref"}},
+		{name: "add/bad_ref_among_good", setup: [][]string{addForever},
+			args: []string{"add", "github:austinrr/baganator-mirror", "notaref"}},
 		{name: "add/no_profiles", args: addBaganator},
 		{name: "add/one", setup: [][]string{addForever}, args: addBaganator},
 		{name: "add/url", setup: [][]string{addForever},

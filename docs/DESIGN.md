@@ -890,9 +890,11 @@ forever: 1 upgrade · retail: 1 install
   ```
 - When several addons are processed, one failure doesn't stop the rest. Each
   failure is reported on stderr after the successes, as its own `error:` line
-  and hint, and the command exits non-zero at the end.
+  and hint, and the command exits non-zero at the end. A malformed ref is a
+  usage error instead: it's caught with the arguments, before any work.
 - `add` and `remove` print one line per addon on stdout (`Added
-  github:austinrr/baganator-mirror 854.`). Warnings go to stderr, and so does
+  github:austinrr/baganator-mirror 854.`). Warnings go to stderr, prefixed
+  with the addon's ref, and so does
   each step (resolving, downloading) with `-v`. An empty `list` prints a note
   on stderr and nothing on stdout. Times are shown in UTC (RFC 3339).
 - Exit codes follow the `diff`/`grep` and `kubectl diff` convention:

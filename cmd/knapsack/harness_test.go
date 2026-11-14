@@ -131,7 +131,7 @@ func (s *sandbox) run(args ...string) result {
 	code := run(context.Background(), expanded, env{
 		stdout: &stdout, stderr: &stderr, getenv: getenv, version: testVersion,
 		githubURL:   s.github.URL,
-		ghAuthToken: func() string { return "" },
+		ghAuthToken: func(context.Context) string { return "" },
 	})
 	return result{Stdout: s.normalize(stdout.String()), Stderr: s.normalize(stderr.String()), Code: code}
 }

@@ -54,7 +54,7 @@ func (c *cli) build(cmd *cobra.Command, network bool) error {
 	}
 	if network {
 		opts.HTTP = httpx.NewClient(c.env.version)
-		token := githubToken(c.env.getenv, c.env.ghAuthToken)
+		token := githubToken(cmd.Context(), c.env.getenv, c.env.ghAuthToken)
 		opts.Sources = source.NewRegistry(github.New(opts.HTTP, c.env.githubURL, token))
 	}
 	c.app = app.New(opts)

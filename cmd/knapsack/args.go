@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -43,12 +44,20 @@ func exactArgs(what string) cobra.PositionalArgs {
 	return func(cmd *cobra.Command, args []string) error {
 		switch {
 		case len(args) == 0:
-			return fmt.Errorf("%s needs a %s", cmd.CommandPath(), what)
+			return fmt.Errorf("%s needs %s %s", cmd.CommandPath(), article(what), what)
 		case len(args) > 1:
 			return fmt.Errorf("%s takes one %s, got %d arguments", cmd.CommandPath(), what, len(args))
 		}
 		return nil
 	}
+}
+
+// article is "an" before a word starting with a vowel, else "a".
+func article(word string) string {
+	if word != "" && strings.ContainsRune("aeiou", rune(word[0])) {
+		return "an"
+	}
+	return "a"
 }
 
 // minArgs is the Args validator for leaf commands that take one or more
