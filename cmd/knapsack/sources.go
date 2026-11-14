@@ -139,7 +139,7 @@ such as pass, which prints the secret first. It never takes the key as an
 argument, which would leave it in your shell history.`,
 		Example: `  knapsack sources set-key wago
   pass show wago | knapsack sources set-key wago`,
-		Args:    exactArgs("source"),
+		Args: exactArgs("source"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Checked first, so nobody types a key for a source that
 			// can't take one.
