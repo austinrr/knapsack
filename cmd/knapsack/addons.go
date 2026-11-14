@@ -53,11 +53,11 @@ are never replaced.`,
 			for _, res := range results {
 				switch res.Action {
 				case app.ActionInstalled:
-					out.printf("Added %s %s.\n", res.Ref, res.Version)
+					out.printf("Added %s %s to %s.\n", res.Ref, res.Version, res.Profile)
 				case app.ActionAdopted:
-					out.printf("Added %s %s, which was already installed.\n", res.Ref, res.Version)
+					out.printf("Added %s %s to %s; it was already installed.\n", res.Ref, res.Version, res.Profile)
 				case app.ActionUnchanged:
-					out.printf("%s is already added.\n", res.Ref)
+					out.printf("%s is already in %s.\n", res.Ref, res.Profile)
 				case app.ActionFailed, app.ActionRemoved, app.ActionUpgraded, app.ActionUpToDate, app.ActionNotInConfig:
 					// Failures are reported by finish; the rest are update's.
 				}
@@ -90,7 +90,7 @@ matches one addon.`,
 			out := &printer{w: cmd.OutOrStdout()}
 			for _, res := range results {
 				if res.Action == app.ActionRemoved {
-					out.printf("Removed %s.\n", res.Ref)
+					out.printf("Removed %s from %s.\n", res.Ref, res.Profile)
 				}
 			}
 			return finish(out, failures(results), err)
@@ -151,13 +151,25 @@ func nameAddon(name string, r ref.Ref, err error) error {
 }
 
 // noteEmpty tells the user there's nothing to show, on stderr, so stdout
-// stays empty for scripts, like kubectl.
-func noteEmpty(cmd *cobra.Command, all bool) error {
-	note := "No addons in this profile."
-	if all {
-		note = "No addons in any profile."
+// stays empty for scripts, like kubectl. It names the profile, so a wrong
+// -p or $KNAPSACK_PROFILE shows.
+func noteEmpty(cmd *cobra.Command, c *cli, all bool) error {
+	note := "No addons in any profile."
+	if !all {
+		note = "No addons in this profile."
+		if name := c.resolvedProfile(cmd.Context()); name != "" {
+			note = fmt.Sprintf("No addons in profile %s.", name)
+		}
 	}
 	_, err := fmt.Fprintln(cmd.ErrOrStderr(), note)
+	return err
+}
+
+// noteProfile names the profile a command's table is for, on stderr, so
+// stdout stays just the table for scripts. Under -A the table has a
+// PROFILE column instead.
+func noteProfile(cmd *cobra.Command, name string) error {
+	_, err := fmt.Fprintf(cmd.ErrOrStderr(), "Profile %s:\n", name)
 	return err
 }
 
@@ -245,10 +257,15 @@ add one with add --force to have Knapsack manage it.`,
 				return noteUnmanaged(cmd, listing.Hidden)
 			}
 			if len(list) == 0 {
-				if err := noteEmpty(cmd, sc.all); err != nil {
+				if err := noteEmpty(cmd, c, sc.all); err != nil {
 					return err
 				}
 				return noteUnmanaged(cmd, listing.Hidden)
+			}
+			if !sc.all {
+				if err := noteProfile(cmd, list[0].Profile); err != nil {
+					return err
+				}
 			}
 			tw := newTable(w)
 			out := &printer{w: tw}
@@ -327,6 +344,7 @@ looks nothing up online.`,
 					out.printf("%s:\t%s\n", name, value)
 				}
 			}
+			field("Profile", d.Profile)
 			field("Ref", d.Ref.String())
 			field("Status", string(d.Status))
 			field("Version", d.Version)

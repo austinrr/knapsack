@@ -115,7 +115,7 @@ changes config, and never uninstalls anything unless --prune is given.`,
 			c.stopProgress()
 			out := &printer{w: cmd.OutOrStdout()}
 			if err == nil && len(results) == 0 {
-				return noteEmpty(cmd, sc.all)
+				return noteEmpty(cmd, c, sc.all)
 			}
 			printed := 0
 			for _, res := range results {
@@ -234,7 +234,7 @@ on errors, like kubectl diff. Prune candidates count as pending only with
 					out.err = werr
 				}
 			case len(plans) == 0 && err == nil:
-				return noteEmpty(cmd, sc.all)
+				return noteEmpty(cmd, c, sc.all)
 			case err == nil:
 				tallies := make([]tally, len(plans))
 				for i, p := range plans {
@@ -307,8 +307,9 @@ func printPlans(out *printer, plans []app.Plan, all bool) {
 type tally struct{ profile, action string }
 
 // summarize counts addons by action, for the line after update's and
-// check's output: "1 upgrade, 2 up to date", or under -A, one group per
-// profile in the order given: "forever: 1 upgrade · retail: up to date".
+// check's output: one group per profile, "forever: 1 upgrade, 2 up to
+// date", or under -A, one for each profile in the order given:
+// "forever: 1 upgrade · retail: up to date".
 // Only the actions in order are counted, in that order; a profile with
 // none of them is "up to date", and one with no addons says so.
 func summarize(profiles []string, all bool, tallies []tally, order []string) string {
@@ -334,15 +335,10 @@ func summarize(profiles []string, all bool, tallies []tally, order []string) str
 		}
 		return strings.Join(parts, ", ")
 	}
-	if !all {
-		l := "no addons"
-		if len(tallies) > 0 {
-			l = line(tallies[0].profile) // one profile, so any tally names it
-		}
-		if l == "up to date" {
-			return "Everything is up to date."
-		}
-		return l
+	if !all && len(tallies) > 0 {
+		// One profile, so any tally names it. It's named like a group
+		// under -A, so a wrong -p or $KNAPSACK_PROFILE shows.
+		profiles = []string{tallies[0].profile}
 	}
 	groups := make([]string, len(profiles))
 	for i, p := range profiles {

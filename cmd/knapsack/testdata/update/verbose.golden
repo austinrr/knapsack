@@ -2,7 +2,7 @@
 # stdout:
 Upgraded github:austinrr/baganator-mirror to v2.
 
-1 upgraded
+forever: 1 upgraded
 # stderr:
 resolving github:austinrr/baganator-mirror
 downloading github:austinrr/baganator-mirror v2

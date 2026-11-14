@@ -4,5 +4,5 @@ ADDON                             INSTALLED  AVAILABLE  ACTION
 github:austinrr/baganator-mirror  v1         v1         -
 github:austinrr/details-mirror    v1         -          prune
 
-1 prune
+forever: 1 prune
 # stderr:

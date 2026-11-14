@@ -4,3 +4,4 @@ ADDON                             STATUS     VERSION  INSTALLED             FOLD
 github:austinrr/baganator-mirror  installed  v1       <time>  Baganator
 github:austinrr/details-mirror    installed  v1       <time>  Details,Details_DataStorage
 # stderr:
+Profile forever:

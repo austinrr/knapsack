@@ -1,5 +1,6 @@
 # exit: 0
 # stdout:
-Ref:     github:austinrr/baganator-mirror
-Status:  missing
+Profile:  forever
+Ref:      github:austinrr/baganator-mirror
+Status:   missing
 # stderr:
