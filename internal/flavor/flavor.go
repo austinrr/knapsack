@@ -248,6 +248,19 @@ func FromPath(addonsDir string) (Flavor, bool) {
 	return l.Flavor, ok
 }
 
+// ClientFolders returns every client folder, as the table spells them:
+// each flavor's live client, then its test clients, in display order.
+func ClientFolders() []string {
+	var out []string
+	for _, row := range table {
+		out = append(out, row.client.Folder)
+		for _, t := range row.client.Tests {
+			out = append(out, t.Folder)
+		}
+	}
+	return out
+}
+
 // IsClientFolder reports whether name is a client folder, live or test,
 // matched without regard to case: "_retail_", "_PTR_".
 func IsClientFolder(name string) bool {

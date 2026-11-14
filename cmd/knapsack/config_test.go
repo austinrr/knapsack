@@ -3,6 +3,8 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/austinrr/knapsack/internal/lock"
@@ -106,6 +108,18 @@ func TestConfigCommands(t *testing.T) {
 		{name: "config/set_profile_name_after_path", args: []string{"config", "set-profile", "--path", forever, "main"}},
 		// A client that's never been started has no AddOns folder yet.
 		{name: "config/set_profile_client_without_addons", after: noAddOns("_xptr_"), args: []string{"config", "set-profile", "--path", "{home}/wow/_xptr_"}},
+		// --auto makes a profile per client folder with AddOns in it.
+		{name: "config/auto", after: noAddOns("_xptr_"), args: []string{"config", "set-profile", "--auto", "--path", "{home}/wow"}},
+		{name: "config/auto_again", setup: [][]string{{"config", "set-profile", "--auto", "--path", "{home}/wow"}},
+			args: []string{"config", "set-profile", "--auto", "--path", "{home}/wow"}},
+		{name: "config/auto_name_taken", setup: [][]string{{"config", "set-profile", "retail", "--path", plain, "--flavor", "retail"}},
+			args: []string{"config", "set-profile", "--auto", "--path", "{home}/wow"}},
+		// The current profile is a live client's, though a test client
+		// comes first.
+		{name: "config/auto_live_first", after: game("wow2", "_classic_beta_", "_forever_"), args: []string{"config", "set-profile", "--auto", "--path", "{home}/wow2"}},
+		{name: "config/auto_not_a_game", args: []string{"config", "set-profile", "--auto", "--path", plain}},
+		{name: "config/auto_with_name", args: []string{"config", "set-profile", "retail", "--auto"}},
+		{name: "config/auto_with_flavor", args: []string{"config", "set-profile", "--auto", "--flavor", "retail"}},
 		// A test client is its live client's flavor.
 		{name: "config/set_profile_ptr", setup: [][]string{addRetail}, args: []string{"config", "set-profile", "retail-ptr", "--path", ptr}},
 		// A test folder's flavor is only a default: Blizzard has used
@@ -205,6 +219,18 @@ func TestConfigLocked(t *testing.T) {
 	}
 }
 
+// game makes a game folder in the sandbox with these clients, each with
+// Interface/AddOns.
+func game(name string, clients ...string) func(*sandbox) {
+	return func(s *sandbox) {
+		for _, c := range clients {
+			if err := os.MkdirAll(filepath.Join(s.home, name, c, "Interface", "AddOns"), 0o700); err != nil {
+				s.t.Fatal(err)
+			}
+		}
+	}
+}
+
 // noAddOns adds a client folder to the sandbox's game folder with no
 // Interface/AddOns in it, as a client that was never started has.
 func noAddOns(client string) func(*sandbox) {
@@ -212,5 +238,27 @@ func noAddOns(client string) func(*sandbox) {
 		if err := os.MkdirAll(filepath.Join(s.home, "wow", client), 0o700); err != nil {
 			s.t.Fatal(err)
 		}
+	}
+}
+
+// Without --path, --auto looks where launchers put the game: here a Lutris
+// prefix in home. Only on Linux, where Wine prefixes are where it looks,
+// and home is the sandbox, so the real one is never searched.
+func TestAutoProfilesSearch(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS != "linux" {
+		t.Skip("looks in Wine prefixes on Linux only")
+	}
+	s := newSandbox(t)
+	if r := s.run("config", "set-profile", "--auto"); r.Code != exitError || !strings.Contains(r.Stderr, "couldn't find World of Warcraft") {
+		t.Errorf("with no game installed:\n%s", r)
+	}
+	addons := filepath.Join(s.home, "Games", "battlenet", "drive_c", "Program Files (x86)", "World of Warcraft", "_forever_", "Interface", "AddOns")
+	if err := os.MkdirAll(addons, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	r := s.run("config", "set-profile", "--auto", "-v")
+	if r.Code != exitOK || !strings.Contains(r.Stdout, `Profile "forever" created`) || !strings.Contains(r.Stderr, "Looked for World of Warcraft in:") {
+		t.Errorf("with a Lutris install:\n%s", r)
 	}
 }

@@ -199,14 +199,7 @@ func Quoted(path string) string { return `"` + path + `"` }
 // checks the folder exists, which catches typos before they're saved. Given
 // the World of Warcraft folder itself, the error lists its clients.
 func addonsDir(path string) (string, error) {
-	// Shells don't expand ~ inside quotes, which a path with spaces needs,
-	// so a leading ~ is expanded here.
-	if rest, ok := strings.CutPrefix(path, "~"); ok && (rest == "" || rest[0] == '/' || rest[0] == filepath.Separator) {
-		if home, err := os.UserHomeDir(); err == nil {
-			path = home + rest
-		}
-	}
-	abs, err := filepath.Abs(path)
+	abs, err := filepath.Abs(expandHome(path))
 	if err != nil {
 		return "", fmt.Errorf("resolve path: %w", err)
 	}
@@ -243,6 +236,17 @@ func addonsDir(path string) (string, error) {
 		}
 	}
 	return abs, nil
+}
+
+// expandHome expands a leading ~. Shells don't expand it inside quotes,
+// which a path with spaces needs.
+func expandHome(path string) string {
+	if rest, ok := strings.CutPrefix(path, "~"); ok && (rest == "" || rest[0] == '/' || rest[0] == filepath.Separator) {
+		if home, err := os.UserHomeDir(); err == nil {
+			return home + rest
+		}
+	}
+	return path
 }
 
 // addonsSubdir is where AddOns is below path: Interface/AddOns in a client
@@ -444,7 +448,7 @@ func noCurrentProfile(c *config.Config) error {
 	if len(c.Profiles) == 0 {
 		return &UserError{
 			Msg:  "no profiles yet",
-			Hint: "create one with: knapsack config set-profile --path " + Quoted(ExampleClientFolder()),
+			Hint: "find the game with `knapsack config set-profile --auto`, or name its folder: `knapsack config set-profile --path " + Quoted(ExampleClientFolder()) + "`",
 		}
 	}
 	return &UserError{

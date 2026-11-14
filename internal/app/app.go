@@ -29,6 +29,9 @@ type Options struct {
 	// Getenv reads the environment, for the variables that override API
 	// keys. Nil means an empty environment.
 	Getenv func(string) string
+	// Home is the user's home directory, where AutoProfiles looks for Wine
+	// prefixes and ~/Applications. "" means none.
+	Home string
 }
 
 // App runs use cases. It's safe to reuse across commands: it loads fresh
@@ -42,6 +45,7 @@ type App struct {
 	releases Releases
 	reporter Reporter
 	getenv   func(string) string
+	home     string
 }
 
 // New returns an App using opts.
@@ -63,6 +67,7 @@ func New(opts Options) *App {
 		releases: opts.Releases,
 		reporter: reporter,
 		getenv:   getenv,
+		home:     opts.Home,
 	}
 }
 

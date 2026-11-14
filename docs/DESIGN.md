@@ -151,6 +151,7 @@ GitHub SDKs (go-github), git libraries, ORMs/SQLite.
    | `config`, `state` | `flavor`, `ref`, `atomicfile`, `tomlenc` |
    | `install` | `flavor`, `toc` |
    | `selfupdate` | nothing internal |
+   | `discover` | `flavor` |
    | `source` | `flavor`, `ref` |
    | `source/*` | `source`, `flavor`, `ref`, `httpx` |
    | `app` | any of the above |
@@ -183,6 +184,7 @@ knapsack/
       wago/
     install/             verify → extract → validate → swap (filesystem only)
     selfupdate/          replace the knapsack binary from a release archive (filesystem only)
+    discover/            find World of Warcraft installs for set-profile --auto (filesystem only)
     toc/                 .toc parsing
     atomicfile/          atomic file writes (temp file, fsync, rename)
     tomlenc/             TOML value formatting for the config and state encoders
@@ -943,6 +945,22 @@ forever: 1 upgrade · retail: 1 install
   catches corruption: it comes from the same release as the archive.
   Verifying build attestations would also catch a tampered release, and is
   a possible follow-up.
+- **`config set-profile --auto`** finds the game and makes a profile for
+  each client folder (live or test) with `Interface/AddOns` in it, named
+  as an unnamed `set-profile` names it (`retail`, `forever`, `retail-ptr`).
+  `internal/discover` lists the usual places: on Windows, `Program Files
+  (x86)`, `Program Files`, `Games`, `Blizzard` and the root of every drive;
+  on macOS, `/Applications` and `~/Applications`; on Linux, `drive_c` in
+  Wine prefixes, as Wine, Lutris (`~/Games/*`), Faugus (`~/Faugus/*`),
+  Bottles and Steam's Proton make them. A folder counts when it holds a
+  client folder. With `--path`, that game folder is used instead, and `-v`
+  lists the places looked. Live clients are made first, across every game
+  folder, so the profile that becomes current isn't a PTR or beta.
+  Existing profiles for a folder are unchanged, and a client whose name
+  another folder has is skipped with that error's hint, without stopping
+  the rest. A client with no `Interface/AddOns` yet is skipped too:
+  Knapsack doesn't make folders in the game's install. `--auto` takes no
+  name or `--flavor`.
 - **`config set-profile`** creates or updates a profile. `--path` is the
   AddOns folder, or the client folder or its `Interface` folder, which
   Knapsack completes to `Interface/AddOns`; given the game folder itself, the

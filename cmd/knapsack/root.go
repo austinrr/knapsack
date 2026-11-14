@@ -73,6 +73,7 @@ func newApp(e env, p paths.Paths, network bool, reporter app.Reporter) *app.App 
 		State:    state.NewStore(p.StateFile),
 		Reporter: reporter,
 		Getenv:   e.getenv,
+		Home:     e.home,
 	}
 	if network {
 		opts.HTTP = httpx.NewClient(e.version)
