@@ -65,6 +65,16 @@ func TestBulkCommands(t *testing.T) {
 		{name: "check/up_to_date", setup: [][]string{addForever, addBaganator}, args: []string{"check"}},
 		{name: "check/pending", setup: [][]string{addForever, addBaganator, addDetails},
 			after: func(s *sandbox) { bumpBaganator(s); pruneDetails(s) }, args: []string{"check"}},
+		{name: "check/prune_only", setup: [][]string{addForever, addBaganator, addDetails}, after: pruneDetails,
+			args: []string{"check"}},
+		{name: "check/prune_flag", setup: [][]string{addForever, addBaganator, addDetails}, after: pruneDetails,
+			args: []string{"check", "--prune"}},
+		{name: "check/all_empty", setup: [][]string{addForever, addRetail}, args: []string{"check", "-A"}},
+		{name: "update/all_empty", setup: [][]string{addForever, addRetail}, args: []string{"update", "-A"}},
+		{name: "update/only_not_in_config", setup: [][]string{addForever, addDetails},
+			after: func(s *sandbox) {
+				s.writeConfig("current_profile = \"forever\"\n\n[profiles.forever]\npath = \"{home}/wow/_forever_/Interface/AddOns\"\nflavor = \"forever\"\n")
+			}, args: []string{"update"}},
 		{name: "check/json", setup: [][]string{addForever, addBaganator}, after: bumpBaganator,
 			args: []string{"check", "-o", "json"}},
 		{name: "check/failure", config: missingAndGone, args: []string{"check"}},

@@ -690,8 +690,9 @@ type Selector struct {
   SHA-256 matches state's (§5.3): with a SHA-256 published by the source,
   that's known without downloading; otherwise the release is downloaded and
   hashed, and `Check` does the same just to compare. `Update` prunes before
-  installing, so freed folders are available, and never changes config. A
-  named addon that's only in state is an error without `--prune`, with a
+  installing, so freed folders are available, and never changes config.
+  Without `--prune`, addons only in state come back as `not in config`, so
+  the CLI can say they're left installed; a named one is an error, with a
   hint to add it back or prune it.
 - **Several profiles** are processed in turn, with results grouped by
   profile. A failure that stops one profile (lock held, unknown profile)
@@ -921,7 +922,7 @@ forever: 1 upgrade · retail: 1 install
   | Code | Meaning |
   |---|---|
   | `0` | Success (for `check`: everything up to date) |
-  | `1` | `check` only: changes are pending |
+  | `1` | `check` only: changes are pending (prune candidates count only with `check --prune`) |
   | `2` | Any error, including usage errors and partial failures |
 
 - No interactive prompts. Anything destructive needs an explicit flag:

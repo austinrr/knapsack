@@ -86,7 +86,8 @@ func (a *App) eachProfile(ctx context.Context, profiles []string, write bool, fn
 // whose newest release isn't the installed one are upgraded. Releases are
 // compared by SHA-256, never by version (§5.3). With opts.Prune, addons in
 // state but not in config are uninstalled; without it, Update never
-// removes anything. Config is never changed.
+// removes anything, and reports them as ActionNotInConfig. Config is never
+// changed.
 //
 // Results are grouped by profile, in the order the profiles were given,
 // and within each in the order of targets. They're returned even when err
@@ -95,8 +96,6 @@ func (a *App) Update(ctx context.Context, sel Selector, opts UpdateOptions) ([]R
 	var results []Result
 	err := a.eachProfile(ctx, sel.Profiles, writes, func(s *session) error {
 		ts := targets(s, sel.Addons)
-		// An entry left without an Action is a prune candidate skipped
-		// without --prune, and isn't returned.
 		out := make([]Result, len(ts))
 		var toInstall []ref.Ref
 		var at []int // index in out of each ref in toInstall
@@ -108,10 +107,14 @@ func (a *App) Update(ctx context.Context, sel Selector, opts UpdateOptions) ([]R
 			switch {
 			case t.err != nil:
 				res.Action, res.Err = ActionFailed, t.err
+			case t.prune && !opts.Prune && t.name == "":
+				// Left alone, but returned, so the caller can say why.
+				res.Action, res.Folders = ActionNotInConfig, s.state.Addons[t.ref].Folders
+				res.Version = s.state.Addons[t.ref].Version
+				a.report(Event{Kind: EventSkipped, Profile: s.name, Ref: t.ref, Message: "not in config; --prune removes it"})
+				out[i] = res
+				continue
 			case t.prune && !opts.Prune:
-				if t.name == "" {
-					continue // only pruning touches these
-				}
 				res.Action, res.Err = ActionFailed, notInConfig(t.name, s.name)
 			case t.prune:
 				res.Action = ActionRemoved
@@ -136,11 +139,7 @@ func (a *App) Update(ctx context.Context, sel Selector, opts UpdateOptions) ([]R
 			res.Name = ts[at[j]].name
 			out[at[j]] = res
 		}
-		for _, res := range out {
-			if res.Action != "" {
-				results = append(results, res)
-			}
-		}
+		results = append(results, out...)
 		return nil
 	})
 	return results, err

@@ -5,4 +5,5 @@ github:austinrr/baganator-mirror  v1         v2         upgrade
 github:austinrr/details-mirror    v1         -          prune
 
 1 upgrade, 1 prune
+Addons not in config are left installed; `knapsack update --prune` removes them.
 # stderr:

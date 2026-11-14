@@ -194,8 +194,8 @@ func TestUpdatePrune(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(results) != 1 || results[0].Ref != keep {
-		t.Fatalf("results without --prune = %+v, want only keep", results)
+	if diff := cmp.Diff([]app.Action{app.ActionUpToDate, app.ActionNotInConfig}, actions(results)); diff != "" {
+		t.Fatalf("actions without --prune (-want +got):\n%s", diff)
 	}
 	if !e.exists("Old") {
 		t.Fatal("update without --prune removed an addon")

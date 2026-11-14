@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -11,6 +12,10 @@ import (
 	"github.com/austinrr/knapsack/internal/app"
 	"github.com/austinrr/knapsack/internal/ref"
 )
+
+// pruneNote follows update's and check's summary when addons that are no
+// longer in config are being left installed.
+const pruneNote = "Addons not in config are left installed; `knapsack update --prune` removes them."
 
 // errPending is what check returns when changes are pending, so run exits 1
 // without printing anything more (DESIGN.md §8.6).
@@ -105,12 +110,8 @@ changes config, and never uninstalls anything unless --prune is given.`,
 			}
 			results, err := c.app.Update(cmd.Context(), sel, opts)
 			out := &printer{w: cmd.OutOrStdout()}
-			if err == nil && len(results) == 0 && !sc.all {
-				// Like list, nothing to report is a note on stderr.
-				if _, werr := fmt.Fprintln(cmd.ErrOrStderr(), "No addons in this profile."); werr != nil {
-					return werr
-				}
-				return nil
+			if err == nil && len(results) == 0 {
+				return noteEmpty(cmd, sc.all)
 			}
 			printed := 0
 			for _, res := range results {
@@ -128,7 +129,7 @@ changes config, and never uninstalls anything unless --prune is given.`,
 				case app.ActionRemoved:
 					out.printf("%sRemoved %s.\n", prefix, res.Ref)
 					printed++
-				case app.ActionUpToDate, app.ActionFailed, app.ActionAdopted, app.ActionUnchanged:
+				case app.ActionUpToDate, app.ActionNotInConfig, app.ActionFailed, app.ActionAdopted, app.ActionUnchanged:
 					// Counted in the summary; failures are reported by
 					// finish. Update never adopts.
 				}
@@ -143,10 +144,13 @@ changes config, and never uninstalls anything unless --prune is given.`,
 				}
 				out.printf("%s\n", summarize(sel.Profiles, sc.all, tallies, []string{
 					string(app.ActionInstalled), string(app.ActionUpgraded), string(app.ActionRemoved),
-					string(app.ActionUpToDate), string(app.ActionFailed),
+					string(app.ActionUpToDate), string(app.ActionNotInConfig), string(app.ActionFailed),
 				}))
+				if !opts.Prune && slices.ContainsFunc(results, func(r app.Result) bool { return r.Action == app.ActionNotInConfig }) {
+					out.printf("%s\n", pruneNote)
+				}
 			}
-			return finish(out, results, err)
+			return finish(out, failures(results), err)
 		},
 	}
 	cmd.Flags().BoolVar(&opts.Prune, "prune", false, "uninstall addons that are installed but no longer in config")
@@ -170,6 +174,7 @@ type planJSON struct {
 func newCheckCmd(c *cli) *cobra.Command {
 	var sc scope
 	var output string
+	var prune bool
 	cmd := &cobra.Command{
 		Use:   "check [addon...]",
 		Short: "Show what update would do, without changing anything",
@@ -178,7 +183,8 @@ changes it would make: install, upgrade, or prune (installed but no longer
 in config, which update removes only with --prune).
 
 It exits 0 when everything is up to date, 1 when changes are pending, and 2
-on errors, like kubectl diff.`,
+on errors, like kubectl diff. Prune candidates count as pending only with
+--prune, matching what update --prune would do.`,
 		Example: `  knapsack check
   knapsack check -A
   knapsack check baganator-mirror -o json`,
@@ -190,14 +196,18 @@ on errors, like kubectl diff.`,
 				return err
 			}
 			plans, err := c.app.Check(cmd.Context(), sel)
-			var failed []app.Result
+			var failed []error
 			pending := false
 			for _, p := range plans {
 				switch p.Action {
 				case app.PlanFailed:
-					failed = append(failed, app.Result{Profile: p.Profile, Name: p.Name, Ref: p.Ref, Action: app.ActionFailed, Err: p.Err})
-				case app.PlanInstall, app.PlanUpgrade, app.PlanPrune:
+					failed = append(failed, nameAddon(p.Name, p.Ref, p.Err))
+				case app.PlanInstall, app.PlanUpgrade:
 					pending = true
+				case app.PlanPrune:
+					// Plain update leaves these alone, so without --prune
+					// they'd keep check failing after every update.
+					pending = pending || prune
 				case app.PlanNone:
 				}
 			}
@@ -218,11 +228,8 @@ on errors, like kubectl diff.`,
 				if werr := writeJSON(w, js); werr != nil {
 					out.err = werr
 				}
-			case len(plans) == 0 && err == nil && !sc.all:
-				if _, werr := fmt.Fprintln(cmd.ErrOrStderr(), "No addons in this profile."); werr != nil {
-					return werr
-				}
-				return nil
+			case len(plans) == 0 && err == nil:
+				return noteEmpty(cmd, sc.all)
 			case err == nil:
 				tallies := make([]tally, len(plans))
 				for i, p := range plans {
@@ -235,6 +242,9 @@ on errors, like kubectl diff.`,
 				out.printf("%s\n", summarize(sel.Profiles, sc.all, tallies, []string{
 					string(app.PlanInstall), string(app.PlanUpgrade), string(app.PlanPrune), string(app.PlanFailed),
 				}))
+				if !prune && slices.ContainsFunc(plans, func(p app.Plan) bool { return p.Action == app.PlanPrune }) {
+					out.printf("%s\n", pruneNote)
+				}
 			default:
 				// Stopped partway: show what was checked, then the error.
 				if len(plans) > 0 {
@@ -250,6 +260,7 @@ on errors, like kubectl diff.`,
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&prune, "prune", false, "count addons no longer in config as pending changes, as update --prune would remove them")
 	addOutputFlag(cmd, &output, "json")
 	sc.addFlag(cmd)
 	c.addProfileFlag(cmd)

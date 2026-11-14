@@ -37,7 +37,7 @@ func TestNameAddon(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := nameAddon(tt.res).Error(); got != tt.want {
+			if got := nameAddon(tt.res.Name, tt.res.Ref, tt.res.Err).Error(); got != tt.want {
 				t.Errorf("nameAddon() = %q, want %q", got, tt.want)
 			}
 		})
@@ -47,7 +47,7 @@ func TestNameAddon(t *testing.T) {
 func TestFinish(t *testing.T) {
 	t.Parallel()
 	ok := app.Result{Ref: baganator, Action: app.ActionInstalled}
-	if err := finish(&printer{w: io.Discard}, []app.Result{ok}, nil); err != nil {
+	if err := finish(&printer{w: io.Discard}, failures([]app.Result{ok}), nil); err != nil {
 		t.Fatalf("finish() with no failures = %v, want nil", err)
 	}
 
@@ -55,7 +55,7 @@ func TestFinish(t *testing.T) {
 	// command, then the stdout write failure.
 	failed := app.Result{Ref: baganator, Action: app.ActionFailed, Err: errors.New("not found")}
 	stopped, written := errors.New("config is in use"), errors.New("broken pipe")
-	err := finish(&printer{w: io.Discard, err: written}, []app.Result{ok, failed}, stopped)
+	err := finish(&printer{w: io.Discard, err: written}, failures([]app.Result{ok, failed}), stopped)
 	var errs addonErrors
 	if !errors.As(err, &errs) {
 		t.Fatalf("finish() = %T, want addonErrors", err)

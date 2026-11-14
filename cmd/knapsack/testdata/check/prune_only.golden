@@ -1,0 +1,9 @@
+# exit: 0
+# stdout:
+ADDON                             INSTALLED  AVAILABLE  ACTION
+github:austinrr/baganator-mirror  v1         v1         -
+github:austinrr/details-mirror    v1         -          prune
+
+1 prune
+Addons not in config are left installed; `knapsack update --prune` removes them.
+# stderr:

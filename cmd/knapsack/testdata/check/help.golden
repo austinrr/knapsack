@@ -5,7 +5,8 @@ changes it would make: install, upgrade, or prune (installed but no longer
 in config, which update removes only with --prune).
 
 It exits 0 when everything is up to date, 1 when changes are pending, and 2
-on errors, like kubectl diff.
+on errors, like kubectl diff. Prune candidates count as pending only with
+--prune, matching what update --prune would do.
 
 Usage:
   knapsack check [addon...] [flags]
@@ -20,6 +21,7 @@ Flags:
   -h, --help             help for check
   -o, --output format    output format: json
   -p, --profile string   profile to act on (default $KNAPSACK_PROFILE, then the current profile)
+      --prune            count addons no longer in config as pending changes, as update --prune would remove them
 
 Global Flags:
       --config string   use this config file instead of the default

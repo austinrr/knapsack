@@ -59,11 +59,11 @@ are never replaced.`,
 					out.printf("Added %s %s, which was already installed.\n", res.Ref, res.Version)
 				case app.ActionUnchanged:
 					out.printf("%s is already added.\n", res.Ref)
-				case app.ActionFailed, app.ActionRemoved, app.ActionUpgraded, app.ActionUpToDate:
-					// Failures are reported by finish; add never removes or upgrades.
+				case app.ActionFailed, app.ActionRemoved, app.ActionUpgraded, app.ActionUpToDate, app.ActionNotInConfig:
+					// Failures are reported by finish; the rest are update's.
 				}
 			}
-			return finish(out, results, err)
+			return finish(out, failures(results), err)
 		},
 	}
 	cmd.Flags().BoolVar(&force, "force", false, "replace folders in AddOns that no addon owns")
@@ -93,7 +93,7 @@ matches one addon.`,
 					out.printf("Removed %s.\n", res.Ref)
 				}
 			}
-			return finish(out, results, err)
+			return finish(out, failures(results), err)
 		},
 	}
 	c.addProfileFlag(cmd)
@@ -105,13 +105,8 @@ matches one addon.`,
 // then err, which stopped the command, then any failure writing stdout. A
 // closed stdout doesn't hide the failures. Any error makes the command exit
 // 2.
-func finish(out *printer, results []app.Result, err error) error {
-	var errs addonErrors
-	for _, res := range results {
-		if res.Err != nil {
-			errs = append(errs, nameAddon(res))
-		}
-	}
+func finish(out *printer, failed []error, err error) error {
+	errs := addonErrors(failed)
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -126,21 +121,44 @@ func finish(out *printer, results []app.Result, err error) error {
 	return errs
 }
 
-// nameAddon prefixes a failure with the addon it's for, unless it already
-// starts with it: source errors begin "github owner/repo", and errors about
-// a name the user typed begin with it quoted.
-func nameAddon(res app.Result) error {
-	msg := res.Err.Error()
-	if res.Name != "" && strings.HasPrefix(msg, strconv.Quote(res.Name)) {
-		return res.Err
+// failures returns the errors among results, each naming its addon.
+func failures(results []app.Result) []error {
+	var errs []error
+	for _, res := range results {
+		if res.Err != nil {
+			errs = append(errs, nameAddon(res.Name, res.Ref, res.Err))
+		}
 	}
-	if res.Ref == (ref.Ref{}) {
-		return fmt.Errorf("%s: %w", res.Name, res.Err)
+	return errs
+}
+
+// nameAddon prefixes err with the addon it's for: r, or name, what the
+// user typed, when r is zero. It doesn't when err already starts with it:
+// source errors begin "github owner/repo", and errors about a name the
+// user typed begin with it quoted.
+func nameAddon(name string, r ref.Ref, err error) error {
+	msg := err.Error()
+	if name != "" && strings.HasPrefix(msg, strconv.Quote(name)) {
+		return err
 	}
-	if strings.HasPrefix(msg, res.Ref.Source+" "+res.Ref.ID) {
-		return res.Err
+	if r == (ref.Ref{}) {
+		return fmt.Errorf("%s: %w", name, err)
 	}
-	return fmt.Errorf("%s: %w", res.Ref, res.Err)
+	if strings.HasPrefix(msg, r.Source+" "+r.ID) {
+		return err
+	}
+	return fmt.Errorf("%s: %w", r, err)
+}
+
+// noteEmpty tells the user there's nothing to show, on stderr, so stdout
+// stays empty for scripts, like kubectl.
+func noteEmpty(cmd *cobra.Command, all bool) error {
+	note := "No addons in this profile."
+	if all {
+		note = "No addons in any profile."
+	}
+	_, err := fmt.Fprintln(cmd.ErrOrStderr(), note)
+	return err
 }
 
 // installedJSON is one addon in list and info's JSON output.
@@ -194,14 +212,7 @@ addon is installed, missing (in config but not installed), or not in config
 				return writeJSON(w, out)
 			}
 			if len(list) == 0 {
-				// Like kubectl, an empty result is a note on stderr, so
-				// stdout stays empty for scripts.
-				note := "No addons in this profile."
-				if sc.all {
-					note = "No addons in any profile."
-				}
-				_, err := fmt.Fprintln(cmd.ErrOrStderr(), note)
-				return err
+				return noteEmpty(cmd, sc.all)
 			}
 			tw := newTable(w)
 			out := &printer{w: tw}

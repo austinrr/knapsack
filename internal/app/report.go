@@ -52,8 +52,11 @@ const (
 	ActionAdopted   Action = "adopted"    // installed already; now in config too
 	ActionUnchanged Action = "unchanged"  // Add: already in config
 	ActionUpToDate  Action = "up to date" // Update: the newest release is installed
-	ActionRemoved   Action = "removed"
-	ActionFailed    Action = "failed"
+	// ActionNotInConfig is Update without --prune: installed, but not in
+	// config, so left alone.
+	ActionNotInConfig Action = "not in config"
+	ActionRemoved     Action = "removed"
+	ActionFailed      Action = "failed"
 )
 
 // Result is the outcome for one addon. A failure for one addon doesn't stop
