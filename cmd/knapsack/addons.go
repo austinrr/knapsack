@@ -30,7 +30,7 @@ are never replaced.`,
 		// usage error, so nothing is installed and gh is never asked for a
 		// token.
 		Args: func(cmd *cobra.Command, args []string) error {
-			if err := minArgs("addon")(cmd, args); err != nil {
+			if err := minArgs("addon ref or URL")(cmd, args); err != nil {
 				return err
 			}
 			refs = make([]ref.Ref, len(args))

@@ -2,3 +2,4 @@
 # stdout:
 # stderr:
 error: knapsack config set-profile needs a profile name
+hint: for example, `knapsack config set-profile forever --path "/games/World of Warcraft/_forever_/Interface/AddOns"`; `knapsack config set-profile --help` shows more

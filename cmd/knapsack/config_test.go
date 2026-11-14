@@ -53,6 +53,8 @@ func TestConfigCommands(t *testing.T) {
 		{name: "config/set_profile_explicit_flavor",
 			args: []string{"config", "set-profile", "custom", "--path", plain, "--flavor", "anniversary"}},
 		{name: "config/set_profile_no_name", args: []string{"config", "set-profile", "--path", forever}},
+		// No example to show, so the hint only points at --help.
+		{name: "config/use_profile_no_name", args: []string{"config", "use-profile"}},
 		{name: "config/set_profile_two_names", args: []string{"config", "set-profile", "a", "b"}},
 		{name: "config/set_profile_new_without_path", args: []string{"config", "set-profile", "forever"}},
 		{name: "config/set_profile_not_a_dir",

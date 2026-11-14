@@ -2,3 +2,4 @@
 # stdout:
 # stderr:
 error: knapsack remove needs at least one addon
+hint: for example, `knapsack remove baganator-mirror`; `knapsack remove --help` shows more
