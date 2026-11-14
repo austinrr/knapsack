@@ -1,0 +1,6 @@
+# exit: 0
+# stdout:
+ADDON                             STATUS   VERSION
+github:austinrr/baganator-mirror  missing  -
+wago:VBNBxKx5                     missing  -
+# stderr:

@@ -50,3 +50,14 @@ func exactArgs(what string) cobra.PositionalArgs {
 		return nil
 	}
 }
+
+// minArgs is the Args validator for leaf commands that take one or more
+// positional arguments, each described by what (e.g. "addon").
+func minArgs(what string) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) == 0 {
+			return fmt.Errorf("%s needs at least one %s", cmd.CommandPath(), what)
+		}
+		return nil
+	}
+}

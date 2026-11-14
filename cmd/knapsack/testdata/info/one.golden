@@ -1,0 +1,11 @@
+# exit: 0
+# stdout:
+Ref:        github:austinrr/details-mirror
+Status:     installed
+Version:    v1
+Installed:  <time>
+Folders:    Details, Details_DataStorage
+Title:      Details
+Author:     Someone
+Interface:  120105, 16001
+# stderr:

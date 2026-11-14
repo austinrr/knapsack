@@ -153,7 +153,7 @@ GitHub SDKs (go-github), git libraries, ORMs/SQLite.
    | `source` | `flavor`, `ref` |
    | `source/*` | `source`, `flavor`, `ref`, `httpx` |
    | `app` | any of the above |
-   | `cmd/knapsack`, `tui` | `app` (plus `flavor`, `ref` for parsing input) |
+   | `cmd/knapsack`, `tui` | `app`, plus `flavor` and `ref` for parsing input, and the packages `main` constructs for `app.Options` (`paths`, `config`, `state`, `httpx`, `source`, `source/github`) |
 
    Nothing imports `app` except the frontends, and `install` never touches
    the network.
@@ -889,7 +889,12 @@ forever: 1 upgrade · retail: 1 install
   hint: set sources.curseforge.api_key or KNAPSACK_CURSEFORGE_API_KEY
   ```
 - When several addons are processed, one failure doesn't stop the rest. Each
-  failure is reported, and the command exits non-zero at the end.
+  failure is reported on stderr after the successes, as its own `error:` line
+  and hint, and the command exits non-zero at the end.
+- `add` and `remove` print one line per addon on stdout (`Added
+  github:austinrr/baganator-mirror 854.`). Warnings go to stderr, and so does
+  each step (resolving, downloading) with `-v`. An empty `list` prints a note
+  on stderr and nothing on stdout. Times are shown in UTC (RFC 3339).
 - Exit codes follow the `diff`/`grep` and `kubectl diff` convention:
 
   | Code | Meaning |
@@ -1243,7 +1248,8 @@ one command group.
 - Implements: §8.1, §8.4, §8.6 for these four commands, and §8.3 `-p` with
   `KNAPSACK_PROFILE`
 - GitHub token discovery in `cmd/knapsack` (`GITHUB_TOKEN`, `GH_TOKEN`,
-  `gh auth token`), passed to `github.New`.
+  `gh auth token`), passed to `github.New`. Only commands that download
+  build the sources, so offline commands never run `gh`.
 - Commands, `rm`/`ls` aliases, table/`wide`/`json` output, the CLI
   `Reporter` (lines, or a progress bar on a TTY).
 - Done when: golden tests for each command, including errors with hints and

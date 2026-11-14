@@ -7,5 +7,5 @@ Usage:
 
 Global Flags:
       --config string   use this config file instead of the default
-  -v, --verbose         show the underlying cause of errors
+  -v, --verbose         show progress and the underlying cause of errors
 # stderr:

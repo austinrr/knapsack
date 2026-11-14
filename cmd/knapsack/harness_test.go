@@ -1,13 +1,21 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"maps"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"path"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -31,8 +39,10 @@ const testVersion = "v0.0.0-test"
 // never touch the real config. In arguments, {home} expands to its path; in
 // output, the path is replaced by <home>.
 type sandbox struct {
-	t    *testing.T
-	home string
+	t      *testing.T
+	home   string
+	env    map[string]string // extra environment variables
+	github *httptest.Server  // fake GitHub, serving fakeReleases
 }
 
 // clientDirs are the AddOns folders every sandbox has, relative to home.
@@ -51,7 +61,56 @@ func newSandbox(t *testing.T) *sandbox {
 			t.Fatal(err)
 		}
 	}
-	return &sandbox{t: t, home: home}
+	gh := httptest.NewServer(http.HandlerFunc(serveFakeGitHub))
+	t.Cleanup(gh.Close)
+	return &sandbox{t: t, home: home, github: gh}
+}
+
+// fakeReleases are the addons the fake GitHub has, by repo: each maps
+// addon folders to their ## Interface line.
+var fakeReleases = map[string]map[string]string{
+	"austinrr/baganator-mirror": {"Baganator": "16001"},
+	"austinrr/details-mirror":   {"Details": "120105, 16001", "Details_DataStorage": "120105, 16001"},
+	"austinrr/retail-only":      {"RetailOnly": "120105"},
+}
+
+// serveFakeGitHub answers /repos/<repo>/releases/latest with a release of
+// one zip, and serves the zip at /download/<repo>.zip.
+func serveFakeGitHub(w http.ResponseWriter, r *http.Request) {
+	if repo, ok := strings.CutPrefix(r.URL.Path, "/download/"); ok {
+		folders, ok := fakeReleases[strings.TrimSuffix(repo, ".zip")]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write(fakeZip(folders))
+		return
+	}
+	repo, ok := strings.CutSuffix(strings.TrimPrefix(r.URL.Path, "/repos/"), "/releases/latest")
+	if _, known := fakeReleases[repo]; !ok || !known {
+		http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
+		return
+	}
+	name := path.Base(repo) + "-v1.zip"
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"tag_name": "v1",
+		"assets": []map[string]string{{
+			"name":                 name,
+			"browser_download_url": "http://" + r.Host + "/download/" + repo + ".zip",
+		}},
+	})
+}
+
+// fakeZip builds a release zip with a TOC per folder.
+func fakeZip(folders map[string]string) []byte {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for _, f := range slices.Sorted(maps.Keys(folders)) {
+		w, _ := zw.Create(f + "/" + f + ".toc")
+		_, _ = fmt.Fprintf(w, "## Interface: %s\n## Title: %s\n## Author: Someone\n", folders[f], f)
+	}
+	_ = zw.Close()
+	return buf.Bytes()
 }
 
 // run runs the CLI in-process with args and returns its normalized output
@@ -66,11 +125,13 @@ func (s *sandbox) run(args ...string) result {
 		if k == paths.HomeEnv {
 			return s.home
 		}
-		return ""
+		return s.env[k]
 	}
 	var stdout, stderr bytes.Buffer
 	code := run(context.Background(), expanded, env{
 		stdout: &stdout, stderr: &stderr, getenv: getenv, version: testVersion,
+		githubURL:   s.github.URL,
+		ghAuthToken: func() string { return "" },
 	})
 	return result{Stdout: s.normalize(stdout.String()), Stderr: s.normalize(stderr.String()), Code: code}
 }
@@ -96,10 +157,16 @@ func (s *sandbox) writeConfig(contents string) {
 	}
 }
 
+// timestamp matches the install times commands print.
+var timestamp = regexp.MustCompile(`\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ`)
+
 // normalize replaces the sandbox path with <home>, including its escaped
-// form in TOML and JSON, and uses / as the separator, so one golden file
-// works on every OS.
+// form in TOML and JSON, the fake GitHub's address with <github>, and
+// install times with <time>, and uses / as the separator, so one golden
+// file works on every OS and every run.
 func (s *sandbox) normalize(out string) string {
+	out = strings.ReplaceAll(out, s.github.URL, "<github>")
+	out = timestamp.ReplaceAllString(out, "<time>")
 	for _, h := range []string{strings.ReplaceAll(s.home, `\`, `\\`), s.home, filepath.ToSlash(s.home)} {
 		out = strings.ReplaceAll(out, h, "<home>")
 	}
@@ -151,7 +218,8 @@ func checkGolden(t *testing.T, name string, r result) {
 // command whose output is compared with testdata/<name>.golden.
 type cliCase struct {
 	name   string
-	config string // written as config.toml before setup, if set
+	config string            // written as config.toml before setup, if set
+	env    map[string]string // extra environment variables
 	setup  [][]string
 	args   []string
 }
@@ -162,6 +230,7 @@ func runCases(t *testing.T, cases []cliCase) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			s := newSandbox(t)
+			s.env = tc.env
 			if tc.config != "" {
 				s.writeConfig(tc.config)
 			}
