@@ -42,11 +42,7 @@ func Validate(dir string, f flavor.Flavor, clientInterface int) (warning string,
 	}
 	folder := filepath.Base(dir)
 
-	name, err := selectTOC(dir, c)
-	if err != nil {
-		return "", fmt.Errorf("%s: %w", folder, err)
-	}
-	file, err := readTOC(filepath.Join(dir, name))
+	name, file, err := TOC(dir, f)
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", folder, err)
 	}

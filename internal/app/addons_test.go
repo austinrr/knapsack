@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -490,5 +491,148 @@ func TestUnknownProfile(t *testing.T) {
 		if _, err := e.app.List(context.Background(), app.Selector{Profiles: []string{name}}); !errors.As(err, &ue) {
 			t.Errorf("List(%q) error = %v, want a UserError", name, err)
 		}
+	}
+}
+
+// Results come back in the order the refs were given, whatever happened
+// to each.
+func TestAddResultOrder(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	e.src.publish(t, "o/old", "Old")
+	e.src.publish(t, "o/new", "New")
+	old, fresh := mustRef(t, "github:o/old"), mustRef(t, "github:o/new")
+	if _, err := e.app.Add(context.Background(), e.profile, []ref.Ref{old}, false); err != nil {
+		t.Fatal(err)
+	}
+	results, err := e.app.Add(context.Background(), e.profile, []ref.Ref{fresh, old}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 2 || results[0].Ref != fresh || results[0].Action != app.ActionInstalled || results[1].Ref != old || results[1].Action != app.ActionUnchanged {
+		t.Errorf("results = %+v, want new installed then old unchanged", results)
+	}
+}
+
+// A source with no API key gets a hint naming its own config key and
+// environment variable.
+func TestAddSourceNotConfigured(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	results, err := e.app.Add(context.Background(), e.profile, []ref.Ref{mustRef(t, "curseforge:12345")}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ue *app.UserError
+	if !errors.As(results[0].Err, &ue) || !strings.Contains(ue.Hint, "sources.curseforge.api_key") || !strings.Contains(ue.Hint, "KNAPSACK_CURSEFORGE_API_KEY") {
+		t.Errorf("error = %v, want a hint naming curseforge's key", results[0].Err)
+	}
+}
+
+// If saving state fails for one addon, it's dropped from memory too, so
+// the next addon in the same command still saves. On Linux and macOS, a
+// folder named CON extracts and installs, but state refuses it.
+func TestAddStateSaveFailureIsolated(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows can't extract a folder named CON")
+	}
+	e := newEnv(t)
+	e.src.publish(t, "o/bad", "CON")
+	e.src.publish(t, "o/good", "Good")
+	bad, good := mustRef(t, "github:o/bad"), mustRef(t, "github:o/good")
+	results, err := e.app.Add(context.Background(), e.profile, []ref.Ref{bad, good}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff([]app.Action{app.ActionFailed, app.ActionInstalled}, actions(results)); diff != "" {
+		t.Fatalf("actions (-want +got):\n%s", diff)
+	}
+	st := e.loadState(t)
+	if _, ok := st.Addons[bad]; ok {
+		t.Error("the addon whose save failed is in state")
+	}
+	if _, ok := st.Addons[good]; !ok {
+		t.Error("the next addon wasn't saved")
+	}
+}
+
+// Remove stops at Ctrl-C before touching the next addon, and what it
+// already removed still leaves config.
+func TestRemoveCancelled(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	e.src.publish(t, "o/a", "A")
+	e.src.publish(t, "o/b", "B")
+	a, b := mustRef(t, "github:o/a"), mustRef(t, "github:o/b")
+	if _, err := e.app.Add(context.Background(), e.profile, []ref.Ref{a, b}, false); err != nil {
+		t.Fatal(err)
+	}
+	// Cancel as soon as the first addon is reported removed.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	e.app = app.New(app.Options{Paths: e.paths, Config: e.config, State: e.state, Reporter: cancelOnFirst{cancel}})
+	results, err := e.app.Remove(ctx, e.profile, []string{"a", "b"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff([]app.Action{app.ActionRemoved, app.ActionFailed}, actions(results)); diff != "" {
+		t.Fatalf("actions (-want +got):\n%s", diff)
+	}
+	if !errors.Is(results[1].Err, context.Canceled) {
+		t.Errorf("second result error = %v, want context.Canceled", results[1].Err)
+	}
+	if e.exists("A") || !e.exists("B") {
+		t.Error("want A removed and B left alone")
+	}
+	if diff := cmp.Diff([]ref.Ref{b}, e.configAddons(t)); diff != "" {
+		t.Errorf("config addons (-want +got):\n%s", diff)
+	}
+}
+
+type cancelOnFirst struct{ cancel context.CancelFunc }
+
+func (c cancelOnFirst) Event(app.Event) { c.cancel() }
+
+// A name that matches nothing leaves Ref zero, even when it parses as a
+// ref, so a frontend never shows an addon that isn't there.
+func TestRemoveUnknownRef(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	results, err := e.app.Remove(context.Background(), e.profile, []string{"github:a/b"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if results[0].Ref != (ref.Ref{}) || results[0].Name != "github:a/b" || results[0].Err == nil {
+		t.Errorf("result = %+v, want a zero Ref with the name and an error", results[0])
+	}
+}
+
+// List and Info only read, so they work when the AddOns folder is gone.
+func TestListWithoutAddOnsFolder(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	if err := os.RemoveAll(e.addons); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.app.List(context.Background(), app.Selector{}); err != nil {
+		t.Errorf("List without AddOns: %v", err)
+	}
+}
+
+// Info reads the addon's own folder, not a bundled library sorted first.
+func TestInfoMainFolder(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	e.src.publish(t, "o/bugsack", "!BugGrabber", "BugSack")
+	if _, err := e.app.Add(context.Background(), e.profile, []ref.Ref{mustRef(t, "github:o/bugsack")}, false); err != nil {
+		t.Fatal(err)
+	}
+	d, err := e.app.Info(context.Background(), e.profile, "bugsack")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Title != "BugSack" {
+		t.Errorf("Title = %q, want BugSack", d.Title)
 	}
 }

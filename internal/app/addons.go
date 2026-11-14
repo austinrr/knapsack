@@ -30,10 +30,24 @@ type session struct {
 	addonsDir string
 }
 
+// known returns every addon in the profile: config's, in config order, then
+// any only in state.
+func (s *session) known() []ref.Ref {
+	return dedupe(append(slices.Clone(s.profile.Addons), s.state.Refs()...))
+}
+
+// Whether a use case changes AddOns. Only those that do clean it up first,
+// so List and Info work on a read-only or missing AddOns folder.
+const (
+	readOnly = false
+	writes   = true
+)
+
 // withProfile runs fn for the named profile, or the current one when name
 // is "", holding the profile's lock. It loads config and state fresh under
-// the lock and first cleans up anything an interrupted run left in AddOns.
-func (a *App) withProfile(ctx context.Context, name string, fn func(*session) error) error {
+// the lock. When the use case writes, it first cleans up anything an
+// interrupted run left in AddOns.
+func (a *App) withProfile(ctx context.Context, name string, write bool, fn func(*session) error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -56,7 +70,7 @@ func (a *App) withProfile(ctx context.Context, name string, fn func(*session) er
 		if !ok {
 			return unknownProfile(name)
 		}
-		if err := install.Cleanup(p.Path); err != nil {
+		if err := cleanup(write, p.Path); err != nil {
 			return &UserError{
 				Msg:  fmt.Sprintf("profile %q: %v", name, err),
 				Hint: "check the profile's AddOns folder exists and is writable",
@@ -78,21 +92,28 @@ func (a *App) withProfile(ctx context.Context, name string, fn func(*session) er
 // reinstalling. force replaces folders that no addon owns.
 func (a *App) Add(ctx context.Context, profile string, refs []ref.Ref, force bool) ([]Result, error) {
 	var results []Result
-	err := a.withProfile(ctx, profile, func(s *session) error {
+	err := a.withProfile(ctx, profile, writes, func(s *session) error {
+		refs := dedupe(refs)
+		results = make([]Result, len(refs))
 		var toInstall []ref.Ref
-		for _, r := range dedupe(refs) {
+		var at []int // index in results of each ref in toInstall
+		for i, r := range refs {
 			switch {
 			case slices.Contains(s.profile.Addons, r):
 				a.report(Event{Kind: EventSkipped, Profile: s.name, Ref: r, Message: "already added"})
-				results = append(results, Result{Ref: r, Action: ActionUnchanged, Version: s.state.Addons[r].Version})
+				results[i] = Result{Ref: r, Action: ActionUnchanged, Version: s.state.Addons[r].Version}
 			case hasKey(s.state.Addons, r):
 				a.report(Event{Kind: EventSkipped, Profile: s.name, Ref: r, Message: "already installed; adding it to config"})
-				results = append(results, Result{Ref: r, Action: ActionAdopted, Version: s.state.Addons[r].Version, Folders: s.state.Addons[r].Folders})
+				results[i] = Result{Ref: r, Action: ActionAdopted, Version: s.state.Addons[r].Version, Folders: s.state.Addons[r].Folders}
 			default:
 				toInstall = append(toInstall, r)
+				at = append(at, i)
 			}
 		}
-		results = append(results, a.installAll(ctx, s, toInstall, force)...)
+		// Results stay in the order the refs were given.
+		for j, res := range a.installAll(ctx, s, toInstall, force) {
+			results[at[j]] = res
+		}
 
 		var record []ref.Ref
 		for _, res := range results {
@@ -155,7 +176,7 @@ func (a *App) installAll(ctx context.Context, s *session, refs []ref.Ref, force 
 			res.Folders, res.Warnings, err = a.installOne(ctx, s, r, got[i], clientInterface, force)
 		}
 		if err != nil {
-			res.Action, res.Err = ActionFailed, explain(err)
+			res.Action, res.Err = ActionFailed, explain(err, r)
 			a.report(Event{Kind: EventFailed, Profile: s.name, Ref: r, Version: res.Version, Err: res.Err})
 		} else {
 			res.Action = ActionInstalled
@@ -193,6 +214,7 @@ func (a *App) installOne(ctx context.Context, s *session, r ref.Ref, f fetched, 
 	if err != nil {
 		return nil, nil, err
 	}
+	previous, had := s.state.Addons[r]
 	s.state.Addons[r] = state.Addon{
 		Version:     f.release.Version,
 		SHA256:      f.sum,
@@ -200,6 +222,13 @@ func (a *App) installOne(ctx context.Context, s *session, r ref.Ref, f fetched, 
 		Folders:     folders,
 	}
 	if err := a.state.Save(s.name, s.state); err != nil {
+		// Undo the change in memory too, so a bad entry can't make every
+		// later save in this command fail, or be saved by one that works.
+		if had {
+			s.state.Addons[r] = previous
+		} else {
+			delete(s.state.Addons, r)
+		}
 		return nil, nil, fmt.Errorf("installed, but saving state failed: %w", err)
 	}
 	return folders, warnings, nil
@@ -222,20 +251,27 @@ func othersFolders(st *state.State, r ref.Ref) []string {
 // order. An addon in config that was never installed just leaves config.
 func (a *App) Remove(ctx context.Context, profile string, names []string) ([]Result, error) {
 	var results []Result
-	err := a.withProfile(ctx, profile, func(s *session) error {
+	err := a.withProfile(ctx, profile, writes, func(s *session) error {
+		known := s.known()
 		var removed []ref.Ref
 		for _, name := range names {
-			r, err := findAddon(s, name)
+			// Ctrl-C stops before the next addon; what's removed so far
+			// still leaves config below.
+			err := ctx.Err()
+			var r ref.Ref
+			if err == nil {
+				r, err = findAddon(s, known, name)
+			}
 			if err == nil {
 				err = a.removeOne(s, r)
 			}
 			res := Result{Name: name, Ref: r, Action: ActionRemoved}
 			if err != nil {
-				res.Action, res.Err = ActionFailed, explain(err)
-				a.report(Event{Kind: EventFailed, Profile: s.name, Ref: r, Err: res.Err})
+				res.Action, res.Err = ActionFailed, explain(err, r)
+				a.report(Event{Kind: EventFailed, Profile: s.name, Name: name, Ref: r, Err: res.Err})
 			} else {
 				removed = append(removed, r)
-				a.report(Event{Kind: EventRemoved, Profile: s.name, Ref: r})
+				a.report(Event{Kind: EventRemoved, Profile: s.name, Name: name, Ref: r})
 			}
 			results = append(results, res)
 		}
@@ -269,13 +305,14 @@ func (a *App) removeOne(s *session, r ref.Ref) error {
 // findAddon resolves a name the user typed to an addon in the profile's
 // config or state: a ref or URL, or a short name that matches exactly one
 // addon (DESIGN.md §8.5).
-func findAddon(s *session, name string) (ref.Ref, error) {
-	known := dedupe(append(slices.Clone(s.profile.Addons), s.state.Refs()...))
+// known is s.known(), passed in so a lookup of several names builds it
+// once. On error the returned Ref is zero.
+func findAddon(s *session, known []ref.Ref, name string) (ref.Ref, error) {
 	if r, err := ref.Parse(name); err == nil {
 		if slices.Contains(known, r) {
 			return r, nil
 		}
-		return r, notInProfile(name, s.name)
+		return ref.Ref{}, notInProfile(name, s.name)
 	}
 	var matches []ref.Ref
 	for _, r := range known {
@@ -307,6 +344,14 @@ func notInProfile(name, profile string) error {
 }
 
 func (a *App) report(e Event) { a.reporter.Event(e) }
+
+// cleanup runs install.Cleanup on AddOns when the use case writes to it.
+func cleanup(write bool, addonsDir string) error {
+	if !write {
+		return nil
+	}
+	return install.Cleanup(addonsDir)
+}
 
 // dedupe returns refs without repeats, in their first order.
 func dedupe(refs []ref.Ref) []ref.Ref {

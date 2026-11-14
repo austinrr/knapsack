@@ -673,15 +673,20 @@ type Selector struct {
   known fix (a conflict, a rate limit, the game holding files) become a
   `UserError` with a hint.
 - **Profile**: a use case's `profile` argument, or an empty `Selector`, means
-  the current profile. Each one takes the profile lock, loads config and
-  state under it, and runs `install.Cleanup` on the AddOns folder first.
+  the current profile. Each one takes the profile lock and loads config and
+  state under it. Those that change AddOns run `install.Cleanup` on it first;
+  `list` and `info` only read, so they work even when the folder is missing.
+- **Results** come back in the order the addons were named. `remove` checks
+  for cancellation before each addon.
 - **Write order within `add`**: each addon's state is saved as soon as it's
   installed, so files on disk are never unrecorded for longer than one
   install; config is saved once at the end with every addon that made it.
   An interruption in between leaves addons in state but not config, which the
   next `add` adopts (§5.4).
 - **`info`** reads the title, author, notes and Interface numbers from the
-  TOC the client loads from the addon's first folder.
+  TOC the client loads from the addon's main folder: the longest folder name
+  contained in the ref's short name (`baganator-mirror` → `Baganator`), or
+  else the first not starting with `!`, the prefix bundled libraries use.
 - **Reporter**: `Event(e Event)` receives events of kind `EventResolving`,
   `EventDownloading`, `EventInstalled`, `EventRemoved`, `EventSkipped`,
   `EventWarned` and `EventFailed`, each naming the profile and ref.

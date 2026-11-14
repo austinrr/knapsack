@@ -4,7 +4,9 @@ import (
 	"context"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/austinrr/knapsack/internal/install"
 	"github.com/austinrr/knapsack/internal/ref"
@@ -49,12 +51,13 @@ func (a *App) List(ctx context.Context, sel Selector) ([]Installed, error) {
 	}
 	var out []Installed
 	for _, profile := range profiles {
-		err := a.withProfile(ctx, profile, func(s *session) error {
-			refs := dedupe(append(slices.Clone(s.profile.Addons), s.state.Refs()...))
+		err := a.withProfile(ctx, profile, readOnly, func(s *session) error {
+			refs := s.known()
 			if len(sel.Addons) > 0 {
+				known := refs
 				refs = nil
 				for _, name := range sel.Addons {
-					r, err := findAddon(s, name)
+					r, err := findAddon(s, known, name)
 					if err != nil {
 						return err
 					}
@@ -86,6 +89,41 @@ func installedInfo(s *session, r ref.Ref) Installed {
 	return in
 }
 
+// mainFolder guesses which of an addon's folders is the addon itself rather
+// than a bundled library or module: the longest folder name contained in
+// the ref's short name (baganator-mirror → Baganator), compared as
+// lower-cased letters and digits only. Without one, it's the first folder
+// not starting with "!" (the prefix libraries use to load first), then
+// simply the first.
+func mainFolder(r ref.Ref, folders []string) string {
+	short := alnum(r.ShortName())
+	best := ""
+	for _, f := range folders {
+		if name := alnum(f); name != "" && strings.Contains(short, name) && len(f) > len(best) {
+			best = f
+		}
+	}
+	if best != "" {
+		return best
+	}
+	for _, f := range folders {
+		if !strings.HasPrefix(f, "!") {
+			return f
+		}
+	}
+	return folders[0]
+}
+
+// alnum lower-cases s and keeps only letters and digits.
+func alnum(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return unicode.ToLower(r)
+		}
+		return -1
+	}, s)
+}
+
 // Details is everything Info knows about an addon.
 type Details struct {
 	Installed
@@ -103,8 +141,8 @@ type Details struct {
 // notes are read from the installed TOC.
 func (a *App) Info(ctx context.Context, profile, name string) (Details, error) {
 	var d Details
-	err := a.withProfile(ctx, profile, func(s *session) error {
-		r, err := findAddon(s, name)
+	err := a.withProfile(ctx, profile, readOnly, func(s *session) error {
+		r, err := findAddon(s, s.known(), name)
 		if err != nil {
 			return err
 		}
@@ -113,7 +151,8 @@ func (a *App) Info(ctx context.Context, profile, name string) (Details, error) {
 			return nil
 		}
 		// If the folder was changed outside Knapsack, show what state knows.
-		if _, file, err := install.TOC(filepath.Join(s.addonsDir, d.Folders[0]), s.profile.Flavor); err == nil {
+		main := mainFolder(r, d.Folders)
+		if _, file, err := install.TOC(filepath.Join(s.addonsDir, main), s.profile.Flavor); err == nil {
 			d.Title, d.Author, d.Notes, d.Interfaces = file.Get("Title"), file.Get("Author"), file.Get("Notes"), file.Interfaces
 		}
 		return nil

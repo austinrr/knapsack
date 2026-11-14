@@ -2,14 +2,18 @@ package app
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/austinrr/knapsack/internal/install"
+	"github.com/austinrr/knapsack/internal/ref"
 	"github.com/austinrr/knapsack/internal/source"
 )
 
-// explain wraps an error from a lower package in a UserError with a hint,
-// when there's a known fix. Other errors are returned as they are.
-func explain(err error) error {
+// explain wraps an error about the addon r from a lower package in a
+// UserError with a hint, when there's a known fix. Other errors are
+// returned as they are.
+func explain(err error, r ref.Ref) error {
 	var ue *UserError
 	if err == nil || errors.As(err, &ue) {
 		return err
@@ -27,9 +31,12 @@ func explain(err error) error {
 	case errors.Is(err, source.ErrUnauthorized):
 		hint = "check the token or API key Knapsack is using"
 	case errors.Is(err, source.ErrSourceNotConfigured):
-		hint = "this source needs an API key: set sources.<name>.api_key in config, or KNAPSACK_<NAME>_API_KEY"
-	case errors.Is(err, install.ErrWrongGame), errors.Is(err, source.ErrNoCompatibleRelease):
+		hint = fmt.Sprintf("%s needs an API key: set sources.%s.api_key in config, or %s",
+			r.Source, r.Source, "KNAPSACK_"+strings.ToUpper(r.Source)+"_API_KEY")
+	case errors.Is(err, install.ErrWrongGame):
 		hint = "the release isn't built for this profile's flavor"
+	case errors.Is(err, source.ErrNoCompatibleRelease):
+		hint = "the release needs exactly one file Knapsack can tell is for this flavor; check its files on the source"
 	default:
 		return err
 	}

@@ -29,6 +29,7 @@ const (
 type Event struct {
 	Kind    EventKind
 	Profile string
+	Name    string // what the user typed, for Remove; Ref is zero if it matched nothing
 	Ref     ref.Ref
 	Version string // the release, once resolved
 	Message string // for Skipped and Warned
