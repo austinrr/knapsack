@@ -1,6 +1,6 @@
 # exit: 0
 # stdout:
-Found World of Warcraft in ~/wow
+Found World of Warcraft in <home>/wow
 
 PROFILE       CLIENT          RESULT
 retail        _retail_        created

@@ -1,6 +1,6 @@
 # exit: 2
 # stdout:
-Found World of Warcraft in ~/fresh
+Found World of Warcraft in <home>/fresh
 
 PROFILE  CLIENT    RESULT
 -        _retail_  skipped: never started, no Interface/AddOns yet

@@ -1,6 +1,6 @@
 # exit: 0
 # stdout:
-Found World of Warcraft in ~/wow2
+Found World of Warcraft in <home>/wow2
 
 PROFILE       CLIENT          RESULT
 classic-beta  _classic_beta_  created
