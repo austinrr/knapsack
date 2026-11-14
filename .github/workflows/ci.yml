@@ -72,6 +72,10 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: stable
+          # Tidy covers tools/go.mod too, so cache its modules.
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
       - name: Check go.mod and go.sum are tidy
         run: make tidy
 

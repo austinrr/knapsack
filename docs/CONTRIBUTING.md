@@ -100,7 +100,8 @@ Releases are cut manually from GitHub Actions:
    [git-cliff](https://git-cliff.org/) in the run summary, and creates an
    annotated tag. It's a dry run unless you untick **Only preview**, and it
    refuses to run if CI didn't pass on that commit or nothing releasable
-   landed since the last tag (`test` and `chore` commits don't count).
+   landed since the last tag (`test` and `chore` commits don't count, unless
+   they're breaking).
 2. The same run calls the release workflow, which builds binaries with
    goreleaser and publishes a GitHub release with those notes. To rebuild a
    release, run the **Release** workflow by hand with its tag.
@@ -109,5 +110,6 @@ Releases are cut manually from GitHub Actions:
 publishing, and `make release-check` validates `.goreleaser.yaml`.
 
 Because the changelog is built from PR titles, a well-formed title becomes
-a clean, grouped release-notes entry. A malformed one ends up under
-"Miscellaneous", which is why CI checks titles before merge.
+a clean, grouped release-notes entry. One that isn't conventional is left
+out of the notes and doesn't count toward the version bump, which is why
+CI checks titles before merge.

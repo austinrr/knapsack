@@ -6,8 +6,9 @@ LDFLAGS := -X main.buildVersion=$(VERSION)
 # goreleaser is pinned in its own module, tools/go.mod, so its hundreds of
 # dependencies and newer Go requirement stay out of Knapsack's go.mod.
 # `go tool -n` builds it (cached) and prints its path; -C makes Go use the
-# toolchain tools/go.mod asks for.
-GORELEASER = $(shell go -C tools tool -n goreleaser)
+# toolchain tools/go.mod asks for. It runs in the recipe, not in $(shell),
+# so a failed build stops make with Go's own error.
+GORELEASER = goreleaser=$$(go -C tools tool -n goreleaser) && "$$goreleaser"
 
 .PHONY: all build test lint fmt vuln tidy snapshot release-check
 

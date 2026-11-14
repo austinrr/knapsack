@@ -33,8 +33,11 @@ commit_parsers = [
   { message = "^refactor", group = "<!-- 3 -->Refactoring" },
   { message = "^docs", group = "<!-- 4 -->Documentation" },
   { message = "^revert", group = "<!-- 5 -->Reverts" },
-  # Tests and chores, like CI and release tooling, matter to contributors,
-  # not users.
+  # A breaking test or chore still matters to users, and still bumps the
+  # version, so it's listed rather than skipped.
+  { message = "^(test|chore)(\\([a-z0-9-]+\\))?!:", group = "<!-- 6 -->Other breaking changes" },
+  # Other tests and chores, like CI and release tooling, matter to
+  # contributors, not users.
   { message = "^test", skip = true },
   { message = "^chore", skip = true },
 ]

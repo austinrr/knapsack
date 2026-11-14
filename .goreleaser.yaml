@@ -20,8 +20,9 @@ builds:
     # -s -w drop the symbol table and debug info, which only debuggers use.
     ldflags:
       - -s -w -X main.buildVersion={{ .Tag }}
-    # The commit time, not the build time, so a rebuild of a tag is
-    # byte-for-byte the same.
+    # The commit time, not the build time, for the binary; the archives
+    # below do the same for their other files, so a rebuild of a tag gives
+    # the same archives and checksums.
     mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:
@@ -33,25 +34,28 @@ archives:
     format_overrides:
       - goos: windows
         formats: [zip]
+    builds_info:
+      mtime: "{{ .CommitDate }}"
     files:
-      - LICENSE
-      - README.md
+      - src: LICENSE
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: README.md
+        info:
+          mtime: "{{ .CommitDate }}"
 
 checksum:
-  name_template: checksums.txt
-  algorithm: sha256
+  name_template: checksums.txt # SHA-256, goreleaser's default
 
 # Release notes come from git-cliff (cliff.toml), passed with
 # --release-notes, so goreleaser's own changelog is off.
 changelog:
   disable: true
 
+# The repository comes from the git remote. Only vX.Y.Z tags are released
+# (release.yml checks), so there are no pre-releases.
 release:
-  github:
-    owner: austinrr
-    name: knapsack
-  # Only a tag with a suffix, like v0.2.0-rc.1, is marked a pre-release.
-  # v0.x.y releases are normal ones; what pre-1.0 means is in the
-  # versioning policy (docs/CONTRIBUTING.md).
-  prerelease: auto
+  # Running the Release workflow again for a tag rebuilds its release:
+  # replace its notes, and the files already uploaded.
   mode: replace
+  replace_existing_artifacts: true

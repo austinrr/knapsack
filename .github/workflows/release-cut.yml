@@ -69,17 +69,20 @@ jobs:
           BUMP: ${{ inputs.bump }}
         run: |
           set -euo pipefail
-          latest=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' 2>/dev/null || true)
-          next=$(git cliff --bumped-version --bump "$BUMP")
-          if [[ -n "$latest" && "$next" == "$latest" ]]; then
-            echo "::error::Nothing to release since $latest: no feat, fix, perf, refactor, docs or revert commits."
+          # Count what would be in the notes, as git-cliff sees it, so the
+          # check holds for an explicit bump too and agrees with cliff.toml
+          # on which tags and commits count.
+          releasable=$(git cliff --unreleased --context | jq '[.[].commits[]] | length')
+          if (( releasable == 0 )); then
+            echo "::error::Nothing to release: no feat, fix, perf, refactor, docs, revert or breaking commits since the last release."
             exit 1
           fi
+          next=$(git cliff --bumped-version --bump "$BUMP")
           if git rev-parse -q --verify "refs/tags/$next" >/dev/null; then
             echo "::error::Tag $next already exists."
             exit 1
           fi
-          echo "Releasing $next (previous: ${latest:-none})"
+          echo "Releasing $next with $releasable change(s)"
           echo "tag=$next" >> "$GITHUB_OUTPUT"
 
       - name: Preview release notes
