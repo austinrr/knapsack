@@ -1,8 +1,6 @@
 package main
 
 import (
-	"context"
-
 	"github.com/spf13/cobra"
 
 	"github.com/austinrr/knapsack/internal/app"
@@ -94,19 +92,6 @@ const profileEnv = "KNAPSACK_PROFILE"
 func (c *cli) addProfileFlag(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&c.profile, "profile", "p", "",
 		"profile to act on (default $"+profileEnv+", then the current profile)")
-}
-
-// resolvedProfile is the profile a one-profile command acts on: -p, else
-// $KNAPSACK_PROFILE, else the current profile, or "" if there's none.
-func (c *cli) resolvedProfile(ctx context.Context) string {
-	if name := c.profileName(); name != "" {
-		return name
-	}
-	name, err := c.app.CurrentProfile(ctx)
-	if err != nil {
-		return ""
-	}
-	return name
 }
 
 // profileName is -p, else $KNAPSACK_PROFILE, else "" for the current

@@ -62,11 +62,17 @@ func (s *scope) args(namesAllowed bool) cobra.PositionalArgs {
 // only without -A.
 func (s *scope) selector(ctx context.Context, c *cli, names []string) (app.Selector, error) {
 	if !s.all {
-		sel := app.Selector{Addons: names}
-		if p := c.profileName(); p != "" {
-			sel.Profiles = []string{p}
+		// The profile is resolved here, once, so what the command acts on
+		// and what its output names can't differ, even if another process
+		// switches the current profile meanwhile.
+		p := c.profileName()
+		if p == "" {
+			var err error
+			if p, err = c.app.CurrentProfile(ctx); err != nil {
+				return app.Selector{}, err
+			}
 		}
-		return sel, nil
+		return app.Selector{Profiles: []string{p}, Addons: names}, nil
 	}
 	infos, err := c.app.Profiles(ctx)
 	if err != nil {
@@ -115,7 +121,7 @@ changes config, and never uninstalls anything unless --prune is given.`,
 			c.stopProgress()
 			out := &printer{w: cmd.OutOrStdout()}
 			if err == nil && len(results) == 0 {
-				return noteEmpty(cmd, c, sc.all)
+				return noteEmpty(cmd, sel, sc.all)
 			}
 			printed := 0
 			for _, res := range results {
@@ -234,7 +240,7 @@ on errors, like kubectl diff. Prune candidates count as pending only with
 					out.err = werr
 				}
 			case len(plans) == 0 && err == nil:
-				return noteEmpty(cmd, c, sc.all)
+				return noteEmpty(cmd, sel, sc.all)
 			case err == nil:
 				tallies := make([]tally, len(plans))
 				for i, p := range plans {
