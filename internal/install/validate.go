@@ -65,8 +65,8 @@ func Validate(dir string, f flavor.Flavor, clientInterface int) (warning string,
 }
 
 // selectTOC returns the name of the TOC file in dir that the client loads:
-// the first of <Folder>_<GameType>.toc, <Folder>_<Family>.toc and
-// <Folder>.toc that exists. Names are matched without regard to case, as
+// the first of <Folder>_<GameType>.toc (then one per alias),
+// <Folder>_<Family>.toc and <Folder>.toc that exists. Names are matched without regard to case, as
 // on Windows and macOS, where the client runs.
 func selectTOC(dir string, c flavor.Client) (string, error) {
 	entries, err := os.ReadDir(dir)
@@ -81,18 +81,18 @@ func selectTOC(dir string, c flavor.Client) (string, error) {
 		}
 	}
 	folder := filepath.Base(dir)
-	candidates := []string{
-		folder + "_" + c.GameType + ".toc",
-		folder + "_" + string(c.Family) + ".toc",
-		folder + ".toc",
+	var candidates []string
+	for _, t := range c.GameTypes() {
+		candidates = append(candidates, folder+"_"+t+".toc")
 	}
+	candidates = append(candidates, folder+"_"+string(c.Family)+".toc", folder+".toc")
 	for _, want := range candidates {
 		if name, ok := files[strings.ToLower(want)]; ok {
 			return name, nil
 		}
 	}
 	return "", fmt.Errorf("%w: no %s.toc, or %s_<suffix>.toc for %s or %s",
-		ErrNotAddon, folder, folder, c.GameType, c.Family)
+		ErrNotAddon, folder, folder, strings.Join(c.GameTypes(), ", "), c.Family)
 }
 
 // TOC returns the name and contents of the TOC file a client of flavor f
@@ -121,12 +121,13 @@ func readTOC(path string) (toc.File, error) {
 }
 
 // checkGameType applies ExcludeLoadGameType and AllowLoadGameType. A name
-// matches the client if it's the client's game type or its family. Allow
+// matches the client if it's the client's game type, an alias, or its
+// family. Allow
 // follows the client's quirk: names the client doesn't recognize are
 // ignored, and if none are recognized the rule passes.
 func checkGameType(file toc.File, c flavor.Client) error {
 	matches := func(name string) bool {
-		return name == c.GameType || name == string(c.Family)
+		return slices.Contains(c.GameTypes(), name) || name == string(c.Family)
 	}
 	if slices.ContainsFunc(file.ExcludeLoadGameTypes, matches) {
 		return fmt.Errorf("%w: ExcludeLoadGameType %s", ErrExcluded, strings.Join(file.ExcludeLoadGameTypes, ", "))

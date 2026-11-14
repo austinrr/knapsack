@@ -78,6 +78,15 @@ func TestValidate(t *testing.T) {
 			wantErr: install.ErrExcluded,
 		},
 		{
+			name:  "allow names the alias",
+			files: map[string]string{"Addon.toc": "## Interface: 16001\n## AllowLoadGameType: camelot\n"},
+		},
+		{
+			name:    "excluded by alias",
+			files:   map[string]string{"Addon.toc": "## Interface: 16001\n## ExcludeLoadGameType: camelot\n"},
+			wantErr: install.ErrExcluded,
+		},
+		{
 			name:  "allow names the family",
 			files: map[string]string{"Addon.toc": "## Interface: 16001\n## AllowLoadGameType: Mainline\n"},
 		},
@@ -184,6 +193,13 @@ func TestValidateTOCPrecedence(t *testing.T) {
 		{"game type over family and plain", map[string]string{
 			"Addon_Forever.toc": chosen, "Addon_Mainline.toc": other, "Addon.toc": other,
 		}},
+		{"game type over alias", map[string]string{
+			"Addon_Forever.toc": chosen, "Addon_Camelot.toc": other,
+		}},
+		// Details ships its Forever build this way.
+		{"alias over family and plain", map[string]string{
+			"Addon_Camelot.toc": chosen, "Addon_Mainline.toc": other, "Addon.toc": other,
+		}},
 		{"family over plain", map[string]string{
 			"Addon_Mainline.toc": chosen, "Addon.toc": other, "Addon_Standard.toc": other,
 		}},
@@ -242,7 +258,7 @@ func TestValidateNotAddonMessage(t *testing.T) {
 	t.Parallel()
 	dir := addon(t, map[string]string{"Addon_Mists.toc": "## Interface: 50504\n"})
 	_, err := install.Validate(dir, flavor.Forever, 0)
-	want := "Addon: not an addon folder: no Addon.toc, or Addon_<suffix>.toc for forever or mainline"
+	want := "Addon: not an addon folder: no Addon.toc, or Addon_<suffix>.toc for forever, camelot or mainline"
 	if err == nil || err.Error() != want {
 		t.Errorf("Validate error = %v, want %q", err, want)
 	}

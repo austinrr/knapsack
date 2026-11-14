@@ -75,20 +75,22 @@ func TestClientInterfaceMissingFile(t *testing.T) {
 
 func TestKnownGameType(t *testing.T) {
 	t.Parallel()
-	for _, name := range []string{"standard", "forever", "mists", "cata", "wrath", "tbc", "vanilla", "mainline", "classic"} {
+	for _, name := range []string{"standard", "forever", "camelot", "mists", "cata", "wrath", "tbc", "vanilla", "mainline", "classic"} {
 		if !flavor.KnownGameType(name) {
 			t.Errorf("KnownGameType(%q) = false, want true", name)
 		}
 	}
-	// Every client in the table must be recognized, or validation would
+	// Every client in the table, with its aliases, must be recognized, or validation would
 	// ignore AllowLoadGameType lines naming it.
 	for _, f := range flavor.All() {
 		c, _ := f.Client()
-		if !flavor.KnownGameType(c.GameType) || !flavor.KnownGameType(string(c.Family)) {
-			t.Errorf("%s: game type %q or family %q isn't known", f, c.GameType, c.Family)
+		for _, name := range append(c.GameTypes(), string(c.Family)) {
+			if !flavor.KnownGameType(name) {
+				t.Errorf("%s: game type or family %q isn't known", f, name)
+			}
 		}
 	}
-	for _, name := range []string{"camelot", "Mainline", "retail", ""} {
+	for _, name := range []string{"Mainline", "retail", ""} {
 		if flavor.KnownGameType(name) {
 			t.Errorf("KnownGameType(%q) = true, want false", name)
 		}
