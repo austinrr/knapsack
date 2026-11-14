@@ -1,0 +1,57 @@
+# goreleaser builds and publishes releases (DESIGN.md §11). The release
+# workflow runs it on a tag the Release Cut workflow created; locally,
+# `make snapshot` builds the same archives into dist/ without publishing.
+version: 2
+
+project_name: knapsack
+
+builds:
+  - id: knapsack
+    main: ./cmd/knapsack
+    binary: knapsack
+    env:
+      # Static binaries: no libc dependency, so one Linux build runs on any
+      # distribution.
+      - CGO_ENABLED=0
+    goos: [linux, windows, darwin]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    # buildVersion is what `knapsack version` prints (cmd/knapsack/version.go).
+    # -s -w drop the symbol table and debug info, which only debuggers use.
+    ldflags:
+      - -s -w -X main.buildVersion={{ .Tag }}
+    # The commit time, not the build time, so a rebuild of a tag is
+    # byte-for-byte the same.
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: knapsack
+    ids: [knapsack]
+    # knapsack_0.1.0_linux_amd64.tar.gz, knapsack_0.1.0_windows_arm64.zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+# Release notes come from git-cliff (cliff.toml), passed with
+# --release-notes, so goreleaser's own changelog is off.
+changelog:
+  disable: true
+
+release:
+  github:
+    owner: austinrr
+    name: knapsack
+  # Only a tag with a suffix, like v0.2.0-rc.1, is marked a pre-release.
+  # v0.x.y releases are normal ones; what pre-1.0 means is in the
+  # versioning policy (docs/CONTRIBUTING.md).
+  prerelease: auto
+  mode: replace

@@ -1,0 +1,55 @@
+# git-cliff turns the conventional-commit titles on main into release notes
+# and works out the next version (DESIGN.md §11, docs/CONTRIBUTING.md).
+# Every PR is squash-merged, so each commit on main is one PR title, like
+# "feat(app): update and check addons in bulk (#20)".
+
+[changelog]
+# No header: the notes are the body of one GitHub release, not a file.
+header = ""
+body = """
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim | upper_first }}
+{% for commit in commits %}
+- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}\
+{% if commit.breaking %}[**breaking**] {% endif %}\
+{{ commit.message | upper_first }}\
+{% endfor %}
+{% endfor %}
+"""
+trim = true
+footer = ""
+
+[git]
+conventional_commits = true
+# The few commits before PR titles were checked (the initial design docs and
+# a merge commit) aren't release notes.
+filter_unconventional = true
+split_commits = false
+# The HTML comments order the groups and are stripped from the headings.
+commit_parsers = [
+  { message = "^feat", group = "<!-- 0 -->Features" },
+  { message = "^fix", group = "<!-- 1 -->Bug fixes" },
+  { message = "^perf", group = "<!-- 2 -->Performance" },
+  { message = "^refactor", group = "<!-- 3 -->Refactoring" },
+  { message = "^docs", group = "<!-- 4 -->Documentation" },
+  { message = "^revert", group = "<!-- 5 -->Reverts" },
+  # Tests and chores, like CI and release tooling, matter to contributors,
+  # not users.
+  { message = "^test", skip = true },
+  { message = "^chore", skip = true },
+]
+# A link to each PR instead of a bare number.
+commit_preprocessors = [
+  { pattern = '\(#([0-9]+)\)', replace = "([#${1}](https://github.com/austinrr/knapsack/pull/${1}))" },
+]
+protect_breaking_commits = true
+tag_pattern = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+sort_commits = "oldest"
+
+[bump]
+# Before 1.0, a breaking change bumps the minor version and anything else
+# the patch (docs/CONTRIBUTING.md). From 1.0 on, git-cliff's usual rules
+# apply: breaking → major, feat → minor, the rest → patch.
+features_always_bump_minor = false
+breaking_always_bump_major = false
+initial_tag = "v0.1.0"
