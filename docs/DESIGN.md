@@ -792,7 +792,7 @@ commands. The source is part of the ref, and "all" is the default.
 # Addons
 knapsack add <ref|url>...          add to config and install
 knapsack remove <addon>...         uninstall owned folders and remove from config   (alias: rm)
-knapsack update [addon...]         install missing addons, upgrade outdated ones
+knapsack update [addon...]         upgrade outdated addons, install missing ones
 knapsack check [addon...]          show what update would do; changes nothing
 knapsack list [--unmanaged]        installed addons; no lookups                    (alias: ls)
 knapsack info <addon>              ref, version, owned folders, TOC flavors, install time
@@ -856,11 +856,11 @@ forever: 1 upgrade · retail: 1 install
   config, in that order (§5.4). A failed `add` leaves config unchanged.
   Adding an addon that's already in config is a no-op that says so. Adding
   one that's in state but not in config adopts it.
-- **`update`** makes the profile match its config: it installs addons listed
-  in config but not installed, and upgrades installed addons whose resolved
-  release differs from the installed one (§5.3). This makes `update` the
-  everyday command and the one-step setup for a new machine or a hand-edited
-  config. `--prune` also uninstalls addons in state but not in config.
+- **`update`** upgrades installed addons whose resolved release differs
+  from the installed one (§5.3), which is what it's mostly used for. It also
+  installs addons listed in config but not installed, so the profile
+  matches its config: that makes it the one-step setup for a new machine
+  or a hand-edited config too. `--prune` also uninstalls addons in state but not in config.
   Without `--prune`, `update` never removes anything. `--force` replaces
   folders owned by no addon.
 - **`check`** runs the same resolution as `update` and prints the planned
