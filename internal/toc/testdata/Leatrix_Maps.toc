@@ -1,0 +1,15 @@
+## Interface: 16001
+
+## Title: Leatrix Maps
+## Notes: curseforge.com/wow/addons/leatrix-maps
+
+## Version: 1.60.31
+## Author: Leatrix
+## SavedVariables: LeaMapsDB
+## LoadSavedVariablesFirst: true
+
+## AddonCompartmentFunc:LeaMapsGlobalMiniBtnClickFunc
+## IconTexture: Interface\HELPFRAME\HelpIcon-Bug
+## X-Curse-Project-ID: 298842
+## OptionalDeps: ElvUI
+
