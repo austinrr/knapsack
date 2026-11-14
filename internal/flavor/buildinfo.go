@@ -32,11 +32,11 @@ func ClientInterface(addonsDir string, f Flavor) (int, bool) {
 	}
 	// The client folder in the path says which of the flavor's clients
 	// this is, live or a test, and so which product to read.
-	inPath, client, found := clientIn(addonsDir)
-	if !found || inPath != f || client.Product == "" {
+	l, found := Locate(addonsDir)
+	if !found || l.Flavor != f || l.Product == "" {
 		return 0, false
 	}
-	root, ok := wowFolder(addonsDir, client.Folder)
+	root, ok := wowFolder(addonsDir, l.Folder)
 	if !ok {
 		return 0, false
 	}
@@ -46,7 +46,7 @@ func ClientInterface(addonsDir string, f Flavor) (int, bool) {
 	}
 	defer func() { _ = file.Close() }() // read-only; nothing to flush
 
-	version, err := productVersion(file, client.Product)
+	version, err := productVersion(file, l.Product)
 	if err != nil {
 		return 0, false
 	}

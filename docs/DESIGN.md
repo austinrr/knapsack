@@ -624,7 +624,12 @@ A **test client** (PTR or beta) has its own client folder and AddOns, and
 runs the same flavor of addons as its live client, so `…/_ptr_/Interface/
 AddOns` is `retail`. It reads its own product's row in `.build.info` for
 the out-of-date check. A profile for one sits beside the live client's, so
-it needs its own name (`retail-ptr`). When a beta runs the next expansion,
+without a name `set-profile` calls it `retail-ptr`, leaving `retail` for the
+live client. A test folder's flavor is only a default, though: Blizzard has
+used `_classic_beta_` for betas of more than one Classic game, so `--flavor`
+may differ from it (that profile is then `anniversary-beta`), and a stored
+flavor isn't re-inferred from it. A live folder's flavor must match. When a
+beta runs the next expansion,
 its Interface numbers fall outside the flavor's range: the check is
 skipped, and addons built only for the new expansion are refused until the
 range here changes.
@@ -927,9 +932,11 @@ forever: 1 upgrade · retail: 1 install
   per flavor: without one, it's the profile already using `--path`, so
   running the command again is harmless, or else the flavor. If a profile
   of that name already uses another folder, it's an error, not a move: a
-  second install of the same client (a test copy, a PTR with
-  `--flavor retail`) needs its own name, and moving the existing profile
-  means naming it.
+  second install of the same client, such as a test copy, needs its own
+  name, and moving the existing profile means naming it. A test client's
+  folder gets a name of its own, `retail-ptr` (§6.4). Without `--path`,
+  the flavor is never re-inferred: it stays as stored unless `--flavor` is
+  given.
 - **`config set-profile`** on an existing profile changes only the flags given,
   like kubectl's `set-context`. `--path` must be an existing directory, and
   an explicit `--flavor` that contradicts the path's client folder is an

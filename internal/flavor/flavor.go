@@ -55,15 +55,13 @@ type Client struct {
 
 // TestClient is a test version of a client: a PTR or beta.
 type TestClient struct {
+	// Name is what it's called, e.g. "ptr", for a default profile name:
+	// retail-ptr.
+	Name string
 	// Folder is its client folder, e.g. "_ptr_".
 	Folder string
 	// Product is its product code in .build.info, as Client.Product.
 	Product string
-}
-
-// folders returns the client's own folder and product, then its tests'.
-func (c Client) folders() []TestClient {
-	return append([]TestClient{{Folder: c.Folder, Product: c.Product}}, c.Tests...)
 }
 
 // GameTypes returns the game type, then its aliases: every name the client
@@ -113,7 +111,7 @@ var table = []struct {
 		Product:   "wow",
 		// The test clients' product codes come from WowUp, unconfirmed
 		// (DESIGN.md §13), as are the folders of the two below.
-		Tests: []TestClient{{"_ptr_", "wowt"}, {"_xptr_", "wowxptr"}, {"_beta_", "wow_beta"}},
+		Tests: []TestClient{{"ptr", "_ptr_", "wowt"}, {"xptr", "_xptr_", "wowxptr"}, {"beta", "_beta_", "wow_beta"}},
 	}, []string{"mainline", "retail"}},
 	{Classic, Client{
 		Folder:    "_classic_",
@@ -121,7 +119,9 @@ var table = []struct {
 		Family:    FamilyClassic,
 		Interface: Range{Min: 50000, Max: 59999},
 		Product:   "wow_classic",
-		Tests:     []TestClient{{"_classic_ptr_", "wow_classic_ptr"}, {"_classic_beta_", "wow_classic_beta"}},
+		// _classic_beta_ has also held betas of other Classic lines, so
+		// it's only a default: --flavor can say otherwise (Locate).
+		Tests: []TestClient{{"ptr", "_classic_ptr_", "wow_classic_ptr"}, {"beta", "_classic_beta_", "wow_classic_beta"}},
 	}, []string{"mists", "mop"}},
 	{ClassicEra, Client{
 		Folder:    "_classic_era_",
@@ -129,7 +129,7 @@ var table = []struct {
 		Family:    FamilyClassic,
 		Interface: Range{Min: 11000, Max: 11999},
 		Product:   "wow_classic_era",
-		Tests:     []TestClient{{"_classic_era_ptr_", "wow_classic_era_ptr"}},
+		Tests:     []TestClient{{"ptr", "_classic_era_ptr_", "wow_classic_era_ptr"}},
 	}, []string{"vanilla", "classic", "era", "classic_era"}},
 	{Anniversary, Client{
 		Folder:    "_anniversary_",
@@ -241,35 +241,45 @@ func (f Flavor) Client() (Client, bool) {
 }
 
 // FromPath detects the flavor from an AddOns directory by finding the client
-// folder in it: …/_forever_/Interface/AddOns is Forever, and so is a test
-// client's, so …/_ptr_/Interface/AddOns is Retail. It understands both / and
-// \ separators on every OS, and matches folder names without regard to
-// case, as Windows does. When several path elements are client folders, the
-// one nearest the end wins.
+// folder in it, as Locate does: …/_forever_/Interface/AddOns is Forever,
+// and …/_ptr_/Interface/AddOns is Retail.
 func FromPath(addonsDir string) (Flavor, bool) {
-	f, _, ok := clientIn(addonsDir)
-	return f, ok
+	l, ok := Locate(addonsDir)
+	return l.Flavor, ok
 }
 
-// ClientFolder returns the client folder in an AddOns directory, as
-// FromPath finds it, spelled as in the table: "_ptr_".
-func ClientFolder(addonsDir string) (string, bool) {
-	_, c, ok := clientIn(addonsDir)
-	return c.Folder, ok
+// Location is the client folder found in an AddOns directory.
+type Location struct {
+	Flavor Flavor
+	// Folder is the client folder as the table spells it: "_ptr_".
+	Folder string
+	// Product is its .build.info product code, "" if not known.
+	Product string
+	// Test is the test client's name ("ptr", "beta"), or "" for a live
+	// client. A test folder's flavor is a default, not a fact: Blizzard
+	// has used some for more than one game, so --flavor may override it.
+	Test string
 }
 
-// clientIn finds the client folder in addonsDir for FromPath and
-// ClientFolder.
-func clientIn(addonsDir string) (Flavor, TestClient, bool) {
+// Locate finds the client folder in an AddOns directory: a live client's
+// or a test client's, which has its live client's flavor. It understands
+// both / and \ separators on every OS, and matches folder names without
+// regard to case, as Windows does. When several path elements are client
+// folders, the one nearest the end wins.
+func Locate(addonsDir string) (Location, bool) {
 	parts := strings.FieldsFunc(addonsDir, func(r rune) bool { return r == '/' || r == '\\' })
 	for i := len(parts) - 1; i >= 0; i-- {
 		for _, row := range table {
-			for _, c := range row.client.folders() {
-				if strings.EqualFold(parts[i], c.Folder) {
-					return row.flavor, c, true
+			c := row.client
+			if strings.EqualFold(parts[i], c.Folder) {
+				return Location{Flavor: row.flavor, Folder: c.Folder, Product: c.Product}, true
+			}
+			for _, t := range c.Tests {
+				if strings.EqualFold(parts[i], t.Folder) {
+					return Location{Flavor: row.flavor, Folder: t.Folder, Product: t.Product, Test: t.Name}, true
 				}
 			}
 		}
 	}
-	return "", TestClient{}, false
+	return Location{}, false
 }

@@ -1,5 +1,0 @@
-# exit: 2
-# stdout:
-# stderr:
-error: --flavor forever doesn't match the path, which is in _ptr_
-hint: leave out --flavor to use retail
