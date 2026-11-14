@@ -16,6 +16,7 @@ import (
 	"github.com/austinrr/knapsack/internal/app"
 	"github.com/austinrr/knapsack/internal/selfupdate"
 	"github.com/austinrr/knapsack/internal/source/github"
+	"github.com/austinrr/knapsack/internal/source/wago"
 )
 
 // Exit codes, following the diff/grep convention (DESIGN.md §8.6).
@@ -53,6 +54,8 @@ type env struct {
 	// token. Tests replace both, so they never reach the real GitHub.
 	githubURL   string
 	ghAuthToken func(context.Context) string
+	// wagoURL is Wago Addons' API, which tests replace too.
+	wagoURL string
 }
 
 func main() {
@@ -90,6 +93,7 @@ func main() {
 
 		githubURL:   github.DefaultBaseURL,
 		ghAuthToken: ghAuthToken,
+		wagoURL:     wago.DefaultBaseURL,
 	})
 	stop()
 	os.Exit(code)

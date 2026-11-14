@@ -64,7 +64,7 @@ func (c *cli) build(cmd *cobra.Command, network bool) error {
 }
 
 // newApp builds an App on p. With network, it gets an HTTP client and the
-// GitHub source, which looks for a token only when it first makes a
+// sources. Each looks for its token or key only when it first makes a
 // request, so a command that ends up not needing GitHub never runs gh.
 func newApp(e env, p paths.Paths, network bool, reporter app.Reporter) *app.App {
 	opts := app.Options{
@@ -78,7 +78,8 @@ func newApp(e env, p paths.Paths, network bool, reporter app.Reporter) *app.App 
 	if network {
 		opts.HTTP = httpx.NewClient(e.version)
 		gh := &lazyGitHub{client: opts.HTTP, baseURL: e.githubURL, getenv: e.getenv, ghAuthToken: e.ghAuthToken}
-		opts.Sources, opts.Releases = source.NewRegistry(gh), gh
+		wg := &lazyWago{client: opts.HTTP, baseURL: e.wagoURL, config: opts.Config, getenv: e.getenv}
+		opts.Sources, opts.Releases = source.NewRegistry(gh, wg), gh
 	}
 	return app.New(opts)
 }

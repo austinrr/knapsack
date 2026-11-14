@@ -448,8 +448,12 @@ type Source interface {
   `github.New(client *http.Client, baseURL, token string)`. Passing `baseURL`
   is what lets tests point at an `httptest.Server`.
 - `source.Registry` maps names to Sources and exposes
-  `Resolve(ctx, ref.Ref, flavor.Flavor)`. Sources without their required API
-  key aren't registered, and resolving one returns `ErrSourceNotConfigured`.
+  `Resolve(ctx, ref.Ref, flavor.Flavor)`. A source that isn't built isn't
+  registered, and resolving one returns `ErrSourceNotConfigured`. So does a
+  built one whose API key isn't set; the key is read on first use, so a
+  command with no addons from that source never reads it.
+- `Release.Header` carries headers the download needs, such as Wago's API
+  key. It's never stored.
 
 Sentinel errors in `source`: `ErrNotFound`, `ErrNoCompatibleRelease`,
 `ErrRateLimited`, `ErrUnauthorized`, `ErrSourceNotConfigured`. Implementations
@@ -755,7 +759,7 @@ write user-facing text.
 |---|---|---|
 | **GitHub** | Public REST API. 60 req/h anonymous, 5000 with a token. Asset metadata includes a `sha256:` digest | **v1** |
 | **CurseForge** | Official API needs an API key (console.curseforge.com). Authors can opt out of third-party distribution | Later |
-| **Wago** | Addons API needs a per-user API key | Later |
+| **Wago** | Addons API needs a per-user API key | **v1** |
 
 ### GitHub resolution
 
@@ -782,6 +786,30 @@ write user-facing text.
    token, a note that one raises the limit.
 5. Never fall back to source tarballs automatically. Mixed-TOC source trees
    are what caused the OpenMap problem.
+
+### Wago resolution
+
+The API isn't publicly documented. Its shape here is what WowUp and
+instawow use, which agree.
+
+1. `GET https://addons.wago.io/api/external/addons/{id}?game_version={gv}`
+   with `Authorization: Bearer <key>`. `{id}` is the addon's Wago ID or the
+   slug from its addons.wago.io link; both are accepted. `{gv}` is Wago's
+   name for the flavor's game: `retail`, `mop` (Classic), `classic`
+   (Classic Era), `bc` (Anniversary) and `forever`.
+2. `recent_release` maps a stability to that game's newest release of it.
+   Only `stable` is installed, as only GitHub's latest release is, never a
+   pre-release. Without one, it's `ErrNoCompatibleRelease`, naming the
+   stabilities there are. Wago sends `[]` for none.
+3. The release's `label` is `Release.Version` and `download_link` the
+   download. The download sends the key in the same header, as instawow
+   does (WowUp adds `?token=<key>` instead), but only when the link has the
+   API's own scheme and host, so the key never goes anywhere else.
+4. Wago publishes no checksum, so `Release.SHA256` is empty: `check`
+   downloads the archive to compare it with state.
+5. 404 is `ErrNotFound`, 401 and 403 are `ErrUnauthorized`, 429 is
+   `ErrRateLimited`. A missing key is `ErrSourceNotConfigured`, whose hint
+   names `knapsack sources set-key wago` and Wago's API keys page.
 
 CurseForge projects that block third-party access are covered by the existing
 `wow-addon-mirror-action`, which mirrors them to GitHub releases, so GitHub

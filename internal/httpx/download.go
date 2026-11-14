@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 )
@@ -41,8 +42,9 @@ const (
 	stallTimeout    = 60 * time.Second
 )
 
-// Download streams url into a new file in dir, verifying wantSHA256 when
-// it's non-empty, and returns the file's path and actual SHA-256 as
+// Download streams url into a new file in dir, sending header with the
+// request (nil for none) and verifying wantSHA256 when it's non-empty. It
+// returns the file's path and actual SHA-256 as
 // lowercase hex. The caller removes the file when done with it. On error,
 // no file is left behind.
 //
@@ -53,8 +55,8 @@ const (
 // onProgress, if not nil, is called after each read with the bytes
 // received so far and the total, which is -1 when the server doesn't say.
 // It's called on Download's goroutine, so it should be quick.
-func Download(ctx context.Context, c *http.Client, url, dir, wantSHA256 string, onProgress Progress) (path, sum string, err error) {
-	return download(ctx, c, url, dir, wantSHA256, onProgress, limits{size: maxDownloadSize, stall: stallTimeout})
+func Download(ctx context.Context, c *http.Client, url string, header http.Header, dir, wantSHA256 string, onProgress Progress) (path, sum string, err error) {
+	return download(ctx, c, url, header, dir, wantSHA256, onProgress, limits{size: maxDownloadSize, stall: stallTimeout})
 }
 
 // Progress receives a download's byte counts: done so far, of total (-1
@@ -67,7 +69,7 @@ type limits struct {
 	stall time.Duration
 }
 
-func download(ctx context.Context, c *http.Client, url, dir, wantSHA256 string, onProgress Progress, lim limits) (path, sum string, err error) {
+func download(ctx context.Context, c *http.Client, url string, header http.Header, dir, wantSHA256 string, onProgress Progress, lim limits) (path, sum string, err error) {
 	if wantSHA256 != "" && !IsSHA256(wantSHA256) {
 		// The source's data is wrong, not the file, so this isn't
 		// ErrChecksum.
@@ -87,6 +89,9 @@ func download(ctx context.Context, c *http.Client, url, dir, wantSHA256 string, 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", "", wrap(err)
+	}
+	for k, vs := range header {
+		req.Header[k] = slices.Clone(vs)
 	}
 	resp, err := c.Do(req)
 	if err != nil {

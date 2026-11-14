@@ -3,8 +3,8 @@
 A small, cross-platform command-line addon manager for World of Warcraft.
 
 Knapsack installs, updates and removes addons for each of your game clients
-(Retail, Classic, Classic Era, Anniversary, Forever) from GitHub releases,
-with CurseForge and Wago planned. It aims for simplicity and refinement over
+(Retail, Classic, Classic Era, Anniversary, Forever) from GitHub releases
+and Wago Addons, with CurseForge planned. It aims for simplicity and refinement over
 features: it checks that a release is really built for your client before
 installing it, only ever deletes folders it installed, and rolls back an
 install that fails halfway.
@@ -108,8 +108,8 @@ compared by checksum, not version number.
 | `version` | Print Knapsack's version, and say if there's a newer one |
 | `self-update` | Update Knapsack to the newest release |
 
-An addon can be named by its ref (`github:austinrr/baganator-mirror`), its
-URL, or its short name (`baganator-mirror`) when only one addon matches.
+An addon can be named by its ref (`github:austinrr/baganator-mirror`,
+`wago:<id>`), its GitHub or addons.wago.io link, or its short name (`baganator-mirror`) when only one addon matches.
 `knapsack <command> --help` shows every flag.
 
 ### Common flags
@@ -134,15 +134,19 @@ from `GITHUB_TOKEN`, `GH_TOKEN` or the [GitHub CLI](https://cli.github.com/)
 (`gh auth login`) when there is one, which raises that to 5,000. It never
 stores the token.
 
-CurseForge and Wago (planned) need an API key, shared by every profile:
+Wago Addons, and CurseForge once it's supported, need an API key, shared
+by every profile. Wago's is on your
+[account's API keys page](https://addons.wago.io/account/apikeys):
 
 ```sh
-knapsack sources set-key curseforge                       # asks for it
-pass show curseforge | knapsack sources set-key curseforge  # or pipe it in
+knapsack sources set-key wago                 # asks for it
+pass show wago | knapsack sources set-key wago  # or pipe it in
+knapsack add https://addons.wago.io/addons/plater
 ```
 
-`KNAPSACK_CURSEFORGE_API_KEY` and `KNAPSACK_WAGO_API_KEY` override the
-stored keys.
+`KNAPSACK_WAGO_API_KEY` and `KNAPSACK_CURSEFORGE_API_KEY` override the
+stored keys. Wago publishes no checksums, so `check`, and `list` unless
+`--no-check`, download each Wago addon to tell whether it changed.
 
 ## Where files live
 

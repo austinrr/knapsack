@@ -25,16 +25,22 @@ func explain(err error, r ref.Ref) error {
 		hint = "another addon in this profile installs the same folders; remove it first"
 	case errors.Is(err, install.ErrInUse):
 		hint = "close World of Warcraft and retry"
+	case errors.Is(err, source.ErrNotFound) && r.Source == ref.Wago:
+		hint = "check the ref: use the addon's Wago ID, or its addons.wago.io link"
 	case errors.Is(err, source.ErrNotFound):
 		hint = "check the ref; a repository with no releases yet also counts as not found"
-	case errors.Is(err, source.ErrRateLimited):
+	case errors.Is(err, source.ErrRateLimited) && r.Source == ref.GitHub:
 		hint = "set GITHUB_TOKEN, or log in with `gh auth login`, for a higher limit"
+	case errors.Is(err, source.ErrRateLimited):
+		hint = "wait a few minutes, then retry"
+	case errors.Is(err, source.ErrUnauthorized) && r.Source == ref.GitHub:
+		hint = "check the token Knapsack is using: GITHUB_TOKEN, GH_TOKEN or `gh auth token`"
 	case errors.Is(err, source.ErrUnauthorized):
-		hint = "check the token or API key Knapsack is using"
+		hint = fmt.Sprintf("check the key%s, and set it again with `knapsack sources set-key %s`", keyPage(r.Source, " at "), r.Source)
+	case errors.Is(err, source.ErrSourceNotConfigured) && builtSources[r.Source]:
+		// A built source that isn't configured is one missing its key.
+		hint = fmt.Sprintf("%s needs an API key: get one%s, then run `knapsack sources set-key %s`", r.Source, keyPage(r.Source, " from "), r.Source)
 	case errors.Is(err, source.ErrSourceNotConfigured):
-		// No keyed source is built yet (DESIGN.md §7), so a key wouldn't
-		// help. When one is, an unregistered source will mean a missing
-		// key, and this should point at `knapsack sources set-key`.
 		hint = fmt.Sprintf("Knapsack can't install from %s yet; `knapsack sources` shows which sources it can", r.Source)
 	case errors.Is(err, install.ErrWrongGame):
 		hint = "the release isn't built for this profile's flavor"
@@ -44,4 +50,18 @@ func explain(err error, r ref.Ref) error {
 		return err
 	}
 	return &UserError{Msg: err.Error(), Hint: hint, Err: err}
+}
+
+// keyPages are where each keyed source's users manage their API keys.
+var keyPages = map[string]string{
+	ref.Wago: "https://addons.wago.io/account/apikeys",
+}
+
+// keyPage is the source's key page after prep, for a hint, or "" when
+// there's none.
+func keyPage(name, prep string) string {
+	if page := keyPages[name]; page != "" {
+		return prep + page
+	}
+	return ""
 }

@@ -25,14 +25,14 @@ const (
 // builtSources are the sources this build of Knapsack can install from.
 // It's a fixed property of the build, not of how an App was set up, so
 // Sources answers the same with or without network sources registered.
-// CurseForge and Wago join it when they're built (DESIGN.md §7).
-var builtSources = map[string]bool{ref.GitHub: true}
+// CurseForge joins it when it's built (DESIGN.md §7).
+var builtSources = map[string]bool{ref.GitHub: true, ref.Wago: true}
 
 // SourceInfo describes one source, as Sources reports it.
 type SourceInfo struct {
 	Name string
 	// Available is whether Knapsack can install from it yet; CurseForge
-	// and Wago are planned (DESIGN.md §7).
+	// is planned (DESIGN.md §7).
 	Available bool
 	// NeedsKey is whether it takes an API key. GitHub doesn't: its token
 	// is optional and never stored, so frontends find it themselves.

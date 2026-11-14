@@ -11,7 +11,20 @@ import (
 var (
 	addBaganator = []string{"add", "github:austinrr/baganator-mirror"}
 	addDetails   = []string{"add", "github:austinrr/details-mirror"}
+	addPlumber   = []string{"add", "wago:plumber"} // needs wagoKeyEnv
 )
+
+// wagoKeyInConfig is a Forever profile with the fake Wago's key in config
+// rather than the environment.
+const wagoKeyInConfig = `current_profile = "forever"
+
+[profiles.forever]
+path = "{home}/wow/_forever_/Interface/AddOns"
+flavor = "forever"
+
+[sources.wago]
+api_key = "` + fakeWagoKey + `"
+`
 
 // handInstall puts folders in AddOns as installing by hand would:
 // WeakAuras, with a TOC, and LibStub, without one, in Forever, and Plater
@@ -57,6 +70,14 @@ func TestAddonCommands(t *testing.T) {
 		{name: "add/profile_env", setup: [][]string{addForever, addRetail},
 			env:  map[string]string{"KNAPSACK_PROFILE": "retail"},
 			args: []string{"add", "github:austinrr/retail-only"}},
+		// Wago, with the key in the environment or config, or without one.
+		{name: "add/wago", env: wagoKeyEnv, setup: [][]string{addForever}, args: addPlumber},
+		{name: "add/wago_url", env: wagoKeyEnv, setup: [][]string{addForever},
+			args: []string{"add", "https://addons.wago.io/addons/plumber"}},
+		{name: "add/wago_key_in_config", config: wagoKeyInConfig, args: addPlumber},
+		{name: "add/wago_no_key", setup: [][]string{addForever}, args: addPlumber},
+		{name: "add/wago_bad_key", env: map[string]string{"KNAPSACK_WAGO_API_KEY": "wrong"}, setup: [][]string{addForever}, args: addPlumber},
+		{name: "add/wago_unknown", env: wagoKeyEnv, setup: [][]string{addForever}, args: []string{"add", "wago:nope"}},
 		{name: "add/unknown_profile", setup: [][]string{addForever}, args: []string{"add", "-p", "nope", "github:austinrr/baganator-mirror"}},
 
 		// remove
@@ -77,6 +98,7 @@ func TestAddonCommands(t *testing.T) {
 		// list checks each addon, unless --no-check.
 		{name: "list/update_available", setup: [][]string{addForever, addBaganator, addDetails}, after: bumpBaganator, args: []string{"list"}},
 		{name: "list/no_check", setup: [][]string{addForever, addBaganator}, after: bumpBaganator, args: []string{"list", "--no-check"}},
+		{name: "list/wago", env: wagoKeyEnv, setup: [][]string{addForever, addBaganator, addPlumber}, args: []string{"list"}},
 		{name: "list/check_failed", config: missingAndGone, args: []string{"list"}},
 		{name: "list/check_failed_json", config: missingAndGone, args: []string{"list", "-o", "json"}},
 		// list names addons by title, so commands take titles too.

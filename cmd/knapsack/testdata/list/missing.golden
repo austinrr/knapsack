@@ -5,5 +5,5 @@ baganator-mirror  not installed  -        github
 VBNBxKx5          not installed  -        wago
 # stderr:
 Profile forever:
-error: wago VBNBxKx5: source not configured
-hint: Knapsack can't install from wago yet; `knapsack sources` shows which sources it can
+error: wago VBNBxKx5: no API key: source not configured
+hint: wago needs an API key: get one from https://addons.wago.io/account/apikeys, then run `knapsack sources set-key wago`
