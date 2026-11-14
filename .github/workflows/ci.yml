@@ -72,8 +72,26 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: stable
+          # Tidy covers tools/go.mod too, so cache its modules.
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
       - name: Check go.mod and go.sum are tidy
         run: make tidy
+
+  release-config:
+    # Catches a broken .goreleaser.yaml before Release Cut runs into it.
+    name: Release config
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache-dependency-path: tools/go.sum
+      - name: goreleaser check
+        run: make release-check
 
   vuln:
     name: Vulnerability scan

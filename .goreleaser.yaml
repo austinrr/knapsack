@@ -1,0 +1,61 @@
+# goreleaser builds and publishes releases (DESIGN.md §11). The release
+# workflow runs it on a tag the Release Cut workflow created; locally,
+# `make snapshot` builds the same archives into dist/ without publishing.
+version: 2
+
+project_name: knapsack
+
+builds:
+  - id: knapsack
+    main: ./cmd/knapsack
+    binary: knapsack
+    env:
+      # Static binaries: no libc dependency, so one Linux build runs on any
+      # distribution.
+      - CGO_ENABLED=0
+    goos: [linux, windows, darwin]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    # buildVersion is what `knapsack version` prints (cmd/knapsack/version.go).
+    # -s -w drop the symbol table and debug info, which only debuggers use.
+    ldflags:
+      - -s -w -X main.buildVersion={{ .Tag }}
+    # The commit time, not the build time, for the binary; the archives
+    # below do the same for their other files, so a rebuild of a tag gives
+    # the same archives and checksums.
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: knapsack
+    ids: [knapsack]
+    # knapsack_0.1.0_linux_amd64.tar.gz, knapsack_0.1.0_windows_arm64.zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    builds_info:
+      mtime: "{{ .CommitDate }}"
+    files:
+      - src: LICENSE
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: README.md
+        info:
+          mtime: "{{ .CommitDate }}"
+
+checksum:
+  name_template: checksums.txt # SHA-256, goreleaser's default
+
+# Release notes come from git-cliff (cliff.toml), passed with
+# --release-notes, so goreleaser's own changelog is off.
+changelog:
+  disable: true
+
+# The repository comes from the git remote. Only vX.Y.Z tags are released
+# (release.yml checks), so there are no pre-releases.
+release:
+  # Running the Release workflow again for a tag rebuilds its release:
+  # replace its notes, and the files already uploaded.
+  mode: replace
+  replace_existing_artifacts: true

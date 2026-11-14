@@ -94,14 +94,22 @@ Knapsack reaches v2, the module path changes to
 
 Releases are cut manually from GitHub Actions:
 
-1. Run the **Release Cut** workflow. It works out the next version from the
-   commit types since the last tag (or takes an explicit bump), generates
-   the changelog with [git-cliff](https://git-cliff.org/), and creates an
-   annotated tag. A dry-run option previews the version and changelog
-   without tagging.
+1. Run the **Release Cut** workflow from `main`. It works out the next
+   version from the commit types since the last tag (or takes an explicit
+   bump), previews the release notes from
+   [git-cliff](https://git-cliff.org/) in the run summary, and creates an
+   annotated tag. It's a dry run unless you untick **Only preview**, and it
+   refuses to run if CI didn't pass on that commit or nothing releasable
+   landed since the last tag (`test` and `chore` commits don't count, unless
+   they're breaking).
 2. The same run calls the release workflow, which builds binaries with
-   goreleaser and publishes a GitHub release with the generated changelog.
+   goreleaser and publishes a GitHub release with those notes. To rebuild a
+   release, run the **Release** workflow by hand with its tag.
+
+`make snapshot` builds every release archive into `dist/` locally without
+publishing, and `make release-check` validates `.goreleaser.yaml`.
 
 Because the changelog is built from PR titles, a well-formed title becomes
-a clean, grouped release-notes entry. A malformed one ends up under
-"Miscellaneous", which is why CI checks titles before merge.
+a clean, grouped release-notes entry. One that isn't conventional is left
+out of the notes and doesn't count toward the version bump, which is why
+CI checks titles before merge.

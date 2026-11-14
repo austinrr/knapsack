@@ -100,7 +100,7 @@ GitHub SDKs (go-github), git libraries, ORMs/SQLite.
 | `gofmt` / `goimports` | Formatting (enforced through golangci-lint formatters) |
 | `golangci-lint` v2 | Linting (config in §10). Installed as a binary, as its docs recommend |
 | `govulncheck` | Dependency vulnerability scan. Pinned as a `tool` dependency in `go.mod` |
-| `goreleaser` | Cross-platform release builds. Pinned as a `tool` dependency when release tooling lands (PR 19) |
+| `goreleaser` | Cross-platform release builds. Pinned as a `tool` in its own module, `tools/go.mod`, so its hundreds of dependencies and newer Go requirement stay out of Knapsack's `go.mod` (and off `go install` users). Run with `go -C tools tool -n goreleaser` |
 | `git-cliff` | Changelog and next-version calculation from conventional-commit PR titles. Runs in CI only |
 | GitHub Actions | CI on Linux, Windows and macOS |
 | `Makefile` | `make lint`, `make test`, `make build`. Thin wrappers only; CI runs the same commands |
@@ -1062,11 +1062,17 @@ A separate **PR Title** check validates conventional-commit titles
 **Releases** use semantic versioning (`vMAJOR.MINOR.PATCH`; see
 `docs/CONTRIBUTING.md` for bump rules and the pre-1.0 policy). A manually
 triggered **Release Cut** workflow computes the next version from commit
-types with git-cliff, generates the changelog, and creates the tag. It then
+types with git-cliff, previews the release notes, and creates the tag. It
+runs only from `main`, only when CI passed on that commit, and refuses when
+nothing releasable (no `feat`, `fix`, `perf`, `refactor`, `docs` or `revert`)
+landed since the last tag. It defaults to a dry run. It then
 calls the release workflow directly (`workflow_call`), since a tag pushed
 with the workflow's own token doesn't trigger other workflows. The release
 workflow runs goreleaser, which builds linux/windows/darwin × amd64/arm64,
 generates checksums, and publishes a GitHub release with git-cliff's notes.
+The notes live only in the release, not in a committed `CHANGELOG.md`, so
+releasing never pushes a commit to `main`. Running the release workflow by
+hand with an existing tag rebuilds that release.
 The version is injected with `-ldflags` and shown by `knapsack version`.
 Package-manager publishing (AUR, Homebrew, Scoop) comes later.
 
@@ -1314,8 +1320,10 @@ one command group.
 - Title: `chore: add release cut and goreleaser`
 - Implements: §11 (releases)
 - `goreleaser` as a `tool` dependency (deferred from PR 1: it pulls in
-  hundreds of modules and nothing needs it earlier), `cliff.toml`, the Release Cut workflow (version bump from commit types,
-  changelog, tag, dry-run option), the release workflow it calls
+  hundreds of modules and nothing needs it earlier), in `tools/go.mod`
+  because adding it to `go.mod` raised the `go` directive to 1.27.4,
+  `cliff.toml`, the Release Cut workflow (version bump from commit types,
+  release notes, tag, dry-run option), the release workflow it calls
   (`.goreleaser.yaml`), and install instructions and usage in the README.
 - Done when: a `v0.1.0` tag produces binaries for linux/windows/darwin ×
   amd64/arm64 with checksums.
