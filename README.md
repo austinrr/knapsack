@@ -36,16 +36,21 @@ instead.
 
 ## Getting started
 
-Make a profile for each game client, pointing at its `Interface/AddOns`
-folder. The flavor is worked out from the client folder (`_retail_`,
-`_forever_`, …), the profile is named after it, and the first profile
-becomes the current one.
+Make a profile for each game client, pointing at its client folder
+(`_retail_`, `_forever_`, …) or the `Interface\AddOns` folder in it. The
+flavor is worked out from the client folder, the profile is named after
+it, and the first profile becomes the current one. Quote the path: it
+usually has spaces in it.
 
-```sh
-knapsack config set-profile --path "$HOME/Games/World of Warcraft/_forever_/Interface/AddOns"
-knapsack config set-profile --path "$HOME/Games/World of Warcraft/_retail_/Interface/AddOns"
-knapsack config use-profile retail    # switch between them
+```powershell
+knapsack config set-profile --path "C:\Program Files (x86)\World of Warcraft\_retail_"
+knapsack config set-profile --path "C:\Program Files (x86)\World of Warcraft\_forever_"
+knapsack config use-profile forever    # switch between them
 ```
+
+On macOS the game is usually in `/Applications/World of Warcraft`; on
+Linux, inside the Wine prefix your launcher made, such as
+`"$HOME/Games/battlenet/drive_c/Program Files (x86)/World of Warcraft"`.
 
 A second profile for the same client, such as a test copy of the game,
 needs its own name: `knapsack config set-profile forever-test --path …`.

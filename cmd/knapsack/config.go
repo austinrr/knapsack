@@ -1,6 +1,11 @@
 package main
 
 import (
+	"fmt"
+	"path/filepath"
+	"slices"
+	"strings"
+
 	"github.com/spf13/cobra"
 
 	"github.com/austinrr/knapsack/internal/app"
@@ -39,9 +44,12 @@ comments in the file are not kept.`,
 func newSetProfileCmd(c *cli) *cobra.Command {
 	var req app.SetProfileRequest
 	cmd := &cobra.Command{
-		Use:   "set-profile [name] --path <AddOns folder> [--flavor <flavor>]",
+		Use:   "set-profile [name] --path <game client folder> [--flavor <flavor>]",
 		Short: "Create or change a profile",
 		Long: `Create a profile, or change an existing one.
+
+--path is the game's client folder, such as _retail_, or the
+Interface/AddOns folder in it. Quote it: the usual path has spaces in it.
 
 The flavor is inferred from the client folder in the path (_retail_,
 _classic_, _classic_era_, _anniversary_, _forever_) unless --flavor is
@@ -55,9 +63,14 @@ Without a name, the profile is the one already using the path, or else is
 named after its flavor (retail), or for a test client, its flavor and the
 test (retail-ptr), so most people never need to choose one. A second
 profile for the same client, such as a test copy of the game, needs a name.`,
-		Example: `  knapsack config set-profile --path "/games/World of Warcraft/_forever_/Interface/AddOns"
-  knapsack config set-profile forever-test --path ~/wow-test/_forever_/Interface/AddOns`,
-		Args: maxArgs("profile name"),
+		Example: "  knapsack config set-profile --path " + app.Quoted(app.ExampleClientFolder()) + "\n" +
+			"  knapsack config set-profile retail-test --path " + app.Quoted(filepath.Join(filepath.Dir(filepath.Dir(app.ExampleClientFolder())), "WoW Test", "_retail_")),
+		Args: func(cmd *cobra.Command, args []string) error {
+			if err := splitPath(cmd, req.Path, args); err != nil {
+				return err
+			}
+			return maxArgs("profile name")(cmd, args)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 1 {
 				req.Name = args[0]
@@ -78,7 +91,15 @@ profile for the same client, such as a test copy of the game, needs a name.`,
 			if res.MadeCurrent {
 				out.printf("Switched to profile %q.\n", res.Profile.Name)
 			}
-			return out.err
+			if out.err != nil {
+				return out.err
+			}
+			if res.MadeCurrent {
+				// The first profile: say what to do next.
+				_, err := fmt.Fprintln(cmd.ErrOrStderr(), "Next, add addons: knapsack add github:owner/repo, or a GitHub URL.")
+				return err
+			}
+			return nil
 		},
 	}
 	cmd.Flags().StringVar(&req.Path, "path", "", "the game's Interface/AddOns folder (required for a new profile)")
@@ -86,6 +107,27 @@ profile for the same client, such as a test copy of the game, needs a name.`,
 	_ = cmd.RegisterFlagCompletionFunc("flavor", cobra.FixedCompletions(flavor.Names(), cobra.ShellCompDirectiveNoFileComp))
 	_ = cmd.MarkFlagDirname("path")
 	return cmd
+}
+
+// splitPath catches a --path the shell split at its spaces, as an unquoted
+// C:\Program Files (x86)\… is in cmd.exe: the rest arrives as extra
+// arguments. An argument with \, / or parentheses can only be part of a
+// path, so one of those means a split. A leading valid profile name is
+// kept out of the rejoined path; names are lowercase, so "Files" isn't one.
+func splitPath(cmd *cobra.Command, path string, args []string) error {
+	isPathPart := func(a string) bool { return strings.ContainsAny(a, `\/()`) }
+	if !cmd.Flags().Changed("path") || !slices.ContainsFunc(args, isPathPart) {
+		return nil
+	}
+	rest := args
+	if config.ValidateProfileName(args[0]) == nil {
+		rest = args[1:]
+	}
+	joined := strings.Join(append([]string{path}, rest...), " ")
+	return &app.UserError{
+		Msg:  "the path looks split at its spaces: " + joined,
+		Hint: "put it in quotes: --path " + app.Quoted(joined),
+	}
 }
 
 // profileJSON is the -o json shape of a profile.

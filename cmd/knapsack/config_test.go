@@ -89,6 +89,14 @@ func TestConfigCommands(t *testing.T) {
 			args:  []string{"config", "set-profile", "retail", "--path", classic}},
 		{name: "config/set_profile_same_path", setup: [][]string{addForever},
 			args: []string{"config", "set-profile", "again", "--path", forever + "/"}},
+		// --path can be the client folder or its Interface folder, and the
+		// game folder lists its clients.
+		{name: "config/set_profile_client_folder", args: []string{"config", "set-profile", "--path", "{home}/wow/_forever_"}},
+		{name: "config/set_profile_interface_folder", args: []string{"config", "set-profile", "--path", "{home}/wow/_forever_/Interface"}},
+		{name: "config/set_profile_game_folder", args: []string{"config", "set-profile", "--path", "{home}/wow"}},
+		// An unquoted path split by the shell, with and without a name.
+		{name: "config/set_profile_split_path", args: []string{"config", "set-profile", "--path", "C:/Program", "Files", "(x86)/World", "of", "Warcraft/_retail_"}},
+		{name: "config/set_profile_split_path_named", args: []string{"config", "set-profile", "retail", "--path", "/games/World", "of", "Warcraft/_retail_"}},
 		// A test client is its live client's flavor.
 		{name: "config/set_profile_ptr", setup: [][]string{addRetail}, args: []string{"config", "set-profile", "retail-ptr", "--path", ptr}},
 		// A test folder's flavor is only a default: Blizzard has used

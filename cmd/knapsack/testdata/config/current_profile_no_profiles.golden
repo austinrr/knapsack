@@ -2,4 +2,4 @@
 # stdout:
 # stderr:
 error: no profiles yet
-hint: create one with: knapsack config set-profile --path <AddOns folder>
+hint: create one with: knapsack config set-profile --path "<games>/World of Warcraft/_retail_"
