@@ -133,7 +133,7 @@ func TestUpdateUpToDate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if diff := cmp.Diff([]app.Action{app.ActionUnchanged}, actions(results)); diff != "" {
+	if diff := cmp.Diff([]app.Action{app.ActionUpToDate}, actions(results)); diff != "" {
 		t.Fatalf("actions (-want +got):\n%s", diff)
 	}
 	if diff := cmp.Diff([]string{"Details"}, results[0].Folders); diff != "" {
@@ -164,7 +164,7 @@ func TestUpdateUpToDateWithoutPublishedSum(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if diff := cmp.Diff([]app.Action{app.ActionUnchanged}, actions(results)); diff != "" {
+	if diff := cmp.Diff([]app.Action{app.ActionUpToDate}, actions(results)); diff != "" {
 		t.Fatalf("actions (-want +got):\n%s", diff)
 	}
 	want := []app.EventKind{app.EventResolving, app.EventDownloading, app.EventSkipped}
@@ -215,7 +215,7 @@ func TestUpdatePrune(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if diff := cmp.Diff([]app.Action{app.ActionUnchanged, app.ActionRemoved}, actions(results)); diff != "" {
+	if diff := cmp.Diff([]app.Action{app.ActionUpToDate, app.ActionRemoved}, actions(results)); diff != "" {
 		t.Fatalf("actions with --prune (-want +got):\n%s", diff)
 	}
 	if e.exists("Old") || !e.exists("Keep") {
@@ -414,5 +414,76 @@ func TestCheckSeveralProfiles(t *testing.T) {
 	}
 	if diff := cmp.Diff([]string{"forever none", "second install"}, got); diff != "" {
 		t.Errorf("plans (-want +got):\n%s", diff)
+	}
+}
+
+// A profile named twice, or as both "" and its name, is processed once.
+func TestUpdateDedupesProfiles(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	e.src.publish(t, "o/details", "Details")
+	e.mustAdd(t, mustRef(t, "github:o/details"))
+
+	results, err := e.app.Update(context.Background(), app.Selector{Profiles: []string{"", e.profile, e.profile}}, app.UpdateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff([]app.Action{app.ActionUpToDate}, actions(results)); diff != "" {
+		t.Errorf("actions (-want +got):\n%s", diff)
+	}
+}
+
+// A malformed published SHA-256 fails in Check too, rather than reporting
+// an upgrade Update could never make.
+func TestCheckMalformedPublishedSum(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	e.src.publish(t, "o/details", "Details")
+	e.mustAdd(t, mustRef(t, "github:o/details"))
+	e.src.sums["o/details"] = "not-a-digest"
+
+	plans, err := e.app.Check(context.Background(), app.Selector{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plans) != 1 || plans[0].Action != app.PlanFailed {
+		t.Errorf("plans = %+v, want one failure", plans)
+	}
+	results, err := e.app.Update(context.Background(), app.Selector{}, app.UpdateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff([]app.Action{app.ActionFailed}, actions(results)); diff != "" {
+		t.Errorf("update actions (-want +got):\n%s", diff)
+	}
+}
+
+// Events carry the name the user typed, for failures in Check and for
+// removals by --prune, as they do for Remove.
+func TestBulkEventsCarryName(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	e.src.publish(t, "o/old", "Old")
+	e.mustAdd(t, mustRef(t, "github:o/old"))
+	e.setConfigAddons(t, e.profile)
+	e.rec.events = nil
+
+	if _, err := e.app.Check(context.Background(), app.Selector{Addons: []string{"nope"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.app.Update(context.Background(), app.Selector{Addons: []string{"old"}}, app.UpdateOptions{Prune: true}); err != nil {
+		t.Fatal(err)
+	}
+	type named struct {
+		Kind app.EventKind
+		Name string
+	}
+	var got []named
+	for _, ev := range e.rec.events {
+		got = append(got, named{ev.Kind, ev.Name})
+	}
+	want := []named{{app.EventFailed, "nope"}, {app.EventRemoved, "old"}}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("events (-want +got):\n%s", diff)
 	}
 }

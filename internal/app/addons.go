@@ -193,6 +193,11 @@ func (a *App) fetch(ctx context.Context, s *session, r ref.Ref, mode fetchMode) 
 	if err != nil {
 		return fetched{err: err}
 	}
+	// Checked here, not only by Download, so Check can't report an
+	// upgrade that Update could never make.
+	if rel.SHA256 != "" && !httpx.IsSHA256(rel.SHA256) {
+		return fetched{release: rel, err: fmt.Errorf("%s %s: published sha256 %q isn't 64 hex digits", r.Source, r.ID, rel.SHA256)}
+	}
 	f := fetched{release: rel}
 	installed, had := s.state.Addons[r]
 	switch {
@@ -230,7 +235,7 @@ func (a *App) installAll(ctx context.Context, s *session, refs []ref.Ref, force 
 		case err != nil:
 			// Reported below, with install failures.
 		case got[i].current:
-			res.Action, res.Folders = ActionUnchanged, previous.Folders
+			res.Action, res.Folders = ActionUpToDate, previous.Folders
 			a.report(Event{Kind: EventSkipped, Profile: s.name, Ref: r, Version: res.Version, Message: "up to date"})
 			results[i] = res
 			continue

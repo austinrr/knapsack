@@ -51,14 +51,29 @@ func targets(s *session, names []string) []target {
 	return out
 }
 
-// eachProfile runs fn for each profile in turn, "" alone meaning the
-// current one. A failure that stops one profile, such as its lock being
-// held, stops the rest too (DESIGN.md §6.5).
+// eachProfile runs fn once for each profile in turn, "" meaning the current
+// one, and none meaning just the current one. A failure that stops one
+// profile, such as its lock being held, stops the rest too (DESIGN.md
+// §6.5).
 func (a *App) eachProfile(ctx context.Context, profiles []string, write bool, fn func(*session) error) error {
 	if len(profiles) == 0 {
 		profiles = []string{""}
 	}
+	var seen []string
 	for _, p := range profiles {
+		if p == "" {
+			// Resolved here, so "" and the current profile's name don't
+			// run it twice.
+			current, err := a.CurrentProfile(ctx)
+			if err != nil {
+				return err
+			}
+			p = current
+		}
+		if slices.Contains(seen, p) {
+			continue
+		}
+		seen = append(seen, p)
 		if err := a.withProfile(ctx, p, write, fn); err != nil {
 			return err
 		}
@@ -80,8 +95,9 @@ func (a *App) Update(ctx context.Context, sel Selector, opts UpdateOptions) ([]R
 	var results []Result
 	err := a.eachProfile(ctx, sel.Profiles, writes, func(s *session) error {
 		ts := targets(s, sel.Addons)
+		// An entry left without an Action is a prune candidate skipped
+		// without --prune, and isn't returned.
 		out := make([]Result, len(ts))
-		keep := make([]bool, len(ts))
 		var toInstall []ref.Ref
 		var at []int // index in out of each ref in toInstall
 
@@ -107,22 +123,21 @@ func (a *App) Update(ctx context.Context, sel Selector, opts UpdateOptions) ([]R
 			default:
 				toInstall = append(toInstall, t.ref)
 				at = append(at, i)
-				keep[i] = true
 				continue
 			}
 			if res.Err != nil {
 				a.report(Event{Kind: EventFailed, Profile: s.name, Name: t.name, Ref: t.ref, Err: res.Err})
 			} else {
-				a.report(Event{Kind: EventRemoved, Profile: s.name, Ref: t.ref})
+				a.report(Event{Kind: EventRemoved, Profile: s.name, Name: t.name, Ref: t.ref})
 			}
-			out[i], keep[i] = res, true
+			out[i] = res
 		}
 		for j, res := range a.installAll(ctx, s, toInstall, opts.Force) {
 			res.Name = ts[at[j]].name
 			out[at[j]] = res
 		}
-		for i, res := range out {
-			if keep[i] {
+		for _, res := range out {
+			if res.Action != "" {
 				results = append(results, res)
 			}
 		}
@@ -180,6 +195,7 @@ func (a *App) Check(ctx context.Context, sel Selector) ([]Plan, error) {
 			switch {
 			case t.err != nil:
 				out[i].Action, out[i].Err = PlanFailed, t.err
+				a.report(Event{Kind: EventFailed, Profile: s.name, Name: t.name, Err: t.err})
 			case t.prune:
 				out[i].Action = PlanPrune
 			default:

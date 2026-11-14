@@ -47,20 +47,11 @@ type Installed struct {
 func (a *App) List(ctx context.Context, sel Selector) ([]Installed, error) {
 	var out []Installed
 	err := a.eachProfile(ctx, sel.Profiles, readOnly, func(s *session) error {
-		refs := s.known()
-		if len(sel.Addons) > 0 {
-			known := refs
-			refs = nil
-			for _, name := range sel.Addons {
-				r, err := findAddon(s, known, name)
-				if err != nil {
-					return err
-				}
-				refs = dedupe(append(refs, r))
+		for _, t := range targets(s, sel.Addons) {
+			if t.err != nil {
+				return t.err
 			}
-		}
-		for _, r := range refs {
-			out = append(out, installedInfo(s, r))
+			out = append(out, installedInfo(s, t.ref))
 		}
 		return nil
 	})
