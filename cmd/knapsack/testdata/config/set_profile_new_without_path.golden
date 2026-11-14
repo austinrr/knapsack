@@ -2,4 +2,4 @@
 # stdout:
 # stderr:
 error: profile "forever" doesn't exist yet, so --path is required
-hint: pass --path with the game's Interface/AddOns folder
+hint: pass the game's client folder, quoted: --path "<games>/World of Warcraft/_retail_"

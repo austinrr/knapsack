@@ -3,3 +3,4 @@
 Profile "custom" created (anniversary, <home>/addons).
 Switched to profile "custom".
 # stderr:
+Next, add addons: knapsack add github:owner/repo, or a GitHub URL.

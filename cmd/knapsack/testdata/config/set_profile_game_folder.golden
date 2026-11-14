@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: <home>/wow is the game folder, with _classic_, _classic_beta_, _forever_, _ptr_, _retail_ in it
+hint: pass one client folder: --path "<home>/wow/_classic_"

@@ -21,6 +21,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/austinrr/knapsack/internal/app"
 	"github.com/austinrr/knapsack/internal/paths"
 )
 
@@ -225,12 +226,15 @@ var timestamp = regexp.MustCompile(`\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ`)
 
 // normalize replaces the sandbox path with <home>, including its escaped
 // form in TOML and JSON, the fake GitHub's address with <github>, install
-// times with <time>, and this OS and architecture with <platform>, and
+// times with <time>, this OS and architecture with <platform>, and the
+// folder its example game path is in with <games>, and
 // uses / as the separator, so one golden file works on every OS and every
 // run.
 func (s *sandbox) normalize(out string) string {
 	out = strings.ReplaceAll(out, s.github.URL, "<github>")
 	out = strings.ReplaceAll(out, runtime.GOOS+"/"+runtime.GOARCH, "<platform>")
+	// Hints and help show where the game usually is on this OS.
+	out = strings.ReplaceAll(out, filepath.Dir(filepath.Dir(app.ExampleClientFolder())), "<games>")
 	out = timestamp.ReplaceAllString(out, "<time>")
 	for _, h := range []string{strings.ReplaceAll(s.home, `\`, `\\`), s.home, filepath.ToSlash(s.home)} {
 		out = strings.ReplaceAll(out, h, "<home>")

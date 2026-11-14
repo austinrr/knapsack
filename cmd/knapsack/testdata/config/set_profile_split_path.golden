@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: the path looks split at its spaces: C:/Program Files (x86)/World of Warcraft/_retail_
+hint: put it in quotes: --path "C:/Program Files (x86)/World of Warcraft/_retail_"

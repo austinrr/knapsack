@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/austinrr/knapsack/internal/lock"
@@ -89,6 +91,21 @@ func TestConfigCommands(t *testing.T) {
 			args:  []string{"config", "set-profile", "retail", "--path", classic}},
 		{name: "config/set_profile_same_path", setup: [][]string{addForever},
 			args: []string{"config", "set-profile", "again", "--path", forever + "/"}},
+		// --path can be the client folder or its Interface folder, and the
+		// game folder lists its clients.
+		{name: "config/set_profile_client_folder", args: []string{"config", "set-profile", "--path", "{home}/wow/_forever_"}},
+		{name: "config/set_profile_interface_folder", args: []string{"config", "set-profile", "--path", "{home}/wow/_forever_/Interface"}},
+		{name: "config/set_profile_game_folder", args: []string{"config", "set-profile", "--path", "{home}/wow"}},
+		// An unquoted path split by the shell, with and without a name.
+		{name: "config/set_profile_split_path", args: []string{"config", "set-profile", "--path", "C:/Program", "Files", "(x86)/World", "of", "Warcraft/_retail_"}},
+		{name: "config/set_profile_split_path_named", args: []string{"config", "set-profile", "retail", "--path", "/games/World", "of", "Warcraft/_retail_"}},
+		// "of" is a valid profile name, but it's part of the path here.
+		{name: "config/set_profile_split_path_of", args: []string{"config", "set-profile", "--path", "/games/World", "of", "Warcraft/_retail_"}},
+		{name: "config/set_profile_split_path_flag_after", args: []string{"config", "set-profile", "--path", "/games/World", "of", "Warcraft", "--flavor", "retail"}},
+		// A name after a path that exists isn't a split.
+		{name: "config/set_profile_name_after_path", args: []string{"config", "set-profile", "--path", forever, "main"}},
+		// A client that's never been started has no AddOns folder yet.
+		{name: "config/set_profile_client_without_addons", after: noAddOns("_xptr_"), args: []string{"config", "set-profile", "--path", "{home}/wow/_xptr_"}},
 		// A test client is its live client's flavor.
 		{name: "config/set_profile_ptr", setup: [][]string{addRetail}, args: []string{"config", "set-profile", "retail-ptr", "--path", ptr}},
 		// A test folder's flavor is only a default: Blizzard has used
@@ -185,5 +202,15 @@ func TestConfigLocked(t *testing.T) {
 			defer func() { _ = l.Release() }()
 			checkGolden(t, tc.name, s.run(tc.args...))
 		})
+	}
+}
+
+// noAddOns adds a client folder to the sandbox's game folder with no
+// Interface/AddOns in it, as a client that was never started has.
+func noAddOns(client string) func(*sandbox) {
+	return func(s *sandbox) {
+		if err := os.MkdirAll(filepath.Join(s.home, "wow", client), 0o700); err != nil {
+			s.t.Fatal(err)
+		}
 	}
 }

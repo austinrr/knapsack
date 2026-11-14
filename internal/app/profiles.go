@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/austinrr/knapsack/internal/config"
@@ -79,7 +80,7 @@ func (a *App) SetProfile(ctx context.Context, req SetProfileRequest) (SetProfile
 			if !exists && req.Path == "" {
 				return &UserError{
 					Msg:  fmt.Sprintf("profile %q doesn't exist yet, so --path is required", req.Name),
-					Hint: "pass --path with the game's Interface/AddOns folder",
+					Hint: pathHint(),
 				}
 			}
 			if req.Path != "" {
@@ -126,7 +127,7 @@ func (a *App) nameForPath(req SetProfileRequest) (name, path string, err error) 
 	if req.Path == "" {
 		return "", "", &UserError{
 			Msg:  "set-profile needs --path, or the name of a profile to change",
-			Hint: "pass --path with the game's Interface/AddOns folder",
+			Hint: pathHint(),
 		}
 	}
 	if path, err = addonsDir(req.Path); err != nil {
@@ -166,9 +167,45 @@ func flavorNameTaken(name, existing string) error {
 	}
 }
 
-// addonsDir makes path absolute and checks that it's a directory, which
-// catches typos before they're saved.
+// ExampleClientFolder is a client folder where the game usually is on
+// this OS, for hints and help: a profile's --path can be the client
+// folder, and Knapsack finds Interface/AddOns in it.
+func ExampleClientFolder() string {
+	switch runtime.GOOS {
+	case "windows":
+		return `C:\Program Files (x86)\World of Warcraft\_retail_`
+	case "darwin":
+		return "/Applications/World of Warcraft/_retail_"
+	}
+	// Linux runs the game under Wine; this is Lutris's default prefix.
+	// $HOME, not ~: shells expand it inside the quotes the hint adds.
+	return "$HOME/Games/battlenet/drive_c/Program Files (x86)/World of Warcraft/_retail_"
+}
+
+// pathHint is the hint for a --path that isn't usable, with the example
+// quoted, since the usual path has spaces in it.
+func pathHint() string {
+	return "pass the game's client folder, quoted: --path " + Quoted(ExampleClientFolder())
+}
+
+// Quoted puts path in double quotes for a hint, as every shell takes it,
+// Windows' included. Unlike %q, it leaves backslashes alone: C:\Program
+// Files stays as it's typed.
+func Quoted(path string) string { return `"` + path + `"` }
+
+// addonsDir makes path absolute and finds the AddOns folder it means: the
+// path itself, or Interface/AddOns in a client folder (…/_retail_), or
+// AddOns in its Interface folder, so the shortest path to type works. It
+// checks the folder exists, which catches typos before they're saved. Given
+// the World of Warcraft folder itself, the error lists its clients.
 func addonsDir(path string) (string, error) {
+	// Shells don't expand ~ inside quotes, which a path with spaces needs,
+	// so a leading ~ is expanded here.
+	if rest, ok := strings.CutPrefix(path, "~"); ok && (rest == "" || rest[0] == '/' || rest[0] == filepath.Separator) {
+		if home, err := os.UserHomeDir(); err == nil {
+			path = home + rest
+		}
+	}
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return "", fmt.Errorf("resolve path: %w", err)
@@ -178,7 +215,7 @@ func addonsDir(path string) (string, error) {
 	case errors.Is(err, fs.ErrNotExist) || err == nil && !info.IsDir():
 		return "", &UserError{
 			Msg:  fmt.Sprintf("%s is not a directory", abs),
-			Hint: "pass --path with the game's Interface/AddOns folder",
+			Hint: pathHint(),
 			Err:  err,
 		}
 	case err != nil:
@@ -186,7 +223,59 @@ func addonsDir(path string) (string, error) {
 		// say what actually went wrong.
 		return "", fmt.Errorf("check --path: %w", err)
 	}
+	if sub := addonsSubdir(abs); sub != "" {
+		addons := filepath.Join(abs, sub)
+		if isDir(addons) {
+			return addons, nil
+		}
+		// A client that's never been started has no AddOns folder yet.
+		// The client folder itself must never be the AddOns folder: WoW
+		// wouldn't load addons from it.
+		return "", &UserError{
+			Msg:  fmt.Sprintf("%s has no %s folder yet", abs, sub),
+			Hint: "start that client once, or make the folder: " + Quoted(addons),
+		}
+	}
+	if clients := clientFolders(abs); len(clients) > 0 {
+		return "", &UserError{
+			Msg:  fmt.Sprintf("%s is the game folder, with %s in it", abs, strings.Join(clients, ", ")),
+			Hint: "pass one client folder: --path " + Quoted(filepath.Join(abs, clients[0])),
+		}
+	}
 	return abs, nil
+}
+
+// addonsSubdir is where AddOns is below path: Interface/AddOns in a client
+// folder, AddOns in an Interface folder, or "" for any other folder.
+func addonsSubdir(path string) string {
+	switch {
+	case strings.EqualFold(filepath.Base(path), "Interface"):
+		return "AddOns"
+	case flavor.IsClientFolder(filepath.Base(path)):
+		return filepath.Join("Interface", "AddOns")
+	}
+	return ""
+}
+
+// clientFolders lists the client folders in dir, sorted, when dir is a
+// World of Warcraft folder.
+func clientFolders(dir string) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		if e.IsDir() && flavor.IsClientFolder(e.Name()) {
+			out = append(out, e.Name())
+		}
+	}
+	return out
+}
+
+func isDir(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
 }
 
 // chooseFlavor picks the flavor: the explicit one if given; otherwise
@@ -355,7 +444,7 @@ func noCurrentProfile(c *config.Config) error {
 	if len(c.Profiles) == 0 {
 		return &UserError{
 			Msg:  "no profiles yet",
-			Hint: "create one with: knapsack config set-profile --path <AddOns folder>",
+			Hint: "create one with: knapsack config set-profile --path " + Quoted(ExampleClientFolder()),
 		}
 	}
 	return &UserError{

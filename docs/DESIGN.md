@@ -943,7 +943,16 @@ forever: 1 upgrade · retail: 1 install
   catches corruption: it comes from the same release as the archive.
   Verifying build attestations would also catch a tampered release, and is
   a possible follow-up.
-- **`config set-profile`** creates or updates a profile. If `--flavor` is
+- **`config set-profile`** creates or updates a profile. `--path` is the
+  AddOns folder, or the client folder or its `Interface` folder, which
+  Knapsack completes to `Interface/AddOns`; given the game folder itself, the
+  error lists its clients. A leading `~` is expanded, since shells don't
+  expand it inside the quotes a path with spaces needs. An unquoted path the
+  shell split into extra arguments (cmd.exe does; bash and fish usually
+  reject `(x86)` first) is recognized, by an argument with `\`, `/` or
+  parentheses, and the error shows it rejoined and quoted. Hints and help
+  show this OS's usual path, quoted. After the first profile, a note on
+  stderr says to add addons next. If `--flavor` is
   omitted, it's inferred from the client folder in the path (`_forever_` →
   `forever`), and it's an error if it can't be. The first profile created
   becomes current. The name is optional, since most people have one profile

@@ -248,6 +248,13 @@ func FromPath(addonsDir string) (Flavor, bool) {
 	return l.Flavor, ok
 }
 
+// IsClientFolder reports whether name is a client folder, live or test,
+// matched without regard to case: "_retail_", "_PTR_".
+func IsClientFolder(name string) bool {
+	_, ok := Locate(name)
+	return ok && !strings.ContainsAny(name, "/\\")
+}
+
 // Location is the client folder found in an AddOns directory.
 type Location struct {
 	Flavor Flavor
