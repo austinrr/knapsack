@@ -29,7 +29,7 @@ const (
 type Event struct {
 	Kind    EventKind
 	Profile string
-	Name    string // what the user typed, for Remove; Ref is zero if it matched nothing
+	Name    string // what the user typed, for Remove, Update and Check; Ref is zero if it matched nothing
 	Ref     ref.Ref
 	Version string // the release, once resolved
 	Message string // for Skipped and Warned
@@ -48,8 +48,10 @@ type Action string
 // The actions in a Result.
 const (
 	ActionInstalled Action = "installed"
-	ActionAdopted   Action = "adopted"   // installed already; now in config too
-	ActionUnchanged Action = "unchanged" // already in config
+	ActionUpgraded  Action = "upgraded"   // a different release replaced the installed one
+	ActionAdopted   Action = "adopted"    // installed already; now in config too
+	ActionUnchanged Action = "unchanged"  // Add: already in config
+	ActionUpToDate  Action = "up to date" // Update: the newest release is installed
 	ActionRemoved   Action = "removed"
 	ActionFailed    Action = "failed"
 )
@@ -58,8 +60,10 @@ const (
 // the others: it's recorded here, and the method's own error is kept for
 // problems that stop everything.
 type Result struct {
-	// Name is what the user typed, for Remove; Ref is what it named, and is
-	// zero when the name matched no addon.
+	Profile string
+	// Name is what the user typed, for Remove and for Update with named
+	// addons; Ref is what it named, and is zero when the name matched no
+	// addon.
 	Name     string
 	Ref      ref.Ref
 	Action   Action

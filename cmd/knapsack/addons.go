@@ -59,8 +59,8 @@ are never replaced.`,
 					out.printf("Added %s %s, which was already installed.\n", res.Ref, res.Version)
 				case app.ActionUnchanged:
 					out.printf("%s is already added.\n", res.Ref)
-				case app.ActionFailed, app.ActionRemoved:
-					// Failures are reported by finish; add never removes.
+				case app.ActionFailed, app.ActionRemoved, app.ActionUpgraded, app.ActionUpToDate:
+					// Failures are reported by finish; add never removes or upgrades.
 				}
 			}
 			return finish(out, results, err)

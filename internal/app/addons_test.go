@@ -40,6 +40,7 @@ type fakeSource struct {
 	mu       sync.Mutex
 	zips     map[string][]byte // repo ID → archive
 	sums     map[string]string // repo ID → published sha256, if set
+	versions map[string]string // repo ID → release version
 	resolves atomic.Int32
 }
 
@@ -52,18 +53,25 @@ func (f *fakeSource) Resolve(_ context.Context, id string, _ flavor.Flavor) (sou
 	if _, ok := f.zips[id]; !ok {
 		return source.Release{}, fmt.Errorf("github %s: %w", id, source.ErrNotFound)
 	}
-	return source.Release{Version: "v1", DownloadURL: f.srv.URL + "/" + id, SHA256: f.sums[id]}, nil
+	return source.Release{Version: f.versions[id], DownloadURL: f.srv.URL + "/" + id, SHA256: f.sums[id]}, nil
 }
 
-// publish makes repo a release containing the given addon folders.
+// publish makes repo a release v1 containing the given addon folders.
 func (f *fakeSource) publish(t *testing.T, repo string, folders ...string) {
+	t.Helper()
+	f.release(t, repo, "v1", folders...)
+}
+
+// release makes repo's newest release version, containing the given addon
+// folders. Each version's files differ, so its SHA-256 does too.
+func (f *fakeSource) release(t *testing.T, repo, version string, folders ...string) {
 	t.Helper()
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	for _, name := range folders {
 		for file, body := range map[string]string{
 			name + "/" + name + ".toc": "## Interface: 16001\n## Title: " + name + "\n## Author: Someone\n",
-			name + "/Core.lua":         repo,
+			name + "/Core.lua":         repo + " " + version,
 		} {
 			w, err := zw.Create(file)
 			if err != nil {
@@ -80,6 +88,7 @@ func (f *fakeSource) publish(t *testing.T, repo string, folders ...string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.zips[repo] = buf.Bytes()
+	f.versions[repo] = version
 	sum := sha256.Sum256(buf.Bytes())
 	f.sums[repo] = hex.EncodeToString(sum[:])
 }
@@ -133,7 +142,7 @@ func newEnv(t *testing.T) *env {
 	if err := os.MkdirAll(addons, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	src := &fakeSource{zips: map[string][]byte{}, sums: map[string]string{}}
+	src := &fakeSource{zips: map[string][]byte{}, sums: map[string]string{}, versions: map[string]string{}}
 	src.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		src.mu.Lock()
 		data, ok := src.zips[strings.TrimPrefix(r.URL.Path, "/")]
@@ -475,7 +484,9 @@ func TestLockContention(t *testing.T) {
 	_, addErr := e.app.Add(context.Background(), e.profile, []ref.Ref{mustRef(t, "github:o/x")}, false)
 	_, removeErr := e.app.Remove(context.Background(), e.profile, []string{"x"})
 	_, listErr := e.app.List(context.Background(), app.Selector{})
-	for _, err := range []error{addErr, removeErr, listErr} {
+	_, updateErr := e.app.Update(context.Background(), app.Selector{}, app.UpdateOptions{})
+	_, checkErr := e.app.Check(context.Background(), app.Selector{})
+	for _, err := range []error{addErr, removeErr, listErr, updateErr, checkErr} {
 		var ue *app.UserError
 		if !errors.As(err, &ue) || !strings.Contains(ue.Msg, "in use by another knapsack process") {
 			t.Errorf("error = %v, want the profile-in-use UserError", err)

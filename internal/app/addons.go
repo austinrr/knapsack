@@ -101,10 +101,10 @@ func (a *App) Add(ctx context.Context, profile string, refs []ref.Ref, force boo
 			switch {
 			case slices.Contains(s.profile.Addons, r):
 				a.report(Event{Kind: EventSkipped, Profile: s.name, Ref: r, Message: "already added"})
-				results[i] = Result{Ref: r, Action: ActionUnchanged, Version: s.state.Addons[r].Version}
+				results[i] = Result{Profile: s.name, Ref: r, Action: ActionUnchanged, Version: s.state.Addons[r].Version}
 			case hasKey(s.state.Addons, r):
 				a.report(Event{Kind: EventSkipped, Profile: s.name, Ref: r, Message: "already installed; adding it to config"})
-				results[i] = Result{Ref: r, Action: ActionAdopted, Version: s.state.Addons[r].Version, Folders: s.state.Addons[r].Folders}
+				results[i] = Result{Profile: s.name, Ref: r, Action: ActionAdopted, Version: s.state.Addons[r].Version, Folders: s.state.Addons[r].Folders}
 			default:
 				toInstall = append(toInstall, r)
 				at = append(at, i)
@@ -136,43 +136,110 @@ func (a *App) Add(ctx context.Context, profile string, refs []ref.Ref, force boo
 	return results, err
 }
 
-// fetched is a release resolved and downloaded, ready to install.
+// fetched is a release resolved, and downloaded when needed.
 type fetched struct {
 	release source.Release
-	path    string // the downloaded archive, removed after installing
-	sum     string
+	path    string // the downloaded archive, if any; removed by discard
+	sum     string // its SHA-256, once downloaded
+	// current means the release is the one already installed: their
+	// SHA-256s match (DESIGN.md §5.3).
+	current bool
 	err     error
 }
 
-// installAll resolves and downloads refs in parallel, then installs them
-// one at a time, in order, so folder checks never race. Each installed
-// addon is saved to state at once, so files on disk are never left
-// unrecorded for longer than one install.
-func (a *App) installAll(ctx context.Context, s *session, refs []ref.Ref, force bool) []Result {
+// fetchMode says how much of a release fetch needs.
+type fetchMode int
+
+const (
+	// fetchArchive downloads any release that isn't the installed one, to
+	// install it.
+	fetchArchive fetchMode = iota
+	// fetchIdentity only finds out whether the release is the installed
+	// one, downloading it just when the source publishes no SHA-256.
+	fetchIdentity
+)
+
+// fetchAll runs fetch for each ref in parallel (DESIGN.md §6.5). The
+// caller must discard the result.
+func (a *App) fetchAll(ctx context.Context, s *session, refs []ref.Ref, mode fetchMode) []fetched {
 	got := make([]fetched, len(refs))
 	var g errgroup.Group
 	g.SetLimit(parallelism)
 	for i, r := range refs {
 		g.Go(func() error {
-			got[i] = a.fetch(ctx, s, r)
+			got[i] = a.fetch(ctx, s, r, mode)
 			return nil // failures are per addon, in got[i].err
 		})
 	}
 	_ = g.Wait()
-	defer func() {
-		for _, f := range got {
-			if f.path != "" {
-				_ = os.Remove(f.path) // best effort; the cache is always safe to delete
-			}
+	return got
+}
+
+// discard removes the archives fetchAll downloaded.
+func discard(got []fetched) {
+	for _, f := range got {
+		if f.path != "" {
+			_ = os.Remove(f.path) // best effort; the cache is always safe to delete
 		}
-	}()
+	}
+}
+
+// fetch resolves r's newest release and downloads what mode needs into
+// the cache. An installed release whose published SHA-256 matches isn't
+// downloaded at all.
+func (a *App) fetch(ctx context.Context, s *session, r ref.Ref, mode fetchMode) fetched {
+	a.report(Event{Kind: EventResolving, Profile: s.name, Ref: r})
+	rel, err := a.sources.Resolve(ctx, r, s.profile.Flavor)
+	if err != nil {
+		return fetched{err: err}
+	}
+	// Checked here, not only by Download, so Check can't report an
+	// upgrade that Update could never make.
+	if rel.SHA256 != "" && !httpx.IsSHA256(rel.SHA256) {
+		return fetched{release: rel, err: fmt.Errorf("%s %s: published sha256 %q isn't 64 hex digits", r.Source, r.ID, rel.SHA256)}
+	}
+	f := fetched{release: rel}
+	installed, had := s.state.Addons[r]
+	switch {
+	case had && rel.SHA256 != "":
+		f.current = strings.EqualFold(rel.SHA256, installed.SHA256)
+		if f.current || mode == fetchIdentity {
+			return f
+		}
+	case !had && mode == fetchIdentity:
+		return f // it would be installed either way
+	}
+	a.report(Event{Kind: EventDownloading, Profile: s.name, Ref: r, Version: rel.Version})
+	f.path, f.sum, f.err = httpx.Download(ctx, a.http, rel.DownloadURL, a.paths.CacheDir, rel.SHA256)
+	if f.err == nil && had {
+		f.current = f.sum == installed.SHA256
+	}
+	return f
+}
+
+// installAll fetches refs in parallel, then installs them one at a time,
+// in order, so folder checks never race. A release that's already
+// installed is left alone. Each installed addon is saved to state at once,
+// so files on disk are never left unrecorded for longer than one install.
+func (a *App) installAll(ctx context.Context, s *session, refs []ref.Ref, force bool) []Result {
+	got := a.fetchAll(ctx, s, refs, fetchArchive)
+	defer discard(got)
 
 	clientInterface, _ := flavor.ClientInterface(s.addonsDir, s.profile.Flavor)
 	results := make([]Result, len(refs))
 	for i, r := range refs {
-		res := Result{Ref: r, Version: got[i].release.Version}
+		res := Result{Profile: s.name, Ref: r, Version: got[i].release.Version}
+		previous, had := s.state.Addons[r]
 		err := got[i].err
-		if err == nil {
+		switch {
+		case err != nil:
+			// Reported below, with install failures.
+		case got[i].current:
+			res.Action, res.Folders = ActionUpToDate, previous.Folders
+			a.report(Event{Kind: EventSkipped, Profile: s.name, Ref: r, Version: res.Version, Message: "up to date"})
+			results[i] = res
+			continue
+		default:
 			res.Folders, res.Warnings, err = a.installOne(ctx, s, r, got[i], clientInterface, force)
 		}
 		if err != nil {
@@ -180,6 +247,9 @@ func (a *App) installAll(ctx context.Context, s *session, refs []ref.Ref, force 
 			a.report(Event{Kind: EventFailed, Profile: s.name, Ref: r, Version: res.Version, Err: res.Err})
 		} else {
 			res.Action = ActionInstalled
+			if had {
+				res.Action = ActionUpgraded
+			}
 			for _, w := range res.Warnings {
 				a.report(Event{Kind: EventWarned, Profile: s.name, Ref: r, Version: res.Version, Message: w})
 			}
@@ -188,18 +258,6 @@ func (a *App) installAll(ctx context.Context, s *session, refs []ref.Ref, force 
 		results[i] = res
 	}
 	return results
-}
-
-// fetch resolves r's newest release and downloads it into the cache.
-func (a *App) fetch(ctx context.Context, s *session, r ref.Ref) fetched {
-	a.report(Event{Kind: EventResolving, Profile: s.name, Ref: r})
-	rel, err := a.sources.Resolve(ctx, r, s.profile.Flavor)
-	if err != nil {
-		return fetched{err: err}
-	}
-	a.report(Event{Kind: EventDownloading, Profile: s.name, Ref: r, Version: rel.Version})
-	path, sum, err := httpx.Download(ctx, a.http, rel.DownloadURL, a.paths.CacheDir, rel.SHA256)
-	return fetched{release: rel, path: path, sum: sum, err: err}
 }
 
 // installOne installs one downloaded release and records it in state.
@@ -265,7 +323,7 @@ func (a *App) Remove(ctx context.Context, profile string, names []string) ([]Res
 			if err == nil {
 				err = a.removeOne(s, r)
 			}
-			res := Result{Name: name, Ref: r, Action: ActionRemoved}
+			res := Result{Profile: s.name, Name: name, Ref: r, Action: ActionRemoved}
 			if err != nil {
 				res.Action, res.Err = ActionFailed, explain(err, r)
 				a.report(Event{Kind: EventFailed, Profile: s.name, Name: name, Ref: r, Err: res.Err})

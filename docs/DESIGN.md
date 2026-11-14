@@ -684,6 +684,18 @@ type Selector struct {
   install; config is saved once at the end with every addon that made it.
   An interruption in between leaves addons in state but not config, which the
   next `add` adopts (§5.4).
+- **`Update` and `Check`** cover the addons named, in the order given, or
+  else every addon in config, in config order, then those only in state
+  (prune candidates). An addon is up to date when the resolved release's
+  SHA-256 matches state's (§5.3): with a SHA-256 published by the source,
+  that's known without downloading; otherwise the release is downloaded and
+  hashed, and `Check` does the same just to compare. `Update` prunes before
+  installing, so freed folders are available, and never changes config. A
+  named addon that's only in state is an error without `--prune`, with a
+  hint to add it back or prune it.
+- **Several profiles** are processed in turn, with results grouped by
+  profile. A failure that stops one profile (lock held, unknown profile)
+  stops the run, and the results so far are still returned.
 - **`info`** reads the title, author, notes and Interface numbers from the
   TOC the client loads from the addon's main folder: the longest folder name
   contained in the ref's short name (`baganator-mirror` → `Baganator`), or
@@ -692,7 +704,7 @@ type Selector struct {
   `EventDownloading`, `EventInstalled`, `EventRemoved`, `EventSkipped`,
   `EventWarned` and `EventFailed`, each naming the profile and ref.
   Implementations **must be safe for concurrent use**. Download byte counts
-  come with the progress bar in PR 16. The CLI prints lines or a progress bar on a
+  come with the progress bar in PR 18. The CLI prints lines or a progress bar on a
   TTY, the TUI sends Bubble Tea messages, and tests use `NopReporter` or a
   recording fake.
 
