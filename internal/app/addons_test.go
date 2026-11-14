@@ -446,7 +446,7 @@ func TestListAndInfo(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(e.addons, "Hand", "Hand.toc"), []byte("## Interface: 11508\n## Version: 1.2\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(e.addons, "Hand", "Hand.toc"), []byte("## Interface: 11508\n## Title: |cff00ff00Hand|r Made\n## Version: 1.2\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -458,7 +458,8 @@ func TestListAndInfo(t *testing.T) {
 	for _, in := range list.Addons {
 		got = append(got, strings.TrimSpace(in.Name()+" "+string(in.Status)+" "+in.Version))
 	}
-	// Installed addons are named by their TOC title, the rest by repo.
+	// Installed addons are named by their TOC title, the rest by repo, and
+	// unmanaged folders by folder, though Hand's TOC title is "Hand Made".
 	want := []string{"Details installed v1", "missing not installed", "orphan not in config v0", "Hand unmanaged 1.2", "Loose unmanaged"}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("list (-want +got):\n%s", diff)
@@ -777,5 +778,20 @@ func TestListChecks(t *testing.T) {
 	list, err = e.app.List(context.Background(), app.Selector{}, app.ListOptions{})
 	if err != nil || list.Addons[1].Status != app.StatusInstalled || e.src.resolves.Load() != before {
 		t.Errorf("unchecked list = %+v, %v after %d resolves", list.Addons, err, e.src.resolves.Load()-before)
+	}
+}
+
+// Commands accept the TOC title list shows, when no short name matches.
+func TestInfoByTitle(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	e.src.publish(t, "o/details-mirror", "Details")
+	r := mustRef(t, "github:o/details-mirror")
+	if _, err := e.app.Add(context.Background(), e.profile, []ref.Ref{r}, false); err != nil {
+		t.Fatal(err)
+	}
+	d, err := e.app.Info(context.Background(), e.profile, "details") // the title, any case
+	if err != nil || d.Ref != r || d.Title != "Details" {
+		t.Errorf("Info(details) = %+v, %v; want %s", d, err, r)
 	}
 }

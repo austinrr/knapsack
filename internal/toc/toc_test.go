@@ -243,6 +243,11 @@ func TestPlain(t *testing.T) {
 		"|cff00":                                 "|cff00", // too short to be a color
 		"|Tunclosed":                             "|Tunclosed",
 		"|xother":                                "|xother",
+		"|cnPURE_GREEN_COLOR:MyAddon|r":          "MyAddon",
+		"Foo |config of things":                  "Foo |config of things",
+		"|cff00ff0gLeatrix":                      "|cff00ff0gLeatrix",
+		"|cn:empty":                              "|cn:empty",
+		"|cnbad name:x":                          "|cnbad name:x",
 	} {
 		if got := toc.Plain(in); got != want {
 			t.Errorf("Plain(%q) = %q, want %q", in, got, want)

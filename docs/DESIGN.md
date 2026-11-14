@@ -897,7 +897,9 @@ forever: 1 upgrade · retail: 1 install
   scripts: its exit code says whether anything is pending.
   Addons are named by the `## Title` in their installed TOC, with WoW's
   color and texture codes removed (`toc.Plain`), or by repo name when not
-  installed; commands still take refs and short names. A SOURCE column
+  installed (`displayName`); commands take those titles too (§8.5). Two
+  rows in a profile with the same name get their ref's ID added
+  (`Details! (a/details)`), since titles needn't be unique. A SOURCE column
   shows the source's name (`github`), or with `-o wide` the full ref, in
   both `list` and `check`. Folders in AddOns that no addon in
   state owns are `unmanaged`: installed by hand or by another manager.
@@ -989,6 +991,11 @@ forever: 1 upgrade · retail: 1 install
   `check`, `info`) also accept `Ref.ShortName()` (`baganator-mirror`) when
   exactly one addon in the profile matches. If several match, the error lists
   them.
+- **Titles**: when no short name matches, the `## Title` of an installed
+  addon's TOC, which is how `list` and `check` show it, matched without
+  regard to case (`knapsack info "Leatrix Maps"`). Ambiguity is the same
+  error. Unmanaged folders are shown by folder, not title, since the folder
+  is what's in AddOns.
 - There's no bare `owner/repo` shorthand. The explicit form is only a few
   characters longer and never ambiguous.
 

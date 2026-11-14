@@ -79,6 +79,9 @@ func TestAddonCommands(t *testing.T) {
 		{name: "list/no_check", setup: [][]string{addForever, addBaganator}, after: bumpBaganator, args: []string{"list", "--no-check"}},
 		{name: "list/check_failed", config: missingAndGone, args: []string{"list"}},
 		{name: "list/check_failed_json", config: missingAndGone, args: []string{"list", "-o", "json"}},
+		// list names addons by title, so commands take titles too.
+		{name: "info/by_title", setup: [][]string{addForever, addDetails}, args: []string{"info", "Details"}},
+		{name: "remove/by_title", setup: [][]string{addForever, addBaganator}, args: []string{"remove", "baganator"}},
 		{name: "list/unmanaged_hint", setup: [][]string{addForever, addBaganator}, after: handInstall, args: []string{"list"}},
 		{name: "list/unmanaged_hint_empty", setup: [][]string{addForever}, after: handInstall, args: []string{"list"}},
 		{name: "list/unmanaged_hint_one", setup: [][]string{addRetail}, after: handInstall, args: []string{"list"}},

@@ -45,7 +45,8 @@ type Installed struct {
 	Profile string
 	Ref     ref.Ref
 	// Title is the addon's name from its TOC, "" when it isn't installed
-	// or has none; Name falls back to something else then.
+	// or has none. For an unmanaged folder it's the folder's TOC title,
+	// though Name shows the folder, which is what's in AddOns.
 	Title       string
 	Status      Status
 	Version     string // "" when missing, or unknown for an unmanaged folder
@@ -57,28 +58,27 @@ type Installed struct {
 	Err       error
 }
 
-// Name is how the addon is shown: its title, else for an addon its repo
-// or project name, and for an unmanaged folder, the folder.
+// Name is how the addon is shown (displayName). An unmanaged folder is
+// shown as the folder, which is what's in AddOns and what add --force
+// replaces.
 func (in Installed) Name() string {
-	switch {
-	case in.Title != "":
-		return in.Title
-	case in.Status == StatusUnmanaged:
+	if in.Status == StatusUnmanaged {
 		return in.Folders[0]
 	}
-	return in.Ref.ShortName()
+	return displayName(in.Title, in.Ref, "")
 }
 
-// DisplayName is how the planned addon is shown, as Installed.Name: its title, or
-// its repo or project name, or what the user typed when it isn't found.
-func (p Plan) DisplayName() string {
+// displayName is the one rule for naming an addon in output: its TOC
+// title, else its repo or project name, else fallback, what the user typed
+// for one that isn't in the profile. Commands accept all three (findAddon).
+func displayName(title string, r ref.Ref, fallback string) string {
 	switch {
-	case p.Title != "":
-		return p.Title
-	case p.Ref != (ref.Ref{}):
-		return p.Ref.ShortName()
+	case title != "":
+		return title
+	case r != (ref.Ref{}):
+		return r.ShortName()
 	}
-	return p.Name
+	return fallback
 }
 
 // ListOptions configure List.
@@ -119,9 +119,13 @@ func (a *App) List(ctx context.Context, sel Selector, opts ListOptions) (Listing
 			plans = a.checkSession(ctx, s, ts)
 		}
 		for i, t := range ts {
-			in := installedInfo(s, t.ref)
+			var in Installed
 			if plans != nil {
+				// The check already read each title.
+				in = installedInfo(s, t.ref, plans[i].Title)
 				in.withPlan(plans[i])
+			} else {
+				in = installedInfo(s, t.ref, addonTitle(s, t.ref))
 			}
 			out.Addons = append(out.Addons, in)
 		}
@@ -196,8 +200,9 @@ func addonTitle(s *session, r ref.Ref) string {
 	return toc.Plain(file.Get("Title"))
 }
 
-func installedInfo(s *session, r ref.Ref) Installed {
-	in := Installed{Profile: s.name, Ref: r, Status: StatusMissing, Title: addonTitle(s, r)}
+// installedInfo is what config and state say about r, with its title.
+func installedInfo(s *session, r ref.Ref, title string) Installed {
+	in := Installed{Profile: s.name, Ref: r, Status: StatusMissing, Title: title}
 	addon, installed := s.state.Addons[r]
 	if installed {
 		in.Status = StatusInstalled
@@ -256,7 +261,7 @@ type Details struct {
 }
 
 // Info describes one addon in the profile ("" for the current one). name is
-// a ref or short name. Like List, it doesn't use the network; the title and
+// a ref, short name or title. It doesn't use the network; the title and
 // notes are read from the installed TOC.
 func (a *App) Info(ctx context.Context, profile, name string) (Details, error) {
 	var d Details
@@ -265,14 +270,15 @@ func (a *App) Info(ctx context.Context, profile, name string) (Details, error) {
 		if err != nil {
 			return err
 		}
-		d.Installed = installedInfo(s, r)
+		d.Installed = installedInfo(s, r, "")
 		if len(d.Folders) == 0 {
 			return nil
 		}
-		// If the folder was changed outside Knapsack, show what state knows.
+		// One read for every TOC field. If the folder was changed outside
+		// Knapsack, show what state knows.
 		main := mainFolder(r, d.Folders)
 		if _, file, err := install.TOC(filepath.Join(s.addonsDir, main), s.profile.Flavor); err == nil {
-			d.Author, d.Notes, d.Interfaces = file.Get("Author"), file.Get("Notes"), file.Interfaces
+			d.Title, d.Author, d.Notes, d.Interfaces = toc.Plain(file.Get("Title")), file.Get("Author"), file.Get("Notes"), file.Interfaces
 		}
 		return nil
 	})

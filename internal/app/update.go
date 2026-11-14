@@ -180,6 +180,10 @@ type Plan struct {
 	Err       error // set when Action is PlanFailed
 }
 
+// DisplayName is how the planned addon is shown, by the same rule as
+// Installed.Name.
+func (p Plan) DisplayName() string { return displayName(p.Title, p.Ref, p.Name) }
+
 // Check resolves each selected addon as Update would and reports what it
 // would change, without changing anything (DESIGN.md §8.4). An installed
 // addon whose source publishes no SHA-256 is downloaded, only to compare

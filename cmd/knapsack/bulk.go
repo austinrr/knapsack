@@ -288,7 +288,12 @@ func printPlans(out *printer, plans []app.Plan, all, wide bool) {
 		row.printf("PROFILE\t")
 	}
 	row.printf("ADDON\tINSTALLED\tAVAILABLE\tACTION\tSOURCE\n")
-	for _, p := range plans {
+	rows := make([]nameRow, len(plans))
+	for i, p := range plans {
+		rows[i] = nameRow{p.Profile, p.DisplayName(), p.Ref}
+	}
+	names := uniqueNames(rows)
+	for i, p := range plans {
 		if all {
 			row.printf("%s\t", p.Profile)
 		}
@@ -296,7 +301,7 @@ func printPlans(out *printer, plans []app.Plan, all, wide bool) {
 		if p.Action == app.PlanNone {
 			action = "-"
 		}
-		row.printf("%s\t%s\t%s\t%s\t%s\n", p.DisplayName(), orDash(p.Installed), orDash(p.Available), action, sourceColumn(p.Ref, wide))
+		row.printf("%s\t%s\t%s\t%s\t%s\n", names[i], orDash(p.Installed), orDash(p.Available), action, sourceColumn(p.Ref, wide))
 	}
 	if row.err != nil {
 		out.err = row.err
