@@ -16,8 +16,8 @@ Usage:
 
 Examples:
   knapsack sources
-  knapsack sources set-key curseforge
-  pass show curseforge | knapsack sources set-key curseforge
+  knapsack sources set-key wago
+  pass show wago | knapsack sources set-key wago
 
 Available Commands:
   set-key     Store a source's API key

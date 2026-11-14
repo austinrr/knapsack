@@ -203,7 +203,7 @@ func (a *App) SelfUpdate(ctx context.Context, b Build) (SelfUpdated, error) {
 		return res, fmt.Errorf("knapsack %s: GitHub has no checksum for %s, so it can't be verified", version, name)
 	}
 
-	path, _, err := httpx.Download(ctx, a.http, asset.URL, a.paths.CacheDir, asset.SHA256, nil)
+	path, _, err := httpx.Download(ctx, a.http, asset.URL, nil, a.paths.CacheDir, asset.SHA256, nil)
 	if err != nil {
 		return res, err
 	}

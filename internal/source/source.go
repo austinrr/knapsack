@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 
 	"github.com/austinrr/knapsack/internal/flavor"
 	"github.com/austinrr/knapsack/internal/ref"
@@ -48,6 +49,9 @@ type Release struct {
 	// identity. When it's empty, the release can only be identified by
 	// downloading it and hashing the file.
 	SHA256 string
+	// Header is sent with the download, for a source whose downloads need
+	// its API key. Nil means none.
+	Header http.Header
 }
 
 // Asset is one file attached to a published release, as Knapsack's own

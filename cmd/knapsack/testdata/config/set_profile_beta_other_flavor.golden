@@ -3,4 +3,4 @@
 Profile "anniversary-beta" created (anniversary, <home>/wow/_classic_beta_/Interface/AddOns).
 Switched to profile "anniversary-beta".
 # stderr:
-Next, add addons: knapsack add github:owner/repo, or a GitHub URL.
+Next, add addons: knapsack add github:owner/repo, or a GitHub or Wago link.

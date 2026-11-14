@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: wago plumber: no API key: source not configured
+hint: wago needs an API key: get one from https://addons.wago.io/account/apikeys, then run `knapsack sources set-key wago`

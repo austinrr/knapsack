@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: wago plumber: the API key was rejected: unauthorized
+hint: check the key at https://addons.wago.io/account/apikeys, and set it again with `knapsack sources set-key wago` (or fix KNAPSACK_WAGO_API_KEY, which overrides it, if that's set)

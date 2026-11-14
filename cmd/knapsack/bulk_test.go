@@ -9,6 +9,8 @@ var (
 
 func bumpBaganator(s *sandbox) { s.bump("austinrr/baganator-mirror") }
 
+func bumpPlumber(s *sandbox) { s.bump("plumber") }
+
 // pruneDetails leaves details-mirror installed but drops it from config,
 // as a hand edit would.
 func pruneDetails(s *sandbox) {
@@ -38,6 +40,8 @@ func TestBulkCommands(t *testing.T) {
 		{name: "update/help", args: []string{"update", "--help"}},
 		{name: "update/no_addons", setup: [][]string{addForever}, args: []string{"update"}},
 		{name: "update/up_to_date", setup: [][]string{addForever, addBaganator, addDetails}, args: []string{"update"}},
+		{name: "update/wago", env: wagoKeyEnv, setup: [][]string{addForever, addBaganator, addPlumber}, after: bumpPlumber,
+			args: []string{"update"}},
 		{name: "update/upgrade", setup: [][]string{addForever, addBaganator, addDetails}, after: bumpBaganator,
 			args: []string{"update"}},
 		// One addon, so the progress lines come in a fixed order.
@@ -62,6 +66,10 @@ func TestBulkCommands(t *testing.T) {
 		// check
 		{name: "check/help", args: []string{"check", "--help"}},
 		{name: "check/no_addons", setup: [][]string{addForever}, args: []string{"check"}},
+		// Wago publishes no checksum, so check downloads to compare.
+		{name: "check/wago", env: wagoKeyEnv, setup: [][]string{addForever, addBaganator, addPlumber}, after: bumpPlumber,
+			args: []string{"check"}},
+		{name: "check/wago_up_to_date", env: wagoKeyEnv, setup: [][]string{addForever, addPlumber}, args: []string{"check"}},
 		{name: "check/up_to_date", setup: [][]string{addForever, addBaganator}, args: []string{"check"}},
 		{name: "check/pending", setup: [][]string{addForever, addBaganator, addDetails},
 			after: func(s *sandbox) { bumpBaganator(s); pruneDetails(s) }, args: []string{"check"}},

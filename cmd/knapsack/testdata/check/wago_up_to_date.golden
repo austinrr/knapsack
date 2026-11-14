@@ -1,0 +1,7 @@
+# exit: 0
+# stdout:
+ADDON    INSTALLED  AVAILABLE  ACTION  SOURCE
+Plumber  v1         v1         -       wago
+
+forever: up to date
+# stderr:

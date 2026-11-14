@@ -70,7 +70,8 @@ type sandbox struct {
 	terminal bool
 }
 
-// bump publishes a new release, v2, of repo on the fake GitHub.
+// bump publishes a new release, v2, of repo on the fake GitHub, or of an
+// addon on the fake Wago.
 func (s *sandbox) bump(repo string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -124,11 +125,59 @@ var fakeReleases = map[string]map[string]string{
 	"austinrr/retail-only":      {"RetailOnly": "120105"},
 }
 
+// fakeWagoAddons are the addons the fake Wago has, by ID or slug, as
+// fakeReleases. Its API is at <github>/wago and wants fakeWagoKey.
+var fakeWagoAddons = map[string]map[string]string{
+	"plumber": {"Plumber": "16001, 120105"},
+}
+
+const fakeWagoKey = "wago-key"
+
+// wagoKeyEnv sets the fake Wago's key in the environment.
+var wagoKeyEnv = map[string]string{"KNAPSACK_WAGO_API_KEY": fakeWagoKey}
+
+// serveFakeWago answers /wago/addons/<id> with the addon's stable release
+// for the game version asked for, and serves its zip at
+// /wago/download/<id>.zip. Both want the key, as Wago does.
+func (s *sandbox) serveFakeWago(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("Authorization") != "Bearer "+fakeWagoKey {
+		http.Error(w, `{"message":"Unauthenticated."}`, http.StatusUnauthorized)
+		return
+	}
+	if id, ok := strings.CutPrefix(r.URL.Path, "/wago/download/"); ok {
+		id = strings.TrimSuffix(id, ".zip")
+		folders, ok := fakeWagoAddons[id]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write(fakeZip(folders, s.version(id)))
+		return
+	}
+	id := strings.TrimPrefix(r.URL.Path, "/wago/addons/")
+	if _, ok := fakeWagoAddons[id]; !ok || r.URL.Query().Get("game_version") == "" {
+		http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"id": id,
+		"recent_release": map[string]any{"stable": map[string]string{
+			"label":         s.version(id),
+			"download_link": "http://" + r.Host + "/wago/download/" + id + ".zip",
+		}},
+	})
+}
+
 // serveFakeGitHub answers /repos/<repo>/releases/latest with a release of
 // one zip, and serves the zip at /download/<repo>.zip. No digest is
-// published, so update and check download to compare.
+// published, so update and check download to compare. Under /wago, it's
+// the fake Wago instead.
 func (s *sandbox) serveFakeGitHub(w http.ResponseWriter, r *http.Request) {
 	if s.serveFakeKnapsack(w, r) {
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/wago/") {
+		s.serveFakeWago(w, r)
 		return
 	}
 	if repo, ok := strings.CutPrefix(r.URL.Path, "/download/"); ok {
@@ -192,6 +241,7 @@ func (s *sandbox) run(args ...string) result {
 		home:        s.home,
 		interactive: s.interactive,
 		githubURL:   s.github.URL,
+		wagoURL:     s.github.URL + "/wago",
 		ghAuthToken: func(context.Context) string { s.ghCalls.Add(1); return s.ghToken },
 
 		stdin:         strings.NewReader(s.stdin),

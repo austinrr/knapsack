@@ -3,5 +3,5 @@
 NAME        STATUS   KEY
 github      ready    from $GITHUB_TOKEN
 curseforge  not yet  set in config
-wago        not yet  from $KNAPSACK_WAGO_API_KEY
+wago        ready    from $KNAPSACK_WAGO_API_KEY
 # stderr:

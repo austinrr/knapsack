@@ -23,6 +23,7 @@ func TestSourcesCommands(t *testing.T) {
 		{name: "sources/list_keys", after: setCurseForgeKey,
 			env:  map[string]string{"GITHUB_TOKEN": "gh-env", "KNAPSACK_WAGO_API_KEY": "wago-env"},
 			args: []string{"sources"}},
+		{name: "sources/list_wago_ready", env: wagoKeyEnv, args: []string{"sources"}},
 		{name: "sources/list_gh", after: func(s *sandbox) { s.ghToken = "from-gh" }, args: []string{"sources"}},
 		{name: "sources/list_json", after: setCurseForgeKey, env: map[string]string{"GH_TOKEN": "gh-env"}, args: []string{"sources", "-o", "json"}},
 		{name: "sources/unknown_subcommand", args: []string{"sources", "bogus"}},

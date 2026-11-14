@@ -21,12 +21,14 @@ func newAddCmd(c *cli) *cobra.Command {
 		Short: "Add addons to the profile and install them",
 		Long: `Add addons to the profile's config and install them.
 
-Each addon is a ref (github:owner/repo) or a URL Knapsack recognizes. An
-addon already in config is left alone. Folders already in AddOns that no
-addon owns are refused unless --force is given; folders another addon owns
-are never replaced.`,
+Each addon is a ref (github:owner/repo, wago:<id>) or its GitHub or
+addons.wago.io link. Wago needs an API key: see knapsack sources set-key.
+An addon already in config is left alone. Folders already in AddOns that
+no addon owns are refused unless --force is given; folders another addon
+owns are never replaced.`,
 		Example: `  knapsack add github:austinrr/baganator-mirror
-  knapsack add https://github.com/austinrr/syndicator-mirror -p forever`,
+  knapsack add https://github.com/austinrr/syndicator-mirror -p forever
+  knapsack add https://addons.wago.io/addons/plater`,
 		// Refs are parsed with the arguments, before any work: a typo is a
 		// usage error, so nothing is installed and gh is never asked for a
 		// token.
