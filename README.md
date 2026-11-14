@@ -56,7 +56,7 @@ And keep them up to date:
 
 ```sh
 knapsack check           # what update would do; exits 1 if anything is pending
-knapsack update          # install missing addons, upgrade outdated ones
+knapsack update          # upgrade outdated addons, install missing ones
 knapsack update -A       # every profile
 ```
 
@@ -75,7 +75,7 @@ compared by checksum, not version number.
 |---|---|
 | `add <ref\|url>...` | Add addons to the profile and install them |
 | `remove <addon>...` (`rm`) | Uninstall addons, deleting only the folders Knapsack installed |
-| `update [addon...]` | Install missing addons and upgrade outdated ones; `--prune` also removes addons no longer in config |
+| `update [addon...]` | Upgrade outdated addons, and install any in config that aren't installed; `--prune` also removes addons no longer in config |
 | `check [addon...]` | Show what `update` would do, without changing anything |
 | `list` (`ls`) | List the profile's addons and whether each is installed, without looking anything up online. `--unmanaged` also lists folders Knapsack didn't install |
 | `info <addon>` | Show one addon's version, folders, install time and TOC details |

@@ -91,10 +91,13 @@ func newUpdateCmd(c *cli) *cobra.Command {
 	var opts app.UpdateOptions
 	cmd := &cobra.Command{
 		Use:   "update [addon...]",
-		Short: "Install missing addons and upgrade outdated ones",
-		Long: `Make the profile match its config: install addons in config that aren't
-installed, and upgrade those whose newest release isn't the one installed.
+		Short: "Upgrade outdated addons and install missing ones",
+		Long: `Upgrade installed addons whose newest release isn't the one installed.
 Releases are compared by checksum, not by version.
+
+It also installs addons that are in config but not installed, such as
+after copying config.toml to a new machine, so the profile matches its
+config.
 
 With no addons named, it covers every addon in the profile. It never
 changes config, and never uninstalls anything unless --prune is given.`,
