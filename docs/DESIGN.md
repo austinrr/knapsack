@@ -146,9 +146,9 @@ GitHub SDKs (go-github), git libraries, ORMs/SQLite.
 
    | Package | May import (internal) |
    |---|---|
-   | `flavor`, `ref`, `toc`, `paths`, `atomicfile`, `lock` | nothing internal |
+   | `flavor`, `ref`, `toc`, `paths`, `atomicfile`, `lock`, `tomlenc` | nothing internal |
    | `httpx` | nothing internal |
-   | `config`, `state` | `flavor`, `ref`, `atomicfile` |
+   | `config`, `state` | `flavor`, `ref`, `atomicfile`, `tomlenc` |
    | `install` | `flavor`, `toc` |
    | `source` | `flavor`, `ref` |
    | `source/*` | `source`, `flavor`, `httpx` |
@@ -183,6 +183,7 @@ knapsack/
     install/             verify → extract → validate → swap (filesystem only)
     toc/                 .toc parsing
     atomicfile/          atomic file writes (temp file, fsync, rename)
+    tomlenc/             TOML value formatting for the config and state encoders
     lock/                per-profile and config locks (wraps gofrs/flock)
     httpx/               shared HTTP client (timeouts, User-Agent) and Download
     tui/                 later
@@ -310,27 +311,37 @@ only data Knapsack can't rebuild: which folders an addon owns can't be
 reliably worked out from what's on disk.
 
 ```toml
-version = 1   # schema version, for future migrations
+version = 1
 
 [addons."github:austinrr/baganator-mirror"]
-version      = "851"                # display label only; never compared
-sha256       = "d3775a6bd651…"      # identity of the installed release
+version = "851"
+sha256 = "d3775a6bd651…"
 installed_at = 2026-11-13T18:04:05Z
-folders      = ["Baganator"]
+folders = ["Baganator"]
 
 [addons."wago:VBNBxKx5"]
-version      = "11.2.0"
-sha256       = "1ab4…"
+version = "11.2.0"
+sha256 = "1ab4…"
 installed_at = 2026-11-13T18:04:09Z
-folders      = ["Details", "Details_DataStorage", "Details_EncounterDetails"]
+folders = ["Details", "Details_DataStorage", "Details_EncounterDetails"]
 ```
+
+`version` is the schema version, for future migrations. A file with a newer
+one is refused with a hint to upgrade Knapsack. An addon's `version` is its
+release label, shown but never compared, and `sha256` is the identity of the
+installed release. Like config, the file is written in a fixed layout by a
+small hand-written encoder, so it stays easy to read when debugging.
 
 - **"Is an update available?" compares identity, not versions.** An addon is
   outdated when the resolved release's SHA-256 differs from the installed
   one. Version labels (`851`, `v1.2-beta`, `11.2.0`) are shown to the user
   but never sorted or compared, because they don't follow one scheme.
 - Folders are names relative to the profile's AddOns path, never absolute
-  paths. Renaming or deleting a profile renames or deletes its state file.
+  paths. Deleting a profile deletes its state file.
+- **Loading is strict**, because `remove` deletes the folders state lists:
+  folder names must be single path elements (no separators, `.` or `..`), no
+  folder can belong to two addons, refs must be in normal form, and unknown
+  keys are an error.
 - Writes are atomic: write a temp file in the same directory, `fsync`, then
   rename.
 - Not stored, because it would only go stale: addon titles and metadata (read
@@ -1082,7 +1093,7 @@ one command group.
 **PR 10 — `state` store**
 - Title: `feat(state): load and save per-profile state`
 - Implements: §5.3, §5.4
-- `state.State` types, `Store` with `Load`/`Save`/`Rename`/`Delete`, schema
+- `state.State` types, `Store` with `Load`/`Save`/`Delete`, schema
   version check. Wires `config delete-profile` to remove the state file.
 - Done when: round-trip and golden TOML tests, an unknown schema version
   gives a clear error.
