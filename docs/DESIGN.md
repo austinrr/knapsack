@@ -702,10 +702,12 @@ type Selector struct {
   contained in the ref's short name (`baganator-mirror` → `Baganator`), or
   else the first not starting with `!`, the prefix bundled libraries use.
 - **Reporter**: `Event(e Event)` receives events of kind `EventResolving`,
-  `EventDownloading`, `EventInstalled`, `EventRemoved`, `EventSkipped`,
-  `EventWarned` and `EventFailed`, each naming the profile and ref.
-  Implementations **must be safe for concurrent use**. Download byte counts
-  come with the progress bar, in a follow-up to PR 18. The CLI prints lines or a progress bar on a
+  `EventDownloading`, `EventProgress` (bytes so far and expected, from
+  `httpx.Download`'s callback), `EventInstalled`, `EventRemoved`,
+  `EventSkipped`, `EventChecked` (Check knows the plan), `EventWarned` and
+  `EventFailed`, each naming the profile and ref. Every addon ends with one
+  of Installed, Removed, Skipped, Checked or Failed. Implementations **must
+  be safe for concurrent use**. The CLI prints lines or a progress bar on a
   TTY, the TUI sends Bubble Tea messages, and tests use `NopReporter` or a
   recording fake.
 
@@ -909,7 +911,12 @@ forever: 1 upgrade · retail: 1 install
 - `add` and `remove` print one line per addon on stdout (`Added
   github:austinrr/baganator-mirror 854.`). Warnings go to stderr, prefixed
   with the addon's ref, and so does
-  each step (resolving, downloading) with `-v`. An empty `list` prints a note
+  each step (resolving, downloading) with `-v`. On a terminal without `-v`,
+  progress is one status line on stderr, redrawn with `\r` at most every
+  100 ms and erased before results print: `2 done · 1 resolving · 3
+  downloading, 1.2 of 4.5 MiB`. One line needs no cursor movement, so it
+  works in every terminal, the old Windows console included. `TERM=dumb`
+  gets plain lines. An empty `list` prints a note
   on stderr and nothing on stdout. Times are shown in UTC (RFC 3339).
 - `update` prints a line per addon it installs, upgrades or removes, then a
   summary (`1 upgraded, 3 up to date`). `check` prints the table in §8.2,
@@ -1298,8 +1305,8 @@ one command group.
   grouped by profile with summaries.
 - Done when: golden tests for single-profile and `-A` output, the exit codes
   of `check`, and flag conflicts (`-A` with `-p`).
-- Not yet: the progress bar on a TTY, which needs download byte counts from
-  `httpx`. It's a follow-up PR before the release.
+- Followed by `feat(cli): show download progress on a terminal`: the
+  progress bar, with byte counts from `httpx`.
 
 #### M5 — First release
 

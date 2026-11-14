@@ -63,7 +63,7 @@ func TestDownload(t *testing.T) {
 	url, _ := serve(t, ok)
 	dir := t.TempDir()
 	for _, want := range []string{sumOf(body), strings.ToUpper(sumOf(body)), ""} {
-		path, sum, err := Download(context.Background(), testClient(), url, dir, want)
+		path, sum, err := Download(context.Background(), testClient(), url, dir, want, nil)
 		if err != nil {
 			t.Fatalf("want %q: %v", want, err)
 		}
@@ -84,7 +84,7 @@ func TestDownloadChecksumMismatch(t *testing.T) {
 	t.Parallel()
 	url, _ := serve(t, ok)
 	dir := t.TempDir()
-	_, _, err := Download(context.Background(), testClient(), url, dir, sumOf("something else"))
+	_, _, err := Download(context.Background(), testClient(), url, dir, sumOf("something else"), nil)
 	if !errors.Is(err, ErrChecksum) || !strings.Contains(err.Error(), sumOf(body)) {
 		t.Errorf("error = %v, want ErrChecksum naming the actual sum", err)
 	}
@@ -99,7 +99,7 @@ func TestDownloadTruncated(t *testing.T) {
 		_, _ = io.WriteString(w, body)
 	})
 	dir := t.TempDir()
-	_, _, err := Download(context.Background(), testClient(), url, dir, "")
+	_, _, err := Download(context.Background(), testClient(), url, dir, "", nil)
 	if !errors.Is(err, io.ErrUnexpectedEOF) {
 		t.Errorf("error = %v, want io.ErrUnexpectedEOF", err)
 	}
@@ -110,7 +110,7 @@ func TestDownloadStatus(t *testing.T) {
 	t.Parallel()
 	url, calls := serve(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNotFound) })
 	dir := t.TempDir()
-	_, _, err := Download(context.Background(), testClient(), url, dir, "")
+	_, _, err := Download(context.Background(), testClient(), url, dir, "", nil)
 	var se *StatusError
 	if !errors.As(err, &se) || se.StatusCode != http.StatusNotFound {
 		t.Errorf("error = %v, want a 404 StatusError", err)
@@ -145,7 +145,7 @@ func TestRetries(t *testing.T) {
 				}
 				ok(w, r)
 			})
-			_, _, err := Download(context.Background(), testClient(), url, t.TempDir(), "")
+			_, _, err := Download(context.Background(), testClient(), url, t.TempDir(), "", nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("error = %v, want error: %v", err, tt.wantErr)
 			}
@@ -237,7 +237,7 @@ func TestUserAgent(t *testing.T) {
 		got <- r.Header.Get("User-Agent")
 		ok(w, r)
 	})
-	if _, _, err := Download(context.Background(), testClient(), url, t.TempDir(), ""); err != nil {
+	if _, _, err := Download(context.Background(), testClient(), url, t.TempDir(), "", nil); err != nil {
 		t.Fatal(err)
 	}
 	if ua := <-got; ua != "knapsack/v0.0.0-test" {
@@ -256,7 +256,7 @@ func TestDownloadCancelled(t *testing.T) {
 		<-r.Context().Done() // never finishes on its own
 	})
 	dir := t.TempDir()
-	_, _, err := Download(ctx, testClient(), url, dir, "")
+	_, _, err := Download(ctx, testClient(), url, dir, "", nil)
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("error = %v, want context.Canceled", err)
 	}
@@ -281,11 +281,11 @@ func TestDownloadStalled(t *testing.T) {
 		}
 	})
 	lim := limits{size: maxDownloadSize, stall: stall}
-	if _, _, err := download(context.Background(), testClient(), url, t.TempDir(), "", lim); err != nil {
+	if _, _, err := download(context.Background(), testClient(), url, t.TempDir(), "", nil, lim); err != nil {
 		t.Errorf("steady body: %v", err)
 	}
 	dir := t.TempDir()
-	_, _, err := download(context.Background(), testClient(), url+"?hang", dir, "", lim)
+	_, _, err := download(context.Background(), testClient(), url+"?hang", dir, "", nil, lim)
 	if !errors.Is(err, ErrStalled) {
 		t.Errorf("error = %v, want ErrStalled", err)
 	}
@@ -303,7 +303,7 @@ func TestDownloadTooLarge(t *testing.T) {
 			_, _ = io.WriteString(w, body)
 		})
 		dir := t.TempDir()
-		_, _, err := download(context.Background(), testClient(), url, dir, "", lim)
+		_, _, err := download(context.Background(), testClient(), url, dir, "", nil, lim)
 		if !errors.Is(err, ErrTooLarge) {
 			t.Errorf("chunked=%v: error = %v, want ErrTooLarge", chunked, err)
 		}
@@ -336,7 +336,7 @@ func TestDownloadBadExpectedSum(t *testing.T) {
 	t.Parallel()
 	url, calls := serve(t, ok)
 	for _, want := range []string{"sha256:" + sumOf(body), sumOf(body)[:10], strings.Repeat("z", 64)} {
-		_, _, err := Download(context.Background(), testClient(), url, t.TempDir(), want)
+		_, _, err := Download(context.Background(), testClient(), url, t.TempDir(), want, nil)
 		if err == nil || errors.Is(err, ErrChecksum) || !strings.Contains(err.Error(), "isn't 64 hex digits") {
 			t.Errorf("want %q: error = %v, want a bad-hash error", want, err)
 		}
@@ -354,7 +354,50 @@ func TestStallTimerStartsAfterHeaders(t *testing.T) {
 		ok(w, r)
 	})
 	lim := limits{size: maxDownloadSize, stall: 100 * time.Millisecond}
-	if _, _, err := download(context.Background(), testClient(), url, t.TempDir(), "", lim); err != nil {
+	if _, _, err := download(context.Background(), testClient(), url, t.TempDir(), "", nil, lim); err != nil {
 		t.Errorf("slow headers: %v", err)
+	}
+}
+
+// Progress counts every byte, against Content-Length when the server sends
+// one and -1 when it streams without.
+func TestDownloadProgress(t *testing.T) {
+	t.Parallel()
+	big := strings.Repeat("x", 100_000)
+	tests := []struct {
+		name      string
+		handler   http.HandlerFunc
+		wantTotal int64
+	}{
+		{"with length", func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Length", strconv.Itoa(len(big)))
+			_, _ = io.WriteString(w, big)
+		}, int64(len(big))},
+		{"chunked", func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(w, big[:50_000])
+			w.(http.Flusher).Flush() // headers go out before the length is known
+			_, _ = io.WriteString(w, big[50_000:])
+		}, -1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			url, _ := serve(t, tt.handler)
+			var calls int
+			var last, total int64
+			_, _, err := Download(context.Background(), testClient(), url, t.TempDir(), "", func(done, tot int64) {
+				if done < last {
+					t.Errorf("progress went backwards: %d after %d", done, last)
+				}
+				calls++
+				last, total = done, tot
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if calls < 2 || last != int64(len(big)) || total != tt.wantTotal {
+				t.Errorf("progress: %d calls, last %d of %d; want several, ending %d of %d", calls, last, total, len(big), tt.wantTotal)
+			}
+		})
 	}
 }

@@ -19,7 +19,16 @@ type cli struct {
 	verbose    bool
 	profile    string // -p, for the commands that take it
 
-	app *app.App
+	app      *app.App
+	progress reporter // the App's Reporter
+}
+
+// stopProgress ends the progress display before a command prints its
+// results, so they don't land in the middle of the bar.
+func (c *cli) stopProgress() {
+	if c.progress != nil {
+		c.progress.stop()
+	}
 }
 
 // buildApp builds an App for local work from the environment and --config.
@@ -46,11 +55,12 @@ func (c *cli) build(cmd *cobra.Command, network bool) error {
 			return err
 		}
 	}
+	c.progress = newReporter(cmd.ErrOrStderr(), c.verbose, c.env.getenv)
 	opts := app.Options{
 		Paths:    p,
 		Config:   config.NewStore(p.ConfigFile),
 		State:    state.NewStore(p.StateFile),
-		Reporter: &lineReporter{w: cmd.ErrOrStderr(), verbose: c.verbose},
+		Reporter: c.progress,
 	}
 	if network {
 		opts.HTTP = httpx.NewClient(c.env.version)

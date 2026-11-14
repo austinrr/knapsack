@@ -2,10 +2,8 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -50,6 +48,7 @@ are never replaced.`,
 			// Even when err is set, results may hold addons already
 			// installed, so they're printed first.
 			results, err := c.app.Add(cmd.Context(), c.profileName(), refs, force)
+			c.stopProgress()
 			out := &printer{w: cmd.OutOrStdout()}
 			for _, res := range results {
 				switch res.Action {
@@ -87,6 +86,7 @@ matches one addon.`,
 		PreRunE: c.buildApp,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			results, err := c.app.Remove(cmd.Context(), c.profileName(), args)
+			c.stopProgress()
 			out := &printer{w: cmd.OutOrStdout()}
 			for _, res := range results {
 				if res.Action == app.ActionRemoved {
@@ -328,34 +328,4 @@ func orDash(s string) string {
 		return "-"
 	}
 	return s
-}
-
-// lineReporter prints progress on stderr as lines: warnings always, and
-// each step with --verbose. Failures and skips aren't printed here; the
-// command reports them at the end, failures with their hints. A mutex keeps lines from
-// interleaving, since events arrive from parallel downloads.
-type lineReporter struct {
-	mu      sync.Mutex
-	w       io.Writer
-	verbose bool
-}
-
-func (r *lineReporter) Event(e app.Event) {
-	var line string
-	switch {
-	case e.Kind == app.EventWarned:
-		line = "warning: " + e.Ref.String() + ": " + e.Message
-	case !r.verbose:
-		return
-	case e.Kind == app.EventResolving:
-		line = "resolving " + e.Ref.String()
-	case e.Kind == app.EventDownloading:
-		line = "downloading " + e.Ref.String() + " " + e.Version
-	default:
-		return
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	// Progress that can't be written isn't worth failing the command for.
-	_, _ = fmt.Fprintln(r.w, line)
 }

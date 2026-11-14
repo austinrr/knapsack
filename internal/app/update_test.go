@@ -376,6 +376,16 @@ func TestCheck(t *testing.T) {
 		t.Errorf("gone's error = %v, want not found", plans[3].Err)
 	}
 
+	// Every addon with a plan reports it, so progress can count it done.
+	for _, r := range []ref.Ref{current, outdated, unpublished, missing} {
+		if kinds := e.rec.kinds(r); kinds[len(kinds)-1] != app.EventChecked {
+			t.Errorf("%s events = %v, want a final Checked", r, kinds)
+		}
+	}
+	if kinds := e.rec.kinds(gone); kinds[len(kinds)-1] != app.EventFailed {
+		t.Errorf("gone events = %v, want a final Failed", kinds)
+	}
+
 	// Only the addon without a published SHA-256 was downloaded.
 	for _, r := range []ref.Ref{current, outdated, unpublished, missing} {
 		downloaded := slices.Contains(e.rec.kinds(r), app.EventDownloading)
