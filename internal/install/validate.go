@@ -99,6 +99,21 @@ func selectTOC(dir string, c flavor.Client) (string, error) {
 		ErrNotAddon, folder, folder, c.GameType, c.Family)
 }
 
+// TOC returns the name and contents of the TOC file a client of flavor f
+// loads from the addon folder dir, for showing an addon's title and notes.
+func TOC(dir string, f flavor.Flavor) (string, toc.File, error) {
+	c, ok := f.Client()
+	if !ok {
+		return "", toc.File{}, fmt.Errorf("unknown flavor %q", f)
+	}
+	name, err := selectTOC(dir, c)
+	if err != nil {
+		return "", toc.File{}, err
+	}
+	file, err := readTOC(filepath.Join(dir, name))
+	return name, file, err
+}
+
 // readTOC parses one TOC file.
 func readTOC(path string) (toc.File, error) {
 	f, err := os.Open(path)

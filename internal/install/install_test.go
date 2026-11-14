@@ -417,3 +417,18 @@ func TestExactNameWins(t *testing.T) {
 		t.Errorf("AddOns after Remove (-want +got):\n%s", diff)
 	}
 }
+
+// A folder another addon owns is refused even with Force.
+func TestInstallOwnedByOther(t *testing.T) {
+	t.Parallel()
+	addons := t.TempDir()
+	writeTree(t, addons, installed("v1", "LibShared"))
+	_, _, err := doInstall(t, addonZip(t, "v2", "Addon", "LibShared"), addons,
+		Options{Others: []string{"libshared"}, Force: true})
+	if !errors.Is(err, ErrOwned) || !strings.Contains(err.Error(), "LibShared") {
+		t.Fatalf("Install error = %v, want ErrOwned naming LibShared", err)
+	}
+	if diff := cmp.Diff(installed("v1", "LibShared"), tree(t, addons)); diff != "" {
+		t.Errorf("AddOns changed (-want +got):\n%s", diff)
+	}
+}
