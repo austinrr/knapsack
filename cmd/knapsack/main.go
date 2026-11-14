@@ -35,6 +35,8 @@ type env struct {
 	// released is true when version was set at build time, as in a
 	// release archive (version.go).
 	released bool
+	// home is the user's home directory, or "" if there's none.
+	home string
 	// executable is the running binary's path, symlinks resolved, or ""
 	// if it can't be found. It's resolved once, so the path self-update
 	// checks is the one it replaces.
@@ -77,6 +79,7 @@ func main() {
 		version:     resolveVersion(buildVersion, debug.ReadBuildInfo),
 		released:    buildVersion != "",
 		executable:  exe,
+		home:        userHome(),
 		interactive: isTerminal(os.Stderr),
 
 		stdin: os.Stdin,
@@ -90,6 +93,16 @@ func main() {
 	})
 	stop()
 	os.Exit(code)
+}
+
+// userHome is the user's home directory, or "" when there's none: it only
+// narrows where set-profile --auto looks.
+func userHome() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return home
 }
 
 // readPassword reads a line from the terminal on stdin without echoing it.

@@ -1,0 +1,4 @@
+# exit: 2
+# stdout:
+# stderr:
+error: --auto works out each profile's flavor, so it can't be used with --flavor

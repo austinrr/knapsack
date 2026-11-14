@@ -1,0 +1,4 @@
+# exit: 2
+# stdout:
+# stderr:
+error: --auto names each profile itself, so it takes no name, got "retail"

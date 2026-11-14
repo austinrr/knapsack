@@ -1,0 +1,9 @@
+# exit: 0
+# stdout:
+Found World of Warcraft in <home>/wow:
+  Profile "retail" unchanged (retail, <home>/wow/_retail_/Interface/AddOns).
+  Profile "retail-ptr" unchanged (retail, <home>/wow/_ptr_/Interface/AddOns).
+  Profile "classic" unchanged (classic, <home>/wow/_classic_/Interface/AddOns).
+  Profile "classic-beta" unchanged (classic, <home>/wow/_classic_beta_/Interface/AddOns).
+  Profile "forever" unchanged (forever, <home>/wow/_forever_/Interface/AddOns).
+# stderr:

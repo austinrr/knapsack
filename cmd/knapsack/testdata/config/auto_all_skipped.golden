@@ -1,0 +1,7 @@
+# exit: 2
+# stdout:
+Found World of Warcraft in <home>/fresh:
+  Skipped _retail_: it has no Interface/AddOns folder yet; start that client once, or make the folder
+# stderr:
+error: no profiles made: every client folder found was skipped
+hint: see why above; a client that's never been started needs its Interface/AddOns folder first

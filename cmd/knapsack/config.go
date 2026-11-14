@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -43,8 +44,9 @@ comments in the file are not kept.`,
 
 func newSetProfileCmd(c *cli) *cobra.Command {
 	var req app.SetProfileRequest
+	var auto bool
 	cmd := &cobra.Command{
-		Use:   "set-profile [name] --path <game client folder> [--flavor <flavor>]",
+		Use:   "set-profile [name] --path <game client folder> [--flavor <flavor>] | --auto [--path <game folder>]",
 		Short: "Create or change a profile",
 		Long: `Create a profile, or change an existing one.
 
@@ -62,16 +64,33 @@ created becomes the current profile.
 Without a name, the profile is the one already using the path, or else is
 named after its flavor (retail), or for a test client, its flavor and the
 test (retail-ptr), so most people never need to choose one. A second
-profile for the same client, such as a test copy of the game, needs a name.`,
-		Example: "  knapsack config set-profile --path " + app.Quoted(app.ExampleClientFolder()) + "\n" +
+profile for the same client, such as a test copy of the game, needs a name.
+
+--auto finds World of Warcraft where it's usually installed and makes a
+profile, named that way, for each client folder with Interface/AddOns in
+it. Profiles that already exist are left alone. With --path, it uses that
+game folder instead of looking. -v lists the places it looks.`,
+		Example: "  knapsack config set-profile --auto\n" +
+			"  knapsack config set-profile --path " + app.Quoted(app.ExampleClientFolder()) + "\n" +
 			"  knapsack config set-profile retail-test --path " + app.Quoted(filepath.Join(filepath.Dir(filepath.Dir(app.ExampleClientFolder())), "WoW Test", "_retail_")),
 		Args: func(cmd *cobra.Command, args []string) error {
 			if err := splitPath(c.rawArgs); err != nil {
 				return err
 			}
+			if auto {
+				switch {
+				case len(args) > 0:
+					return fmt.Errorf("--auto names each profile itself, so it takes no name, got %q", args[0])
+				case req.Flavor != "":
+					return errors.New("--auto works out each profile's flavor, so it can't be used with --flavor")
+				}
+			}
 			return maxArgs("profile name")(cmd, args)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if auto {
+				return autoProfiles(cmd, c, req.Path)
+			}
 			if len(args) == 1 {
 				req.Name = args[0]
 			}
@@ -104,9 +123,65 @@ profile for the same client, such as a test copy of the game, needs a name.`,
 	}
 	cmd.Flags().StringVar(&req.Path, "path", "", "the game's client folder, such as _retail_, or its Interface/AddOns folder (required for a new profile)")
 	cmd.Flags().StringVar(&req.Flavor, "flavor", "", "the game client, if the path doesn't show it")
+	cmd.Flags().BoolVar(&auto, "auto", false, "find World of Warcraft and make a profile for each of its clients")
 	_ = cmd.RegisterFlagCompletionFunc("flavor", cobra.FixedCompletions(flavor.Names(), cobra.ShellCompDirectiveNoFileComp))
 	_ = cmd.MarkFlagDirname("path")
 	return cmd
+}
+
+// autoProfiles runs set-profile --auto: a line per client found, then, for
+// the first profile, the current one and what to do next. game is --path,
+// the game folder to use, or "" to look for it.
+func autoProfiles(cmd *cobra.Command, c *cli, game string) error {
+	res, err := c.app.AutoProfiles(cmd.Context(), game)
+	if c.verbose && len(res.Searched) > 0 {
+		w := cmd.ErrOrStderr()
+		_, _ = fmt.Fprintln(w, "Looked for World of Warcraft in:") // -v output; nowhere to report a failed write
+		for _, s := range res.Searched {
+			_, _ = fmt.Fprintln(w, "  "+s)
+		}
+	}
+	// What was done is shown even when it ends in an error: profiles made
+	// before a failure, or why every client was skipped.
+	out := &printer{w: cmd.OutOrStdout()}
+	game, current := "", ""
+	for _, p := range res.Profiles {
+		if p.Game != game {
+			game = p.Game
+			out.printf("Found World of Warcraft in %s:\n", game)
+		}
+		if p.Skipped != "" {
+			out.printf("  Skipped %s: %s\n", p.Client, p.Skipped)
+			var ue *app.UserError
+			if errors.As(p.Err, &ue) && ue.Hint != "" {
+				out.printf("    hint: %s\n", ue.Hint)
+			}
+			continue
+		}
+		r := p.Result
+		verb := "unchanged"
+		if r.Created {
+			verb = "created"
+		}
+		out.printf("  Profile %q %s (%s, %s).\n", r.Profile.Name, verb, r.Profile.Flavor, r.Profile.Path)
+		if r.MadeCurrent {
+			current = r.Profile.Name
+		}
+	}
+	if current != "" {
+		out.printf("Switched to profile %q.\n", current)
+	}
+	if err != nil {
+		return err
+	}
+	if out.err != nil {
+		return out.err
+	}
+	if current != "" {
+		_, err := fmt.Fprintln(cmd.ErrOrStderr(), "Next, add addons: knapsack add github:owner/repo, or a GitHub URL.")
+		return err
+	}
+	return nil
 }
 
 // splitPath catches a --path the shell split at its spaces, as an unquoted

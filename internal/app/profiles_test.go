@@ -236,18 +236,20 @@ func TestDeleteProfileStateFailure(t *testing.T) {
 	}
 }
 
-// A quoted ~ reaches Knapsack unexpanded, so set-profile expands it. The
-// home directory is a temp one, so the test never touches the real one.
-// Not parallel: it sets HOME.
+// A quoted ~ reaches Knapsack unexpanded, so set-profile expands it, to
+// the App's home directory, here a temp one.
 func TestSetProfileTilde(t *testing.T) {
+	t.Parallel()
 	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home) // os.UserHomeDir on Windows
 	addons := filepath.Join(home, "Games", "_forever_", "Interface", "AddOns")
 	if err := os.MkdirAll(addons, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	a, _, _ := newApp(t)
+	p, err := paths.Resolve(func(string) string { return t.TempDir() })
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := app.New(app.Options{Paths: p, Config: config.NewStore(p.ConfigFile), State: state.NewStore(p.StateFile), Home: home})
 	res, err := a.SetProfile(context.Background(), app.SetProfileRequest{Path: "~/Games/_forever_"})
 	if err != nil || res.Profile.Path != addons {
 		t.Errorf("SetProfile(~/Games/_forever_) = %+v, %v; want %s", res.Profile, err, addons)

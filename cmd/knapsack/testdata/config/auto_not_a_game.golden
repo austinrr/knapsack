@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: <home>/addons has no game client folders (_retail_, _classic_, …) in it
+hint: pass the World of Warcraft folder, or a client folder without --auto

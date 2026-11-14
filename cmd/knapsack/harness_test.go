@@ -189,6 +189,7 @@ func (s *sandbox) run(args ...string) result {
 		stdout: &stdout, stderr: &stderr, getenv: getenv, version: testVersion,
 		released:    !s.notReleased,
 		executable:  s.exe,
+		home:        s.home,
 		interactive: s.interactive,
 		githubURL:   s.github.URL,
 		ghAuthToken: func(context.Context) string { s.ghCalls.Add(1); return s.ghToken },

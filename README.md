@@ -36,7 +36,19 @@ instead.
 
 ## Getting started
 
-Make a profile for each game client, pointing at its client folder
+Let Knapsack find the game and make a profile for each client it has
+(`retail`, `forever`, …):
+
+```sh
+knapsack config set-profile --auto
+```
+
+It looks where the game is usually installed: `Program Files (x86)` and the
+like on every Windows drive, `/Applications` on macOS, and Wine, Lutris,
+Faugus, Bottles and Steam prefixes on Linux. If it isn't found, pass the
+`World of Warcraft` folder with `--path`, or make each profile yourself.
+
+Or make a profile for each game client yourself, pointing at its client folder
 (`_retail_`, `_forever_`, …) or the `Interface\AddOns` folder in it. The
 flavor is worked out from the client folder, the profile is named after
 it, and the first profile becomes the current one. Quote the path: it

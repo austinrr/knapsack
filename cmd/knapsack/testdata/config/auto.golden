@@ -1,0 +1,12 @@
+# exit: 0
+# stdout:
+Found World of Warcraft in <home>/wow:
+  Profile "retail" created (retail, <home>/wow/_retail_/Interface/AddOns).
+  Profile "retail-ptr" created (retail, <home>/wow/_ptr_/Interface/AddOns).
+  Skipped _xptr_: it has no Interface/AddOns folder yet; start that client once, or make the folder
+  Profile "classic" created (classic, <home>/wow/_classic_/Interface/AddOns).
+  Profile "classic-beta" created (classic, <home>/wow/_classic_beta_/Interface/AddOns).
+  Profile "forever" created (forever, <home>/wow/_forever_/Interface/AddOns).
+Switched to profile "retail".
+# stderr:
+Next, add addons: knapsack add github:owner/repo, or a GitHub URL.
