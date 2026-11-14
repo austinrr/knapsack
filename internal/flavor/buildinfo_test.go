@@ -94,3 +94,21 @@ func TestKnownGameType(t *testing.T) {
 		}
 	}
 }
+
+// A version outside the flavor's range means the table or product code is
+// wrong, so it's not trusted for the out-of-date check.
+func TestClientInterfaceOutOfRange(t *testing.T) {
+	t.Parallel()
+	root := filepath.Join(t.TempDir(), "World of Warcraft")
+	if err := os.Mkdir(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	info := "Active!DEC:1|Version!STRING:0|Product!STRING:0\n1|6.0.1.1|wow_classic\n"
+	if err := os.WriteFile(filepath.Join(root, ".build.info"), []byte(info), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, "_classic_", "Interface", "AddOns")
+	if got, ok := flavor.ClientInterface(dir, flavor.Classic); ok {
+		t.Errorf("ClientInterface = %d, true; want false for 60001 on classic", got)
+	}
+}

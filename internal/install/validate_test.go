@@ -223,3 +223,27 @@ func TestValidateUnknownFlavor(t *testing.T) {
 		t.Error("Validate with an unknown flavor succeeded")
 	}
 }
+
+// A symlinked TOC is read like any other, as the client follows it.
+func TestValidateTOCSymlink(t *testing.T) {
+	t.Parallel()
+	dir := addon(t, map[string]string{"Addon.toc": "## Interface: 120105\n", "real.toc": "## Interface: 16001\n"})
+	if err := os.Symlink("real.toc", filepath.Join(dir, "Addon_Mainline.toc")); err != nil {
+		t.Skipf("can't create symlinks here: %v", err)
+	}
+	if _, err := install.Validate(dir, flavor.Forever, 16001); err != nil {
+		t.Errorf("Validate didn't read the symlinked TOC: %v", err)
+	}
+}
+
+// The error names the files the client would have looked for, not just
+// the plain TOC.
+func TestValidateNotAddonMessage(t *testing.T) {
+	t.Parallel()
+	dir := addon(t, map[string]string{"Addon_Mists.toc": "## Interface: 50504\n"})
+	_, err := install.Validate(dir, flavor.Forever, 0)
+	want := "Addon: not an addon folder: no Addon.toc, or Addon_<suffix>.toc for forever or mainline"
+	if err == nil || err.Error() != want {
+		t.Errorf("Validate error = %v, want %q", err, want)
+	}
+}

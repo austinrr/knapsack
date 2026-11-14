@@ -22,7 +22,8 @@ const buildInfoFile = ".build.info"
 // …/World of Warcraft/_forever_/Interface/AddOns. ClientInterface reports
 // false when there is no client folder in the path, the file is missing or
 // unreadable, it has no row for the flavor's product, or the product code
-// isn't known yet. Callers then skip the out-of-date check, which is the
+// isn't known yet, or the version isn't in the flavor's Interface range,
+// which means the table or the product code is wrong. Callers then skip the out-of-date check, which is the
 // only thing the exact number is for.
 func ClientInterface(addonsDir string, f Flavor) (int, bool) {
 	c, ok := f.Client()
@@ -44,7 +45,7 @@ func ClientInterface(addonsDir string, f Flavor) (int, bool) {
 		return 0, false
 	}
 	n, err := interfaceNumber(version)
-	if err != nil {
+	if err != nil || !c.Interface.Contains(n) {
 		return 0, false
 	}
 	return n, true
@@ -69,7 +70,8 @@ func wowFolder(addonsDir, clientFolder string) (string, bool) {
 // productVersion returns the Version of product's row in a .build.info
 // file. The file is pipe-separated with a header row whose cells look like
 // "Version!STRING:0": a column name, then its type, which isn't needed.
-// When several rows have the product, the one marked Active wins.
+// When the file has an Active column, only a row marked active counts: the
+// launcher keeps inactive rows for clients that are no longer installed.
 func productVersion(r io.Reader, product string) (string, error) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(nil, 1<<20) // rows list CDN hosts and tags, well over 1 KiB
@@ -91,27 +93,20 @@ func productVersion(r io.Reader, product string) (string, error) {
 	}
 	activeCol, hasActive := cols["active"]
 
-	version := ""
 	for sc.Scan() {
 		row := strings.Split(strings.TrimSuffix(sc.Text(), "\r"), "|")
 		if productCol >= len(row) || versionCol >= len(row) || row[productCol] != product {
 			continue
 		}
-		active := hasActive && activeCol < len(row) && row[activeCol] == "1"
-		if version == "" || active {
-			version = row[versionCol]
+		if hasActive && (activeCol >= len(row) || row[activeCol] != "1") {
+			continue
 		}
-		if active {
-			break
-		}
+		return row[versionCol], nil
 	}
 	if err := sc.Err(); err != nil {
 		return "", err
 	}
-	if version == "" {
-		return "", fmt.Errorf("no row for product %q", product)
-	}
-	return version, nil
+	return "", fmt.Errorf("no active row for product %q", product)
 }
 
 // interfaceNumber turns a client version like "1.60.1.70938" into its

@@ -57,9 +57,15 @@ func TestProductVersion(t *testing.T) {
 			want: "1.60.1.2",
 		},
 		{
-			name: "first row when none is active",
-			file: header + "us|0|1.59.0.1|wowf\neu|0|1.60.1.2|wowf\n",
-			want: "1.59.0.1",
+			// Inactive rows are clients that are no longer installed.
+			name:    "no active row",
+			file:    header + "us|0|1.59.0.1|wowf\neu|0|1.60.1.2|wowf\n",
+			wantErr: true,
+		},
+		{
+			name: "no active column",
+			file: "Version!STRING:0|Product!STRING:0\n1.60.1.2|wowf\n",
+			want: "1.60.1.2",
 		},
 		{
 			name: "short rows are skipped",

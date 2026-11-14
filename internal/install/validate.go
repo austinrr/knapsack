@@ -55,11 +55,10 @@ func Validate(dir string, f flavor.Flavor, clientInterface int) (warning string,
 		return "", fmt.Errorf("%s: %w", folder, err)
 	}
 
-	inRange := slices.ContainsFunc(file.Interfaces, c.Interface.Contains)
 	switch {
 	case len(file.Interfaces) == 0:
 		return "", fmt.Errorf("%s: %w: %s has no ## Interface", folder, ErrWrongGame, name)
-	case !inRange:
+	case !slices.ContainsFunc(file.Interfaces, c.Interface.Contains):
 		return "", fmt.Errorf("%s: %w: Interface %s, but %s needs %s",
 			folder, ErrWrongGame, joinInts(file.Interfaces), f, c.Interface)
 	case clientInterface != 0 && !slices.Contains(file.Interfaces, clientInterface):
@@ -80,7 +79,8 @@ func selectTOC(dir string, c flavor.Client) (string, error) {
 	}
 	files := map[string]string{} // lower-cased name → actual name
 	for _, e := range entries {
-		if e.Type().IsRegular() {
+		// Not IsRegular: a symlinked TOC is a TOC, and the client follows it.
+		if !e.IsDir() {
 			files[strings.ToLower(e.Name())] = e.Name()
 		}
 	}
@@ -95,7 +95,8 @@ func selectTOC(dir string, c flavor.Client) (string, error) {
 			return name, nil
 		}
 	}
-	return "", fmt.Errorf("%w: no %s.toc", ErrNotAddon, folder)
+	return "", fmt.Errorf("%w: no %s.toc, or %s_<suffix>.toc for %s or %s",
+		ErrNotAddon, folder, folder, c.GameType, c.Family)
 }
 
 // readTOC parses one TOC file.
