@@ -76,7 +76,7 @@ func (s *scope) selector(ctx context.Context, c *cli, names []string) (app.Selec
 		// An empty Selector would mean the current profile.
 		return app.Selector{}, &app.UserError{
 			Msg:  "no profiles",
-			Hint: "create one with: knapsack config set-profile <name> --path <AddOns folder>",
+			Hint: "create one with: knapsack config set-profile --path <AddOns folder>",
 		}
 	}
 	var sel app.Selector

@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: can't tell the flavor from <home>/addons: it's not inside a client folder such as _retail_
+hint: pass --flavor: one of retail, classic, classic_era, anniversary, forever

@@ -52,7 +52,18 @@ func TestConfigCommands(t *testing.T) {
 			args:  []string{"config", "set-profile", "custom", "--path", "{home}/wow"}},
 		{name: "config/set_profile_explicit_flavor",
 			args: []string{"config", "set-profile", "custom", "--path", plain, "--flavor", "anniversary"}},
+		// Without a name, the profile is the one using the path, or is
+		// named after the flavor.
 		{name: "config/set_profile_no_name", args: []string{"config", "set-profile", "--path", forever}},
+		{name: "config/set_profile_no_name_second", setup: [][]string{addForever}, args: []string{"config", "set-profile", "--path", retail}},
+		{name: "config/set_profile_no_name_existing_path", setup: [][]string{{"config", "set-profile", "main", "--path", forever}},
+			args: []string{"config", "set-profile", "--path", forever}},
+		{name: "config/set_profile_no_name_change_flavor", setup: [][]string{{"config", "set-profile", "test", "--path", plain, "--flavor", "forever"}},
+			args: []string{"config", "set-profile", "--path", plain, "--flavor", "classic"}},
+		{name: "config/set_profile_no_name_taken", setup: [][]string{addForever},
+			args: []string{"config", "set-profile", "--path", plain, "--flavor", "forever"}},
+		{name: "config/set_profile_no_name_no_path", args: []string{"config", "set-profile"}},
+		{name: "config/set_profile_no_name_no_flavor", args: []string{"config", "set-profile", "--path", plain}},
 		// No example to show, so the hint only points at --help.
 		{name: "config/use_profile_no_name", args: []string{"config", "use-profile"}},
 		{name: "config/set_profile_two_names", args: []string{"config", "set-profile", "a", "b"}},

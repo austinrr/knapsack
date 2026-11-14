@@ -26,6 +26,8 @@ type ProfileInfo struct {
 // SetProfileRequest is what `config set-profile` asks for. Empty fields are
 // left as they are on an existing profile.
 type SetProfileRequest struct {
+	// Name is the profile's name. "" names it after Path (DESIGN.md §8.4):
+	// the profile that already uses that folder, else its flavor.
 	Name   string
 	Path   string // relative paths are resolved against the working directory
 	Flavor string // "" infers it from the client folder in the path
@@ -51,6 +53,14 @@ func (a *App) SetProfile(ctx context.Context, req SetProfileRequest) (SetProfile
 	if err := ctx.Err(); err != nil {
 		return SetProfileResult{}, err
 	}
+	named := req.Name != ""
+	if !named {
+		name, path, err := a.nameForPath(req)
+		if err != nil {
+			return SetProfileResult{}, err
+		}
+		req.Name, req.Path = name, path
+	}
 	if err := config.ValidateProfileName(req.Name); err != nil {
 		return SetProfileResult{}, &UserError{Msg: err.Error()}
 	}
@@ -59,6 +69,13 @@ func (a *App) SetProfile(ctx context.Context, req SetProfileRequest) (SetProfile
 	err := a.withProfileLock(req.Name, func() error {
 		changed, err := a.changeConfig(func(c *config.Config) error {
 			p, exists := c.Profiles[req.Name]
+			// A name taken from the flavor only ever creates a profile or
+			// matches the one already using the folder; it never moves
+			// another to a new folder. Checked again under the lock, in
+			// case another process made the profile meanwhile.
+			if !named && exists && !config.SamePath(p.Path, req.Path) {
+				return flavorNameTaken(req.Name, p.Path)
+			}
 			if !exists && req.Path == "" {
 				return &UserError{
 					Msg:  fmt.Sprintf("profile %q doesn't exist yet, so --path is required", req.Name),
@@ -99,6 +116,48 @@ func (a *App) SetProfile(ctx context.Context, req SetProfileRequest) (SetProfile
 		return err
 	})
 	return res, err
+}
+
+// nameForPath names the profile for a set-profile without a name: the
+// profile that already uses req.Path, so running it again changes nothing,
+// or else the flavor, which is what most people have one profile per.
+// It also returns req.Path made absolute.
+func (a *App) nameForPath(req SetProfileRequest) (name, path string, err error) {
+	if req.Path == "" {
+		return "", "", &UserError{
+			Msg:  "set-profile needs --path, or the name of a profile to change",
+			Hint: "pass --path with the game's Interface/AddOns folder",
+		}
+	}
+	if path, err = addonsDir(req.Path); err != nil {
+		return "", "", err
+	}
+	c, err := a.config.Load()
+	if err != nil {
+		return "", "", err
+	}
+	if name := profileWithPath(c, path, ""); name != "" {
+		return name, path, nil
+	}
+	f, err := chooseFlavor(req.Flavor, path, "")
+	if err != nil {
+		return "", "", err
+	}
+	if p, exists := c.Profiles[string(f)]; exists {
+		return "", "", flavorNameTaken(string(f), p.Path)
+	}
+	return string(f), path, nil
+}
+
+// flavorNameTaken is the error when a profile would be named after its
+// flavor, but a profile of that name already uses another folder: a second
+// install of the same client, such as a test copy, needs its own name.
+func flavorNameTaken(name, existing string) error {
+	return &UserError{
+		Msg: fmt.Sprintf("profile %q already uses %s", name, existing),
+		Hint: fmt.Sprintf("give this one its own name with `knapsack config set-profile <name> --path …`, or move %q here by naming it: `knapsack config set-profile %s --path …`",
+			name, name),
+	}
 }
 
 // addonsDir makes path absolute and checks that it's a directory, which
@@ -285,7 +344,7 @@ func noCurrentProfile(c *config.Config) error {
 	if len(c.Profiles) == 0 {
 		return &UserError{
 			Msg:  "no profiles yet",
-			Hint: "create one with: knapsack config set-profile <name> --path <AddOns folder>",
+			Hint: "create one with: knapsack config set-profile --path <AddOns folder>",
 		}
 	}
 	return &UserError{

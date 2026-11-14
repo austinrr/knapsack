@@ -39,19 +39,25 @@ comments in the file are not kept.`,
 func newSetProfileCmd(c *cli) *cobra.Command {
 	var req app.SetProfileRequest
 	cmd := &cobra.Command{
-		Use:   "set-profile <name> --path <AddOns folder> [--flavor <flavor>]",
+		Use:   "set-profile [name] --path <AddOns folder> [--flavor <flavor>]",
 		Short: "Create or change a profile",
 		Long: `Create a profile, or change an existing one.
 
 The flavor is inferred from the client folder in the path (_retail_,
 _classic_, _classic_era_, _anniversary_, _forever_) unless --flavor is
 given. On an existing profile, only the flags you pass change. The first
-profile created becomes the current profile.`,
-		Example: `  knapsack config set-profile forever --path "/games/World of Warcraft/_forever_/Interface/AddOns"
-  knapsack config set-profile beta --path ~/wow-beta/AddOns --flavor retail`,
-		Args: exactArgs("profile name"),
+profile created becomes the current profile.
+
+Without a name, the profile is the one already using the path, or else is
+named after its flavor, so most people never need to choose one. A second
+profile for the same flavor, such as a test copy of the game, needs a name.`,
+		Example: `  knapsack config set-profile --path "/games/World of Warcraft/_forever_/Interface/AddOns"
+  knapsack config set-profile forever-test --path ~/wow-test/_forever_/Interface/AddOns`,
+		Args: maxArgs("profile name"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			req.Name = args[0]
+			if len(args) == 1 {
+				req.Name = args[0]
+			}
 			res, err := c.app.SetProfile(cmd.Context(), req)
 			if err != nil {
 				return err

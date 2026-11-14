@@ -54,6 +54,17 @@ func exactArgs(what string) cobra.PositionalArgs {
 	}
 }
 
+// maxArgs is the Args validator for leaf commands that take at most one
+// positional argument, described by what.
+func maxArgs(what string) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) > 1 {
+			return fmt.Errorf("%s takes one %s, got %d arguments", cmd.CommandPath(), what, len(args))
+		}
+		return nil
+	}
+}
+
 // article is "an" before a word starting with a vowel, else "a".
 func article(word string) string {
 	if word != "" && strings.ContainsRune("aeiou", rune(word[0])) {

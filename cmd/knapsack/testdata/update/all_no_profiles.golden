@@ -2,4 +2,4 @@
 # stdout:
 # stderr:
 error: no profiles
-hint: create one with: knapsack config set-profile <name> --path <AddOns folder>
+hint: create one with: knapsack config set-profile --path <AddOns folder>
