@@ -26,6 +26,8 @@ func explain(err error, r ref.Ref) error {
 		hint = "another addon in this profile installs the same folders; remove it first"
 	case errors.Is(err, install.ErrInUse):
 		hint = "close World of Warcraft and retry"
+	case errors.Is(err, source.ErrNotFound):
+		hint = "check the ref; a repository with no releases yet also counts as not found"
 	case errors.Is(err, source.ErrRateLimited):
 		hint = "set GITHUB_TOKEN, or log in with `gh auth login`, for a higher limit"
 	case errors.Is(err, source.ErrUnauthorized):

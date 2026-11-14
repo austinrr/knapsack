@@ -1,0 +1,26 @@
+# exit: 0
+# stdout:
+Uninstall addons and remove them from the profile's config.
+
+Only the folders Knapsack installed for each addon are deleted. An addon is
+named by its ref or URL, or by its short name (baganator-mirror) when that
+matches one addon.
+
+Usage:
+  knapsack remove <addon>... [flags]
+
+Aliases:
+  remove, rm
+
+Examples:
+  knapsack remove baganator-mirror
+  knapsack rm github:austinrr/syndicator-mirror
+
+Flags:
+  -h, --help             help for remove
+  -p, --profile string   profile to act on (default $KNAPSACK_PROFILE, then the current profile)
+
+Global Flags:
+      --config string   use this config file instead of the default
+  -v, --verbose         show progress and the underlying cause of errors
+# stderr:

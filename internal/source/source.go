@@ -70,7 +70,7 @@ func NewRegistry(sources ...Source) *Registry {
 func (reg *Registry) Resolve(ctx context.Context, r ref.Ref, f flavor.Flavor) (Release, error) {
 	s, ok := reg.sources[r.Source]
 	if !ok {
-		return Release{}, fmt.Errorf("%s: %w", r, ErrSourceNotConfigured)
+		return Release{}, fmt.Errorf("%s %s: %w", r.Source, r.ID, ErrSourceNotConfigured)
 	}
 	return s.Resolve(ctx, r.ID, f)
 }

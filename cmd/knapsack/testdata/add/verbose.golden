@@ -1,0 +1,6 @@
+# exit: 0
+# stdout:
+Added github:austinrr/details-mirror v1.
+# stderr:
+resolving github:austinrr/details-mirror
+downloading github:austinrr/details-mirror v1

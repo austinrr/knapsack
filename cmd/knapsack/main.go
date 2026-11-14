@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/austinrr/knapsack/internal/app"
+	"github.com/austinrr/knapsack/internal/source/github"
 )
 
 // Exit codes, following the diff/grep convention (DESIGN.md §8.6).
@@ -25,6 +26,10 @@ type env struct {
 	stderr  io.Writer
 	getenv  func(string) string
 	version string
+	// githubURL is GitHub's API, and ghAuthToken asks the GitHub CLI for a
+	// token. Tests replace both, so they never reach the real GitHub.
+	githubURL   string
+	ghAuthToken func(context.Context) string
 }
 
 func main() {
@@ -42,6 +47,9 @@ func main() {
 		stderr:  os.Stderr,
 		getenv:  os.Getenv,
 		version: resolveVersion(buildVersion, debug.ReadBuildInfo),
+
+		githubURL:   github.DefaultBaseURL,
+		ghAuthToken: ghAuthToken,
 	})
 	stop()
 	os.Exit(code)
@@ -60,11 +68,26 @@ func run(ctx context.Context, args []string, e env) int {
 	root.SetErr(e.stderr)
 
 	if err := root.ExecuteContext(ctx); err != nil {
-		renderError(e.stderr, err, c.verbose)
+		// A command acting on several addons returns each failure
+		// separately, so each gets its own error and hint lines.
+		var errs addonErrors
+		if !errors.As(err, &errs) {
+			errs = addonErrors{err}
+		}
+		for _, err := range errs {
+			renderError(e.stderr, err, c.verbose)
+		}
 		return exitError
 	}
 	return exitOK
 }
+
+// addonErrors is what a command acting on several addons returns when
+// any fail: one error per failed addon, then any error that stopped the
+// command. run renders each in turn.
+type addonErrors []error
+
+func (e addonErrors) Error() string { return errors.Join(e...).Error() }
 
 // renderError writes err to w: an "error:" line, then for an app.UserError
 // a "hint:" line, and with --verbose the underlying cause (DESIGN.md §8.6).

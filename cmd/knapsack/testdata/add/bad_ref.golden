@@ -1,0 +1,4 @@
+# exit: 2
+# stdout:
+# stderr:
+error: invalid addon ref "notaref": want <source>:<id> or a URL, e.g. github:owner/repo

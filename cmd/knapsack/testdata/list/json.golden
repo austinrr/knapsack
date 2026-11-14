@@ -1,0 +1,14 @@
+# exit: 0
+# stdout:
+[
+  {
+    "ref": "github:austinrr/baganator-mirror",
+    "status": "installed",
+    "version": "v1",
+    "installed_at": "<time>",
+    "folders": [
+      "Baganator"
+    ]
+  }
+]
+# stderr:

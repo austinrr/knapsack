@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: curseforge 12345: source not configured
+hint: curseforge needs an API key: set sources.curseforge.api_key in config, or KNAPSACK_CURSEFORGE_API_KEY

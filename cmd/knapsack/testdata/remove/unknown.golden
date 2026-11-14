@@ -1,0 +1,6 @@
+# exit: 2
+# stdout:
+Removed github:austinrr/baganator-mirror.
+# stderr:
+error: "nope" isn't in profile "forever"
+hint: list its addons with: knapsack list
