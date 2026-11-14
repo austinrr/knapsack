@@ -30,7 +30,8 @@ jobs:
   cut:
     name: Cut ${{ inputs.dry_run && '(dry run)' || 'release' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Room to wait for CI on the commit (about two minutes) as well.
+    timeout-minutes: 20
     permissions:
       contents: write # push the tag
       actions: read # check CI passed on the commit
@@ -53,9 +54,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          conclusion=$(gh run list --workflow ci.yml --commit "$GITHUB_SHA" --json conclusion --jq '.[0].conclusion // "none"')
+          # The newest CI run for the commit. Cutting right after a merge
+          # finds it still running, so wait for it rather than failing.
+          run=$(gh run list --workflow ci.yml --commit "$GITHUB_SHA" --limit 1 --json databaseId,status --jq '.[0] // empty')
+          if [[ -z "$run" ]]; then
+            echo "::error::No CI run for $GITHUB_SHA yet. Wait for CI to start on main, then run Release Cut again."
+            exit 1
+          fi
+          id=$(jq -r .databaseId <<<"$run")
+          if [[ "$(jq -r .status <<<"$run")" != completed ]]; then
+            echo "CI on $GITHUB_SHA is still running; waiting for it."
+            gh run watch "$id" --interval 15 >/dev/null || true # the conclusion below decides
+          fi
+          conclusion=$(gh run view "$id" --json conclusion --jq '.conclusion')
           if [[ "$conclusion" != success ]]; then
-            echo "::error::CI on $GITHUB_SHA is '$conclusion', not success."
+            echo "::error::CI on $GITHUB_SHA finished with '$conclusion', not success."
             exit 1
           fi
 
