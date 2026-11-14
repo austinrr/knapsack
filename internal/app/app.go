@@ -8,12 +8,14 @@ import (
 	"github.com/austinrr/knapsack/internal/config"
 	"github.com/austinrr/knapsack/internal/lock"
 	"github.com/austinrr/knapsack/internal/paths"
+	"github.com/austinrr/knapsack/internal/state"
 )
 
 // Options are the App's dependencies. Frontends build them once at startup.
 type Options struct {
 	Paths  paths.Paths
 	Config *config.Store
+	State  *state.Store
 }
 
 // App runs use cases. It's safe to reuse across commands: it loads fresh
@@ -21,11 +23,12 @@ type Options struct {
 type App struct {
 	paths  paths.Paths
 	config *config.Store
+	state  *state.Store
 }
 
 // New returns an App using opts.
 func New(opts Options) *App {
-	return &App{paths: opts.Paths, config: opts.Config}
+	return &App{paths: opts.Paths, config: opts.Config, state: opts.State}
 }
 
 // changeConfig runs change on freshly loaded config while holding the

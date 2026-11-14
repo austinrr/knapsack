@@ -1,0 +1,13 @@
+version = 1
+
+[addons]
+[addons."github:austinrr/baganator-mirror"]
+version = "851"
+sha256 = "d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3"
+installed_at = 2026-11-13T18:04:05Z
+folders = ["Baganator"]
+[addons."wago:VBNBxKx5"]
+version = "11.2.0"
+sha256 = "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a"
+installed_at = 2026-11-13T18:04:09Z
+folders = ["Details", "Details_DataStorage", "Details_EncounterDetails"]

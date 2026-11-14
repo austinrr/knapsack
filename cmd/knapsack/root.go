@@ -6,6 +6,7 @@ import (
 	"github.com/austinrr/knapsack/internal/app"
 	"github.com/austinrr/knapsack/internal/config"
 	"github.com/austinrr/knapsack/internal/paths"
+	"github.com/austinrr/knapsack/internal/state"
 )
 
 // cli holds the global flags and the App built from them.
@@ -30,7 +31,11 @@ func (c *cli) buildApp(*cobra.Command, []string) error {
 			return err
 		}
 	}
-	c.app = app.New(app.Options{Paths: p, Config: config.NewStore(p.ConfigFile)})
+	c.app = app.New(app.Options{
+		Paths:  p,
+		Config: config.NewStore(p.ConfigFile),
+		State:  state.NewStore(p.StateFile),
+	})
 	return nil
 }
 

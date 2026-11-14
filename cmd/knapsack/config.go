@@ -171,7 +171,8 @@ func newDeleteProfileCmd(c *cli) *cobra.Command {
 	return &cobra.Command{
 		Use:   "delete-profile <name>",
 		Short: "Delete a profile",
-		Long: `Delete a profile from config. Addon files on disk are never touched.
+		Long: `Delete a profile from config, along with Knapsack's record of what it
+installed there. Addon files on disk are never touched.
 
 If it was the current profile, no profile is current afterwards.`,
 		Args: exactArgs("profile name"),

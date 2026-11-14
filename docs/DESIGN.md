@@ -310,20 +310,26 @@ only data Knapsack can't rebuild: which folders an addon owns can't be
 reliably worked out from what's on disk.
 
 ```toml
-version = 1   # schema version, for future migrations
+version = 1
 
+[addons]
 [addons."github:austinrr/baganator-mirror"]
-version      = "851"                # display label only; never compared
-sha256       = "d3775a6bd651…"      # identity of the installed release
+version = "851"
+sha256 = "d3775a6bd651…"
 installed_at = 2026-11-13T18:04:05Z
-folders      = ["Baganator"]
-
+folders = ["Baganator"]
 [addons."wago:VBNBxKx5"]
-version      = "11.2.0"
-sha256       = "1ab4…"
+version = "11.2.0"
+sha256 = "1ab4…"
 installed_at = 2026-11-13T18:04:09Z
-folders      = ["Details", "Details_DataStorage", "Details_EncounterDetails"]
+folders = ["Details", "Details_DataStorage", "Details_EncounterDetails"]
 ```
+
+`version` is the schema version, for future migrations. A file with a newer
+one is refused with a hint to upgrade Knapsack. An addon's `version` is its
+release label, shown but never compared, and `sha256` is the identity of the
+installed release. Unlike config, the file is written by the TOML library's
+encoder as is: nobody edits it, so a hand-written layout isn't worth the code.
 
 - **"Is an update available?" compares identity, not versions.** An addon is
   outdated when the resolved release's SHA-256 differs from the installed
@@ -331,6 +337,10 @@ folders      = ["Details", "Details_DataStorage", "Details_EncounterDetails"]
   but never sorted or compared, because they don't follow one scheme.
 - Folders are names relative to the profile's AddOns path, never absolute
   paths. Renaming or deleting a profile renames or deletes its state file.
+- **Loading is strict**, because `remove` deletes the folders state lists:
+  folder names must be single path elements (no separators, `.` or `..`), no
+  folder can belong to two addons, refs must be in normal form, and unknown
+  keys are an error.
 - Writes are atomic: write a temp file in the same directory, `fsync`, then
   rename.
 - Not stored, because it would only go stale: addon titles and metadata (read

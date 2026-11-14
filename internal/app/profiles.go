@@ -229,8 +229,11 @@ type DeleteProfileResult struct {
 	WasCurrent bool
 }
 
-// DeleteProfile removes a profile from config. It never touches addon files
-// on disk.
+// DeleteProfile removes a profile from config, then its state file. It
+// never touches addon files on disk.
+//
+// Config goes first: if deleting the state file then fails, the profile is
+// already gone, and the error says which file is left behind.
 func (a *App) DeleteProfile(ctx context.Context, name string) (DeleteProfileResult, error) {
 	if err := ctx.Err(); err != nil {
 		return DeleteProfileResult{}, err
@@ -248,7 +251,17 @@ func (a *App) DeleteProfile(ctx context.Context, name string) (DeleteProfileResu
 			}
 			return nil
 		})
-		return err
+		if err != nil {
+			return err
+		}
+		if err := a.state.Delete(name); err != nil {
+			return &UserError{
+				Msg:  fmt.Sprintf("deleted profile %q, but not its state file", name),
+				Hint: "delete it by hand: " + a.paths.StateFile(name),
+				Err:  err,
+			}
+		}
+		return nil
 	})
 	return res, err
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/austinrr/knapsack/internal/flavor"
 	"github.com/austinrr/knapsack/internal/paths"
 	"github.com/austinrr/knapsack/internal/ref"
+	"github.com/austinrr/knapsack/internal/state"
 )
 
 // newApp returns an App on a temp KNAPSACK_HOME, its config store, and the
@@ -30,7 +31,7 @@ func newApp(t *testing.T) (*app.App, *config.Store, string) {
 		t.Fatal(err)
 	}
 	store := config.NewStore(p.ConfigFile)
-	return app.New(app.Options{Paths: p, Config: store}), store, addons
+	return app.New(app.Options{Paths: p, Config: store, State: state.NewStore(p.StateFile)}), store, addons
 }
 
 // Changing a profile's path keeps its addons and flavor.
@@ -182,5 +183,28 @@ func TestNoOpKeepsComments(t *testing.T) {
 	}
 	if string(after) != string(withComment) {
 		t.Errorf("no-op commands rewrote config:\n%s", after)
+	}
+}
+
+// Deleting a profile deletes its state file too.
+func TestDeleteProfileRemovesState(t *testing.T) {
+	t.Parallel()
+	a, store, addons := newApp(t)
+	ctx := context.Background()
+	if _, err := a.SetProfile(ctx, app.SetProfileRequest{Name: "forever", Path: addons}); err != nil {
+		t.Fatal(err)
+	}
+	statePath := filepath.Join(filepath.Dir(store.Path()), "state", "forever.toml")
+	if err := os.MkdirAll(filepath.Dir(statePath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(statePath, []byte("version = 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.DeleteProfile(ctx, "forever"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(statePath); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("state file still exists after DeleteProfile: %v", err)
 	}
 }
