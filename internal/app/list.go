@@ -29,33 +29,95 @@ const (
 	StatusInstalled   Status = "installed"     // in config and state
 	StatusMissing     Status = "missing"       // in config, never installed
 	StatusNotInConfig Status = "not in config" // installed, but not in config
+	StatusUnmanaged   Status = "unmanaged"     // a folder in AddOns no addon owns
 )
 
-// Installed is one addon in a profile, as List reports it.
+// Installed is one addon in a profile, as List reports it. For an
+// unmanaged folder, Ref and InstalledAt are zero, Folders is that one
+// folder, and Version is from its TOC; Name gives the folder.
 type Installed struct {
 	Profile     string
 	Ref         ref.Ref
 	Status      Status
-	Version     string // "" when missing
+	Version     string // "" when missing, or unknown for an unmanaged folder
 	InstalledAt time.Time
 	Folders     []string
 }
 
-// List reports the addons in each selected profile from config and state
-// alone, without the network, so it's instant (DESIGN.md §8.4). Config's
-// addons come first, in config order, then any only in state.
-func (a *App) List(ctx context.Context, sel Selector) ([]Installed, error) {
-	var out []Installed
+// Name is how the addon is shown: its ref, or for an unmanaged folder,
+// which has none, the folder.
+func (in Installed) Name() string {
+	if in.Status == StatusUnmanaged {
+		return in.Folders[0]
+	}
+	return in.Ref.String()
+}
+
+// ListOptions configure List.
+type ListOptions struct {
+	// Unmanaged includes each profile's unmanaged folders in the result.
+	// Without it they're only counted.
+	Unmanaged bool
+}
+
+// Listing is what List reports.
+type Listing struct {
+	Addons []Installed
+	// Hidden is how many unmanaged folders were left out of Addons
+	// because ListOptions.Unmanaged wasn't set.
+	Hidden int
+}
+
+// List reports the addons in each selected profile from config, state and
+// a listing of AddOns, without the network, so it's instant (DESIGN.md
+// §8.4). Config's addons come first, in config order, then any only in
+// state, then the profile's unmanaged folders. Those aren't addons, so
+// they're left out when sel names addons.
+func (a *App) List(ctx context.Context, sel Selector, opts ListOptions) (Listing, error) {
+	var out Listing
 	err := a.eachProfile(ctx, sel.Profiles, readOnly, func(s *session) error {
 		for _, t := range targets(s, sel.Addons) {
 			if t.err != nil {
 				return t.err
 			}
-			out = append(out, installedInfo(s, t.ref))
+			out.Addons = append(out.Addons, installedInfo(s, t.ref))
+		}
+		if len(sel.Addons) > 0 {
+			return nil
+		}
+		names := unmanagedFolders(s)
+		if !opts.Unmanaged {
+			out.Hidden += len(names)
+			return nil
+		}
+		for _, name := range names {
+			in := Installed{Profile: s.name, Status: StatusUnmanaged, Folders: []string{name}}
+			// A folder without a TOC for this client is still listed, as
+			// something the user put there.
+			if _, file, err := install.TOC(filepath.Join(s.addonsDir, name), s.profile.Flavor); err == nil {
+				in.Version = file.Get("Version")
+			}
+			out.Addons = append(out.Addons, in)
 		}
 		return nil
 	})
 	return out, err
+}
+
+// unmanagedFolders lists the folders in the profile's AddOns that no addon
+// in state owns. They're extra information, so an AddOns folder that
+// can't be read has none rather than failing List; commands that write to
+// it report the error.
+func unmanagedFolders(s *session) []string {
+	var owned []string
+	for _, addon := range s.state.Addons {
+		owned = append(owned, addon.Folders...)
+	}
+	names, err := install.Unmanaged(s.addonsDir, owned)
+	if err != nil {
+		return nil
+	}
+	return names
 }
 
 func installedInfo(s *session, r ref.Ref) Installed {

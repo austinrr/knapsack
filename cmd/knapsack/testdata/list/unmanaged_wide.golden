@@ -1,0 +1,7 @@
+# exit: 0
+# stdout:
+ADDON                             STATUS     VERSION  INSTALLED             FOLDERS
+github:austinrr/baganator-mirror  installed  v1       <time>  Baganator
+LibStub                           unmanaged  -        -                     LibStub
+WeakAuras                         unmanaged  5.12.0   -                     WeakAuras
+# stderr:

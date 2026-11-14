@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 // Setup steps for the addon commands. The fake GitHub has baganator-mirror
 // and details-mirror for Forever, and retail-only, which isn't.
@@ -8,6 +12,27 @@ var (
 	addBaganator = []string{"add", "github:austinrr/baganator-mirror"}
 	addDetails   = []string{"add", "github:austinrr/details-mirror"}
 )
+
+// handInstall puts folders in AddOns as installing by hand would:
+// WeakAuras, with a TOC, and LibStub, without one, in Forever, and Plater
+// in Retail.
+func handInstall(s *sandbox) {
+	s.t.Helper()
+	for dir, folders := range map[string][]string{
+		"wow/_forever_/Interface/AddOns": {"WeakAuras", "LibStub"},
+		"wow/_retail_/Interface/AddOns":  {"Plater"},
+	} {
+		for _, f := range folders {
+			if err := os.MkdirAll(filepath.Join(s.home, filepath.FromSlash(dir), f), 0o700); err != nil {
+				s.t.Fatal(err)
+			}
+		}
+	}
+	toc := filepath.Join(s.home, "wow", "_forever_", "Interface", "AddOns", "WeakAuras", "WeakAuras.toc")
+	if err := os.WriteFile(toc, []byte("## Interface: 11508\n## Title: WeakAuras\n## Version: 5.12.0\n"), 0o600); err != nil {
+		s.t.Fatal(err)
+	}
+}
 
 func TestAddonCommands(t *testing.T) {
 	t.Parallel()
@@ -49,6 +74,15 @@ func TestAddonCommands(t *testing.T) {
 		{name: "list/bad_output", setup: [][]string{addForever}, args: []string{"list", "-o", "yaml"}},
 		{name: "list/extra_arg", setup: [][]string{addForever}, args: []string{"list", "baganator"}},
 		{name: "list/missing", config: configWithKey, args: []string{"list"}},
+		{name: "list/unmanaged_hint", setup: [][]string{addForever, addBaganator}, after: handInstall, args: []string{"list"}},
+		{name: "list/unmanaged_hint_empty", setup: [][]string{addForever}, after: handInstall, args: []string{"list"}},
+		{name: "list/unmanaged_hint_one", setup: [][]string{addRetail}, after: handInstall, args: []string{"list"}},
+		{name: "list/unmanaged", setup: [][]string{addForever, addBaganator}, after: handInstall, args: []string{"list", "--unmanaged"}},
+		{name: "list/unmanaged_wide", setup: [][]string{addForever, addBaganator}, after: handInstall, args: []string{"list", "--unmanaged", "-o", "wide"}},
+		{name: "list/unmanaged_json", setup: [][]string{addForever, addBaganator}, after: handInstall, args: []string{"list", "--unmanaged", "-o", "json"}},
+		{name: "list/unmanaged_json_hidden", setup: [][]string{addForever, addBaganator}, after: handInstall, args: []string{"list", "-o", "json"}},
+		{name: "list/unmanaged_all", setup: [][]string{addForever, addRetail, addBaganator}, after: handInstall, args: []string{"list", "-A", "--unmanaged"}},
+		{name: "list/unmanaged_hint_all", setup: [][]string{addForever, addRetail, addBaganator}, after: handInstall, args: []string{"list", "-A"}},
 
 		// info
 		{name: "info/one", setup: [][]string{addForever, addDetails}, args: []string{"info", "details-mirror"}},

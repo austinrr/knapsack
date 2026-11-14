@@ -439,15 +439,26 @@ func TestListAndInfo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	list, err := e.app.List(context.Background(), app.Selector{})
+	// Two folders installed some other way, one with a TOC. Orphan is on
+	// disk too, but state owns it.
+	for _, d := range []string{"Hand", "Loose", "Orphan"} {
+		if err := os.Mkdir(filepath.Join(e.addons, d), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(e.addons, "Hand", "Hand.toc"), []byte("## Interface: 11508\n## Version: 1.2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	list, err := e.app.List(context.Background(), app.Selector{}, app.ListOptions{Unmanaged: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	var got []string
-	for _, in := range list {
-		got = append(got, in.Ref.String()+" "+string(in.Status))
+	for _, in := range list.Addons {
+		got = append(got, strings.TrimSpace(in.Name()+" "+string(in.Status)+" "+in.Version))
 	}
-	want := []string{"github:o/details installed", "github:o/missing missing", "github:o/orphan not in config"}
+	want := []string{"github:o/details installed v1", "github:o/missing missing", "github:o/orphan not in config v0", "Hand unmanaged 1.2", "Loose unmanaged"}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("list (-want +got):\n%s", diff)
 	}
@@ -455,8 +466,13 @@ func TestListAndInfo(t *testing.T) {
 		t.Error("List used the source")
 	}
 
-	filtered, err := e.app.List(context.Background(), app.Selector{Profiles: []string{e.profile}, Addons: []string{"orphan"}})
-	if err != nil || len(filtered) != 1 || filtered[0].Ref != orphan {
+	hidden, err := e.app.List(context.Background(), app.Selector{}, app.ListOptions{})
+	if err != nil || len(hidden.Addons) != 3 || hidden.Hidden != 2 {
+		t.Errorf("list without unmanaged = %+v, %v; want 3 addons and 2 hidden", hidden, err)
+	}
+	// Unmanaged folders aren't addons, so naming addons leaves them out.
+	filtered, err := e.app.List(context.Background(), app.Selector{Profiles: []string{e.profile}, Addons: []string{"orphan"}}, app.ListOptions{Unmanaged: true})
+	if err != nil || len(filtered.Addons) != 1 || filtered.Addons[0].Ref != orphan || filtered.Hidden != 0 {
 		t.Errorf("filtered list = %+v, %v", filtered, err)
 	}
 
@@ -469,6 +485,29 @@ func TestListAndInfo(t *testing.T) {
 	}
 	if _, err := e.app.Info(context.Background(), e.profile, "nope"); err == nil {
 		t.Error("Info of an unknown addon succeeded")
+	}
+}
+
+// An AddOns folder that can't be read only means no unmanaged folders:
+// List still reports config and state. Here it's a file, which fails the
+// same way on every OS, unlike permissions.
+func TestListUnreadableAddOns(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	r := mustRef(t, "github:o/details")
+	e.src.publish(t, "o/details", "Details")
+	if _, err := e.app.Add(context.Background(), e.profile, []ref.Ref{r}, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(e.addons); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(e.addons, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	list, err := e.app.List(context.Background(), app.Selector{}, app.ListOptions{Unmanaged: true})
+	if err != nil || len(list.Addons) != 1 || list.Addons[0].Ref != r || list.Hidden != 0 {
+		t.Errorf("List = %+v, %v; want just %s", list, err, r)
 	}
 }
 
@@ -485,7 +524,7 @@ func TestLockContention(t *testing.T) {
 
 	_, addErr := e.app.Add(context.Background(), e.profile, []ref.Ref{mustRef(t, "github:o/x")}, false)
 	_, removeErr := e.app.Remove(context.Background(), e.profile, []string{"x"})
-	_, listErr := e.app.List(context.Background(), app.Selector{})
+	_, listErr := e.app.List(context.Background(), app.Selector{}, app.ListOptions{})
 	_, updateErr := e.app.Update(context.Background(), app.Selector{}, app.UpdateOptions{})
 	_, checkErr := e.app.Check(context.Background(), app.Selector{})
 	for _, err := range []error{addErr, removeErr, listErr, updateErr, checkErr} {
@@ -501,7 +540,7 @@ func TestUnknownProfile(t *testing.T) {
 	e := newEnv(t)
 	for _, name := range []string{"nope", "../escape"} {
 		var ue *app.UserError
-		if _, err := e.app.List(context.Background(), app.Selector{Profiles: []string{name}}); !errors.As(err, &ue) {
+		if _, err := e.app.List(context.Background(), app.Selector{Profiles: []string{name}}, app.ListOptions{}); !errors.As(err, &ue) {
 			t.Errorf("List(%q) error = %v, want a UserError", name, err)
 		}
 	}
@@ -628,7 +667,7 @@ func TestListWithoutAddOnsFolder(t *testing.T) {
 	if err := os.RemoveAll(e.addons); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.app.List(context.Background(), app.Selector{}); err != nil {
+	if _, err := e.app.List(context.Background(), app.Selector{}, app.ListOptions{}); err != nil {
 		t.Errorf("List without AddOns: %v", err)
 	}
 }

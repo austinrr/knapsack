@@ -180,6 +180,11 @@ func listDir(dir string) (listing, error) {
 	if err != nil {
 		return listing{}, err
 	}
+	return newListing(entries), nil
+}
+
+// newListing indexes entries read from AddOns for find.
+func newListing(entries []os.DirEntry) listing {
 	l := listing{exact: map[string]bool{}, folded: map[string]string{}}
 	for _, e := range entries {
 		name := e.Name()
@@ -191,7 +196,7 @@ func listDir(dir string) (listing, error) {
 			l.folded[strings.ToLower(name)] = name
 		}
 	}
-	return l, nil
+	return l
 }
 
 // isWorkFolder reports whether name is one of Knapsack's own folders in

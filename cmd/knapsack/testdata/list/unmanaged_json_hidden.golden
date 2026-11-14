@@ -1,0 +1,16 @@
+# exit: 0
+# stdout:
+[
+  {
+    "profile": "forever",
+    "ref": "github:austinrr/baganator-mirror",
+    "status": "installed",
+    "version": "v1",
+    "installed_at": "<time>",
+    "folders": [
+      "Baganator"
+    ]
+  }
+]
+# stderr:
+2 folders in AddOns aren't managed by Knapsack; see them with --unmanaged.
