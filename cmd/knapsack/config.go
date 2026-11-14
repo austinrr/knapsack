@@ -141,9 +141,8 @@ func autoProfiles(cmd *cobra.Command, c *cli, game string) error {
 			_, _ = fmt.Fprintln(w, "  "+s)
 		}
 	}
-	if err != nil {
-		return err
-	}
+	// What was done is shown even when it ends in an error: profiles made
+	// before a failure, or why every client was skipped.
 	out := &printer{w: cmd.OutOrStdout()}
 	game, current := "", ""
 	for _, p := range res.Profiles {
@@ -171,6 +170,9 @@ func autoProfiles(cmd *cobra.Command, c *cli, game string) error {
 	}
 	if current != "" {
 		out.printf("Switched to profile %q.\n", current)
+	}
+	if err != nil {
+		return err
 	}
 	if out.err != nil {
 		return out.err

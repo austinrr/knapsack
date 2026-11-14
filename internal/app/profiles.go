@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/austinrr/knapsack/internal/config"
+	"github.com/austinrr/knapsack/internal/discover"
 	"github.com/austinrr/knapsack/internal/flavor"
 	"github.com/austinrr/knapsack/internal/ref"
 )
@@ -84,7 +85,7 @@ func (a *App) SetProfile(ctx context.Context, req SetProfileRequest) (SetProfile
 				}
 			}
 			if req.Path != "" {
-				path, err := addonsDir(req.Path)
+				path, err := addonsDir(req.Path, a.home)
 				if err != nil {
 					return err
 				}
@@ -130,7 +131,7 @@ func (a *App) nameForPath(req SetProfileRequest) (name, path string, err error) 
 			Hint: pathHint(),
 		}
 	}
-	if path, err = addonsDir(req.Path); err != nil {
+	if path, err = addonsDir(req.Path, a.home); err != nil {
 		return "", "", err
 	}
 	c, err := a.config.Load()
@@ -198,8 +199,8 @@ func Quoted(path string) string { return `"` + path + `"` }
 // AddOns in its Interface folder, so the shortest path to type works. It
 // checks the folder exists, which catches typos before they're saved. Given
 // the World of Warcraft folder itself, the error lists its clients.
-func addonsDir(path string) (string, error) {
-	abs, err := filepath.Abs(expandHome(path))
+func addonsDir(path, home string) (string, error) {
+	abs, err := filepath.Abs(expandHome(path, home))
 	if err != nil {
 		return "", fmt.Errorf("resolve path: %w", err)
 	}
@@ -229,7 +230,7 @@ func addonsDir(path string) (string, error) {
 			Hint: "start that client once, or make the folder: " + Quoted(addons),
 		}
 	}
-	if clients := clientFolders(abs); len(clients) > 0 {
+	if clients := discover.Clients(abs); len(clients) > 0 {
 		return "", &UserError{
 			Msg:  fmt.Sprintf("%s is the game folder, with %s in it", abs, strings.Join(clients, ", ")),
 			Hint: "pass one client folder: --path " + Quoted(filepath.Join(abs, clients[0])),
@@ -238,13 +239,11 @@ func addonsDir(path string) (string, error) {
 	return abs, nil
 }
 
-// expandHome expands a leading ~. Shells don't expand it inside quotes,
-// which a path with spaces needs.
-func expandHome(path string) string {
-	if rest, ok := strings.CutPrefix(path, "~"); ok && (rest == "" || rest[0] == '/' || rest[0] == filepath.Separator) {
-		if home, err := os.UserHomeDir(); err == nil {
-			return home + rest
-		}
+// expandHome expands a leading ~ to home, the App's home directory. Shells
+// don't expand it inside quotes, which a path with spaces needs.
+func expandHome(path, home string) string {
+	if rest, ok := strings.CutPrefix(path, "~"); ok && home != "" && (rest == "" || rest[0] == '/' || rest[0] == filepath.Separator) {
+		return home + rest
 	}
 	return path
 }
@@ -259,22 +258,6 @@ func addonsSubdir(path string) string {
 		return filepath.Join("Interface", "AddOns")
 	}
 	return ""
-}
-
-// clientFolders lists the client folders in dir, sorted, when dir is a
-// World of Warcraft folder.
-func clientFolders(dir string) []string {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil
-	}
-	var out []string
-	for _, e := range entries {
-		if e.IsDir() && flavor.IsClientFolder(e.Name()) {
-			out = append(out, e.Name())
-		}
-	}
-	return out
 }
 
 func isDir(path string) bool {

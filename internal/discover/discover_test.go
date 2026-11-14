@@ -85,3 +85,16 @@ func TestDrives(t *testing.T) {
 		t.Errorf("Drives = %v, want C:\\ at least", got)
 	}
 }
+
+// A home with glob characters in it is matched as itself.
+func TestFindEscapesHome(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("[ and * aren't allowed in Windows paths")
+	}
+	home := filepath.Join(t.TempDir(), "a[1]*")
+	mkdirs(t, filepath.Join(home, ".wine", "drive_c", "Program Files (x86)", "World of Warcraft", "_retail_"))
+	if got := Find(Candidates("linux", home, nil)); len(got) != 1 {
+		t.Errorf("Find with home %q = %v, want the one install", home, got)
+	}
+}

@@ -117,6 +117,12 @@ func TestConfigCommands(t *testing.T) {
 		// The current profile is a live client's, though a test client
 		// comes first.
 		{name: "config/auto_live_first", after: game("wow2", "_classic_beta_", "_forever_"), args: []string{"config", "set-profile", "--auto", "--path", "{home}/wow2"}},
+		// Every client skipped is an error, after saying why.
+		{name: "config/auto_all_skipped", after: func(s *sandbox) {
+			if err := os.MkdirAll(filepath.Join(s.home, "fresh", "_retail_"), 0o700); err != nil {
+				s.t.Fatal(err)
+			}
+		}, args: []string{"config", "set-profile", "--auto", "--path", "{home}/fresh"}},
 		{name: "config/auto_not_a_game", args: []string{"config", "set-profile", "--auto", "--path", plain}},
 		{name: "config/auto_with_name", args: []string{"config", "set-profile", "retail", "--auto"}},
 		{name: "config/auto_with_flavor", args: []string{"config", "set-profile", "--auto", "--flavor", "retail"}},

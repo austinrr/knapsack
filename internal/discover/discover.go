@@ -7,6 +7,7 @@ package discover
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 
@@ -31,7 +32,7 @@ func Candidates(goos, home string, drives []string) []string {
 	case "darwin":
 		out = append(out, filepath.Join("/Applications", gameFolder))
 		if home != "" {
-			out = append(out, filepath.Join(home, "Applications", gameFolder))
+			out = append(out, filepath.Join(escapeGlob(home), "Applications", gameFolder))
 		}
 	default:
 		// Linux runs the game under Wine, in a prefix whose drive_c is a
@@ -41,6 +42,9 @@ func Candidates(goos, home string, drives []string) []string {
 		if home == "" {
 			break
 		}
+		// home is a literal path in a pattern, so a [ or * in it is
+		// escaped, not matched.
+		home = escapeGlob(home)
 		prefixes := []string{
 			".wine",
 			"*", "*/*",
@@ -56,6 +60,20 @@ func Candidates(goos, home string, drives []string) []string {
 		}
 	}
 	return out
+}
+
+// escapeGlob escapes the characters filepath.Glob treats specially, so s
+// matches only itself. It's for Unix paths: on Windows, \ is the separator,
+// and Windows candidates have no patterns.
+func escapeGlob(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if strings.ContainsRune(`*?[\`, r) {
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // Drives returns the drive roots that exist, C:\ to Z:\. It's empty on
@@ -109,10 +127,12 @@ func Clients(game string) []string {
 	return out
 }
 
-// samePath reports whether two found folders are one, as on Windows and
-// macOS, where case doesn't matter, through a symlink, or not.
+// samePath reports whether two found folders are one: the same path, or
+// differing only in case on Windows and macOS, where case doesn't matter,
+// or the same folder through a symlink.
 func samePath(a, b string) bool {
-	if strings.EqualFold(filepath.Clean(a), filepath.Clean(b)) {
+	a, b = filepath.Clean(a), filepath.Clean(b)
+	if a == b || (runtime.GOOS == "windows" || runtime.GOOS == "darwin") && strings.EqualFold(a, b) {
 		return true
 	}
 	ra, errA := filepath.EvalSymlinks(a)

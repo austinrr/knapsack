@@ -41,7 +41,7 @@ func (a *App) AutoProfiles(ctx context.Context, game string) (AutoProfilesResult
 	var res AutoProfilesResult
 	var games []string
 	if game != "" {
-		abs, err := filepath.Abs(expandHome(game))
+		abs, err := filepath.Abs(expandHome(game, a.home))
 		if err != nil {
 			return res, fmt.Errorf("resolve path: %w", err)
 		}
@@ -94,8 +94,20 @@ func (a *App) AutoProfiles(ctx context.Context, game string) (AutoProfilesResult
 		return 1
 	})
 	done := make([]AutoProfile, len(all))
+	// What's done so far, in order, for an early return: the profiles
+	// already made are reported even when a later one fails.
+	partial := func() []AutoProfile {
+		var out []AutoProfile
+		for _, p := range done {
+			if p.Client != "" {
+				out = append(out, p)
+			}
+		}
+		return out
+	}
 	for _, f := range byLiveFirst {
 		if err := ctx.Err(); err != nil {
+			res.Profiles = partial()
 			return res, err
 		}
 		p := AutoProfile{Game: f.game, Client: f.client}
@@ -113,6 +125,7 @@ func (a *App) AutoProfiles(ctx context.Context, game string) (AutoProfilesResult
 			// the others still can.
 			p.Skipped, p.Err = ue.Msg, err
 		case err != nil:
+			res.Profiles = partial()
 			return res, err
 		default:
 			p.Result = r
@@ -120,5 +133,13 @@ func (a *App) AutoProfiles(ctx context.Context, game string) (AutoProfilesResult
 		done[f.order] = p
 	}
 	res.Profiles = done
+	// Every client skipped: say so as an error, so a script that goes on
+	// to add addons stops here.
+	if !slices.ContainsFunc(done, func(p AutoProfile) bool { return p.Skipped == "" }) {
+		return res, &UserError{
+			Msg:  "no profiles made: every client folder found was skipped",
+			Hint: "see why above; a client that's never been started needs its Interface/AddOns folder first",
+		}
+	}
 	return res, nil
 }
