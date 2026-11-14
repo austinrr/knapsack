@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: profile "forever" already uses <home>/wow/_forever_/Interface/AddOns
+hint: give this one its own name with `knapsack config set-profile <name> --path …`, or move "forever" here by naming it: `knapsack config set-profile forever --path …`

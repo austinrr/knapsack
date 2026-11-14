@@ -2,5 +2,5 @@
 # stdout:
 # stderr:
 error: no profiles yet
-hint: create one with: knapsack config set-profile <name> --path <AddOns folder>
+hint: create one with: knapsack config set-profile --path <AddOns folder>
 knapsack v0.0.1 is available (you have v0.0.0-test); run `knapsack self-update`.

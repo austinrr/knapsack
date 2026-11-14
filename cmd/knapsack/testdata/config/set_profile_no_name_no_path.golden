@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: set-profile needs --path, or the name of a profile to change
+hint: pass --path with the game's Interface/AddOns folder

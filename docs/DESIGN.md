@@ -798,7 +798,7 @@ knapsack list [--unmanaged]        installed addons; no lookups                 
 knapsack info <addon>              ref, version, owned folders, TOC flavors, install time
 
 # Profiles
-knapsack config set-profile <name> --path <AddOns> [--flavor <flavor>]
+knapsack config set-profile [name] --path <AddOns> [--flavor <flavor>]
 knapsack config get-profiles
 knapsack config use-profile <name>
 knapsack config current-profile
@@ -914,7 +914,13 @@ forever: 1 upgrade · retail: 1 install
 - **`config set-profile`** creates or updates a profile. If `--flavor` is
   omitted, it's inferred from the client folder in the path (`_forever_` →
   `forever`), and it's an error if it can't be. The first profile created
-  becomes current.
+  becomes current. The name is optional, since most people have one profile
+  per flavor: without one, it's the profile already using `--path`, so
+  running the command again is harmless, or else the flavor. If a profile
+  of that name already uses another folder, it's an error, not a move: a
+  second install of the same client (a test copy, a PTR with
+  `--flavor retail`) needs its own name, and moving the existing profile
+  means naming it.
 - **`config set-profile`** on an existing profile changes only the flags given,
   like kubectl's `set-context`. `--path` must be an existing directory, and
   an explicit `--flavor` that contradicts the path's client folder is an

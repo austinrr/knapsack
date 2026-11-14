@@ -38,12 +38,17 @@ instead.
 
 Make a profile for each game client, pointing at its `Interface/AddOns`
 folder. The flavor is worked out from the client folder (`_retail_`,
-`_forever_`, …), and the first profile becomes the current one.
+`_forever_`, …), the profile is named after it, and the first profile
+becomes the current one.
 
 ```sh
-knapsack config set-profile forever --path "$HOME/Games/World of Warcraft/_forever_/Interface/AddOns"
-knapsack config set-profile retail  --path "$HOME/Games/World of Warcraft/_retail_/Interface/AddOns"
+knapsack config set-profile --path "$HOME/Games/World of Warcraft/_forever_/Interface/AddOns"
+knapsack config set-profile --path "$HOME/Games/World of Warcraft/_retail_/Interface/AddOns"
+knapsack config use-profile retail    # switch between them
 ```
+
+A second profile for the same client, such as a test copy of the game,
+needs its own name: `knapsack config set-profile forever-test --path …`.
 
 Then add addons by ref or GitHub URL:
 
@@ -79,7 +84,7 @@ compared by checksum, not version number.
 | `check [addon...]` | Show what `update` would do, without changing anything |
 | `list` (`ls`) | List the profile's addons and whether each is installed, without looking anything up online. `--unmanaged` also lists folders Knapsack didn't install |
 | `info <addon>` | Show one addon's version, folders, install time and TOC details |
-| `config set-profile <name> --path <AddOns>` | Create or change a profile |
+| `config set-profile [name] --path <AddOns>` | Create or change a profile, named after its flavor unless you name it |
 | `config get-profiles`, `use-profile`, `current-profile`, `delete-profile`, `view` | Manage profiles, like kubectl contexts |
 | `version` | Print Knapsack's version, and say if there's a newer one |
 | `self-update` | Update Knapsack to the newest release |
