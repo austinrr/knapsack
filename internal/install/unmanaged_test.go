@@ -3,6 +3,8 @@ package install
 import (
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -27,7 +29,12 @@ func TestUnmanaged(t *testing.T) {
 	}
 	_ = os.Symlink(filepath.Join(addons, "gone"), filepath.Join(addons, "Broken"))
 
-	// "Details" owns "details", as on a case-insensitive filesystem.
+	// An owned "Details" is the "details" folder only where the
+	// filesystem ignores case; elsewhere it's another folder.
+	if _, err := os.Stat(filepath.Join(addons, "DETAILS")); err != nil {
+		want = append(want, "details")
+		slices.SortFunc(want, func(a, b string) int { return strings.Compare(strings.ToLower(a), strings.ToLower(b)) })
+	}
 	got, err := Unmanaged(addons, []string{"Owned", "Details", "NotOnDisk"})
 	if err != nil {
 		t.Fatal(err)

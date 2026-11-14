@@ -872,8 +872,10 @@ forever: 1 upgrade · retail: 1 install
   They're listed only with `--unmanaged` (named by folder, with the TOC's
   `## Version`), since most users have many; otherwise a note on stderr
   says how many there are, so a profile made over an existing AddOns
-  folder doesn't look empty without explanation. Hidden folders, files and
-  Knapsack's own working folders don't count.
+  folder doesn't look empty without explanation, whatever the output
+  format. Hidden folders, files and Knapsack's own working folders don't
+  count. An AddOns folder that can't be read just has none, so `list`
+  still shows config and state.
 - **`config set-profile`** creates or updates a profile. If `--flavor` is
   omitted, it's inferred from the client folder in the path (`_forever_` →
   `forever`), and it's an error if it can't be. The first profile created

@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -162,18 +161,10 @@ func noteEmpty(cmd *cobra.Command, all bool) error {
 	return err
 }
 
-// addonName is how list names an addon: its ref, or for an unmanaged
-// folder, which has none, the folder.
-func addonName(in app.Installed) string {
-	if in.Status == app.StatusUnmanaged {
-		return in.Folders[0]
-	}
-	return in.Ref.String()
-}
-
 // noteUnmanaged says how many unmanaged folders list left out, and how to
 // see them, so a profile made over an existing AddOns folder doesn't look
-// empty without explanation.
+// empty without explanation. It's on stderr, so JSON output gets it too
+// without changing what scripts parse.
 func noteUnmanaged(cmd *cobra.Command, n int) error {
 	if n == 0 {
 		return nil
@@ -199,8 +190,8 @@ type installedJSON struct {
 
 func toInstalledJSON(in app.Installed) installedJSON {
 	j := installedJSON{Profile: in.Profile, Ref: in.Ref.String(), Status: string(in.Status), Version: in.Version, Folders: in.Folders}
-	if in.Status == app.StatusUnmanaged {
-		j.Ref = ""
+	if in.Ref == (ref.Ref{}) {
+		j.Ref = "" // an unmanaged folder
 	}
 	if !in.InstalledAt.IsZero() {
 		t := in.InstalledAt.UTC()
@@ -237,28 +228,27 @@ add one with add --force to have Knapsack manage it.`,
 			if err != nil {
 				return err
 			}
-			all, err := c.app.List(cmd.Context(), sel)
+			listing, err := c.app.List(cmd.Context(), sel, app.ListOptions{Unmanaged: unmanaged})
 			if err != nil {
 				return err
 			}
-			list, hidden := all, 0
-			if !unmanaged {
-				list = slices.DeleteFunc(slices.Clone(all), func(in app.Installed) bool { return in.Status == app.StatusUnmanaged })
-				hidden = len(all) - len(list)
-			}
+			list := listing.Addons
 			w := cmd.OutOrStdout()
 			if output == "json" {
 				out := make([]installedJSON, len(list))
 				for i, in := range list {
 					out[i] = toInstalledJSON(in)
 				}
-				return writeJSON(w, out)
+				if err := writeJSON(w, out); err != nil {
+					return err
+				}
+				return noteUnmanaged(cmd, listing.Hidden)
 			}
 			if len(list) == 0 {
 				if err := noteEmpty(cmd, sc.all); err != nil {
 					return err
 				}
-				return noteUnmanaged(cmd, hidden)
+				return noteUnmanaged(cmd, listing.Hidden)
 			}
 			tw := newTable(w)
 			out := &printer{w: tw}
@@ -275,7 +265,7 @@ add one with add --force to have Knapsack manage it.`,
 				if sc.all {
 					out.printf("%s\t", in.Profile)
 				}
-				name, version := addonName(in), orDash(in.Version)
+				name, version := in.Name(), orDash(in.Version)
 				if wide {
 					out.printf("%s\t%s\t%s\t%s\t%s\n", name, in.Status, version, formatTime(in.InstalledAt), orDash(strings.Join(in.Folders, ",")))
 				} else {
@@ -288,7 +278,7 @@ add one with add --force to have Knapsack manage it.`,
 			if err := tw.Flush(); err != nil {
 				return err
 			}
-			return noteUnmanaged(cmd, hidden)
+			return noteUnmanaged(cmd, listing.Hidden)
 		},
 	}
 	cmd.Flags().BoolVar(&unmanaged, "unmanaged", false, "also list folders in AddOns that Knapsack didn't install")
