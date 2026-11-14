@@ -494,11 +494,17 @@ Pipeline:
    `.knapsack-backup-*`). The app calls this before every operation on a
    profile.
 2. **Extract** into `addonsDir/.knapsack-staging-<rand>`, so the final move is
-   a same-filesystem rename. Reject zip-slip paths, absolute paths and
-   symlinks. WoW ignores these dot-folders because they contain no matching
-   `.toc`.
-3. **Normalize**: if the archive has a single wrapper directory without a
-   `.toc` (common with GitHub source zips), descend into it.
+   a same-filesystem rename. Reject zip-slip paths, absolute paths (including
+   drive letters), symlinks and other special files, and names that collide
+   when case is ignored. Backslashes count as separators, since some Windows
+   tools write them. Extraction stops at 1 GiB actually written, whatever
+   sizes the archive claims. Archive permissions are ignored: files are
+   written `0600` and folders `0700`. WoW ignores these dot-folders because
+   they contain no matching `.toc`.
+3. **Normalize**: while the archive has a single wrapper directory without a
+   `.toc` (common with GitHub source zips), descend into it. Top-level files
+   such as a README are ignored, but a `.toc` at the top level is an error,
+   since an addon's files must be in a folder named after it.
 4. **Validate** each top-level folder against the flavor (§6.4).
 5. **Conflict check**: a target folder that exists and isn't in `Previous` is
    refused unless `Force` is set.
