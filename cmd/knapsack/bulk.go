@@ -175,6 +175,7 @@ type planJSON struct {
 	Profile   string `json:"profile"`
 	Ref       string `json:"ref,omitempty"`
 	Name      string `json:"name,omitempty"`
+	Title     string `json:"title,omitempty"`
 	Action    string `json:"action"`
 	Installed string `json:"installed,omitempty"`
 	Available string `json:"available,omitempty"`
@@ -228,7 +229,7 @@ on errors, like kubectl diff. Prune candidates count as pending only with
 			case output == "json":
 				js := make([]planJSON, len(plans))
 				for i, p := range plans {
-					js[i] = planJSON{Profile: p.Profile, Name: p.Name, Action: string(p.Action), Installed: p.Installed, Available: p.Available}
+					js[i] = planJSON{Profile: p.Profile, Name: p.Name, Title: p.Title, Action: string(p.Action), Installed: p.Installed, Available: p.Available}
 					if p.Ref != (ref.Ref{}) {
 						js[i].Ref = p.Ref.String()
 					}
@@ -247,7 +248,7 @@ on errors, like kubectl diff. Prune candidates count as pending only with
 					tallies[i] = tally{p.Profile, string(p.Action)}
 				}
 				if len(plans) > 0 {
-					printPlans(out, plans, sc.all)
+					printPlans(out, plans, sc.all, output == "wide")
 					out.printf("\n")
 				}
 				out.printf("%s\n", summarize(sel.Profiles, sc.all, tallies, []string{
@@ -259,7 +260,7 @@ on errors, like kubectl diff. Prune candidates count as pending only with
 			default:
 				// Stopped partway: show what was checked, then the error.
 				if len(plans) > 0 {
-					printPlans(out, plans, sc.all)
+					printPlans(out, plans, sc.all, output == "wide")
 				}
 			}
 			if ferr := finish(out, failed, err); ferr != nil {
@@ -272,33 +273,35 @@ on errors, like kubectl diff. Prune candidates count as pending only with
 		},
 	}
 	cmd.Flags().BoolVar(&prune, "prune", false, "count addons no longer in config as pending changes, as update --prune would remove them")
-	addOutputFlag(cmd, &output, "json")
+	addOutputFlag(cmd, &output, "wide", "json")
 	sc.addFlag(cmd)
 	c.addProfileFlag(cmd)
 	return cmd
 }
 
-// printPlans writes check's table, with a PROFILE column under -A.
-func printPlans(out *printer, plans []app.Plan, all bool) {
+// printPlans writes check's table, with a PROFILE column under -A, and
+// the full ref as the source with -o wide.
+func printPlans(out *printer, plans []app.Plan, all, wide bool) {
 	tw := newTable(out.w)
 	row := &printer{w: tw}
 	if all {
 		row.printf("PROFILE\t")
 	}
-	row.printf("ADDON\tINSTALLED\tAVAILABLE\tACTION\n")
-	for _, p := range plans {
+	row.printf("ADDON\tINSTALLED\tAVAILABLE\tACTION\tSOURCE\n")
+	rows := make([]nameRow, len(plans))
+	for i, p := range plans {
+		rows[i] = nameRow{p.Profile, p.DisplayName(), p.Ref}
+	}
+	names := uniqueNames(rows)
+	for i, p := range plans {
 		if all {
 			row.printf("%s\t", p.Profile)
-		}
-		addon := p.Name
-		if p.Ref != (ref.Ref{}) {
-			addon = p.Ref.String()
 		}
 		action := string(p.Action)
 		if p.Action == app.PlanNone {
 			action = "-"
 		}
-		row.printf("%s\t%s\t%s\t%s\n", addon, orDash(p.Installed), orDash(p.Available), action)
+		row.printf("%s\t%s\t%s\t%s\t%s\n", names[i], orDash(p.Installed), orDash(p.Available), action, sourceColumn(p.Ref, wide))
 	}
 	if row.err != nil {
 		out.err = row.err

@@ -19,7 +19,7 @@ Examples:
 Flags:
   -A, --all-profiles     act on every profile
   -h, --help             help for check
-  -o, --output format    output format: json
+  -o, --output format    output format: wide or json
   -p, --profile string   profile to act on (default $KNAPSACK_PROFILE, then the current profile)
       --prune            count addons no longer in config as pending changes, as update --prune would remove them
 

@@ -1,7 +1,7 @@
 # exit: 0
 # stdout:
-ADDON                             STATUS     VERSION
-github:austinrr/baganator-mirror  installed  v1
-github:austinrr/details-mirror    installed  v1
+ADDON      STATUS      VERSION  SOURCE
+Baganator  up to date  v1       github
+Details    up to date  v1       github
 # stderr:
 Profile forever:

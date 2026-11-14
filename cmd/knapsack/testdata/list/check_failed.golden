@@ -1,0 +1,9 @@
+# exit: 2
+# stdout:
+ADDON             STATUS         VERSION  SOURCE
+baganator-mirror  not installed  -        github
+gone              not installed  -        github
+# stderr:
+Profile forever:
+error: github austinrr/gone: no such repository, or it has no releases: not found
+hint: check the ref; a repository with no releases yet also counts as not found

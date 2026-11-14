@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -174,9 +175,15 @@ func noteProfile(cmd *cobra.Command, name string) error {
 // see them, so a profile made over an existing AddOns folder doesn't look
 // empty without explanation. It's on stderr, so JSON output gets it too
 // without changing what scripts parse.
-func noteUnmanaged(cmd *cobra.Command, n int) error {
+func noteUnmanaged(cmd *cobra.Command, n int, afterTable bool) error {
 	if n == 0 {
 		return nil
+	}
+	if afterTable {
+		// A blank line sets it apart from the table above it.
+		if _, err := fmt.Fprintln(cmd.ErrOrStderr()); err != nil {
+			return err
+		}
 	}
 	note := fmt.Sprintf("%d folders in AddOns aren't managed by Knapsack; see them with --unmanaged.", n)
 	if n == 1 {
@@ -187,18 +194,22 @@ func noteUnmanaged(cmd *cobra.Command, n int) error {
 }
 
 // installedJSON is one addon in list and info's JSON output. Ref is empty
-// for an unmanaged folder.
+// for an unmanaged folder; Available and Error are set when list checked.
 type installedJSON struct {
 	Profile     string     `json:"profile"`
 	Ref         string     `json:"ref,omitempty"`
+	Title       string     `json:"title,omitempty"`
 	Status      string     `json:"status"`
 	Version     string     `json:"version,omitempty"`
+	Available   string     `json:"available,omitempty"`
 	InstalledAt *time.Time `json:"installed_at,omitempty"`
 	Folders     []string   `json:"folders,omitempty"`
+	Error       string     `json:"error,omitempty"`
 }
 
 func toInstalledJSON(in app.Installed) installedJSON {
-	j := installedJSON{Profile: in.Profile, Ref: in.Ref.String(), Status: string(in.Status), Version: in.Version, Folders: in.Folders}
+	j := installedJSON{Profile: in.Profile, Ref: in.Ref.String(), Title: in.Title, Status: string(in.Status),
+		Version: in.Version, Available: in.Available, Folders: in.Folders}
 	if in.Ref == (ref.Ref{}) {
 		j.Ref = "" // an unmanaged folder
 	}
@@ -206,95 +217,135 @@ func toInstalledJSON(in app.Installed) installedJSON {
 		t := in.InstalledAt.UTC()
 		j.InstalledAt = &t
 	}
+	if in.Err != nil {
+		j.Error = in.Err.Error()
+	}
 	return j
+}
+
+// nameRow is one table row's profile, name and ref, for uniqueNames.
+type nameRow struct {
+	profile, name string
+	ref           ref.Ref
+}
+
+// uniqueNames returns each row's name, with its ref's ID added when another
+// row in the same profile shows the same name, since titles and repo names
+// needn't be unique: "Details! (a/details)" and "Details! (b/details)".
+func uniqueNames(rows []nameRow) []string {
+	count := map[[2]string]int{}
+	for _, r := range rows {
+		count[[2]string{r.profile, strings.ToLower(r.name)}]++
+	}
+	out := make([]string, len(rows))
+	for i, r := range rows {
+		out[i] = r.name
+		if count[[2]string{r.profile, strings.ToLower(r.name)}] > 1 && r.ref != (ref.Ref{}) {
+			out[i] = fmt.Sprintf("%s (%s)", r.name, r.ref.ID)
+		}
+	}
+	return out
+}
+
+// sourceColumn is the SOURCE column: the source's name, or with -o wide
+// the full ref. An unmanaged folder has none.
+func sourceColumn(r ref.Ref, wide bool) string {
+	switch {
+	case r == (ref.Ref{}):
+		return "-"
+	case wide:
+		return r.String()
+	}
+	return r.Source
 }
 
 func newListCmd(c *cli) *cobra.Command {
 	var output string
 	var sc scope
-	var unmanaged bool
+	var unmanaged, noCheck bool
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
-		Short:   "List the profile's addons",
-		Long: `List the profile's addons and whether each is installed.
+		Short:   "List the profile's addons and whether they're up to date",
+		Long: `List the profile's addons, each named by its title, with its status,
+version and source.
 
-It reads only config, state and the AddOns folder, and looks nothing up
-online, so it's instant. An addon is installed, missing (in config but not installed),
-or not in config (installed, but no longer in config). Use check to see
-what's outdated.
+It checks each addon's newest release, as check does: an installed addon
+is up to date, has an update available, or is unknown when checking
+failed. An addon can also be not installed (in config, but not installed)
+or not in config (installed, but no longer in config). --no-check skips
+the network, so it's instant, and installed addons are just installed.
+
+-o wide shows the full ref (github:owner/repo) as the source, with the
+newest version, install time and folders.
 
 Folders in AddOns that Knapsack didn't install, such as addons installed by
 hand or by another manager, are left alone. --unmanaged lists them too;
 add one with add --force to have Knapsack manage it.`,
 		Example: `  knapsack list
+  knapsack list --no-check
   knapsack list -A -o wide
   knapsack list --unmanaged`,
-		Args:    sc.args(false),
-		PreRunE: c.buildApp,
+		Args: sc.args(false),
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			if noCheck {
+				return c.buildApp(cmd, args)
+			}
+			return c.buildNetApp(cmd, args)
+		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			sel, err := sc.selector(cmd.Context(), c, nil)
 			if err != nil {
 				return err
 			}
-			listing, err := c.app.List(cmd.Context(), sel, app.ListOptions{Unmanaged: unmanaged})
+			listing, err := c.app.List(cmd.Context(), sel, app.ListOptions{Unmanaged: unmanaged, Check: !noCheck})
+			c.stopProgress()
 			if err != nil {
 				return err
 			}
 			list := listing.Addons
-			w := cmd.OutOrStdout()
-			if output == "json" {
-				out := make([]installedJSON, len(list))
-				for i, in := range list {
-					out[i] = toInstalledJSON(in)
+			var failed []error
+			for _, in := range list {
+				if in.Err != nil {
+					failed = append(failed, nameAddon("", in.Ref, in.Err))
 				}
-				if err := writeJSON(w, out); err != nil {
+			}
+			w := cmd.OutOrStdout()
+			out := &printer{w: w}
+			if output == "json" {
+				js := make([]installedJSON, len(list))
+				for i, in := range list {
+					js[i] = toInstalledJSON(in)
+				}
+				if err := writeJSON(w, js); err != nil {
 					return err
 				}
-				return noteUnmanaged(cmd, listing.Hidden)
+				if err := noteUnmanaged(cmd, listing.Hidden, false); err != nil {
+					return err
+				}
+				return finish(out, failed, nil)
 			}
 			if len(list) == 0 {
 				if err := noteEmpty(cmd, sel, sc.all); err != nil {
 					return err
 				}
-				return noteUnmanaged(cmd, listing.Hidden)
+				return noteUnmanaged(cmd, listing.Hidden, false)
 			}
 			if !sc.all {
 				if err := noteProfile(cmd, sel.Profiles[0]); err != nil {
 					return err
 				}
 			}
-			tw := newTable(w)
-			out := &printer{w: tw}
-			wide := output == "wide"
-			if sc.all {
-				out.printf("PROFILE\t")
-			}
-			if wide {
-				out.printf("ADDON\tSTATUS\tVERSION\tINSTALLED\tFOLDERS\n")
-			} else {
-				out.printf("ADDON\tSTATUS\tVERSION\n")
-			}
-			for _, in := range list {
-				if sc.all {
-					out.printf("%s\t", in.Profile)
-				}
-				name, version := in.Name(), orDash(in.Version)
-				if wide {
-					out.printf("%s\t%s\t%s\t%s\t%s\n", name, in.Status, version, formatTime(in.InstalledAt), orDash(strings.Join(in.Folders, ",")))
-				} else {
-					out.printf("%s\t%s\t%s\n", name, in.Status, version)
-				}
-			}
-			if out.err != nil {
-				return out.err
-			}
-			if err := tw.Flush(); err != nil {
+			if err := printList(w, list, sc.all, output == "wide"); err != nil {
 				return err
 			}
-			return noteUnmanaged(cmd, listing.Hidden)
+			if err := noteUnmanaged(cmd, listing.Hidden, true); err != nil {
+				return err
+			}
+			return finish(out, failed, nil)
 		},
 	}
+	cmd.Flags().BoolVar(&noCheck, "no-check", false, "don't check for newer releases, so nothing is looked up online")
 	cmd.Flags().BoolVar(&unmanaged, "unmanaged", false, "also list folders in AddOns that Knapsack didn't install")
 	addOutputFlag(cmd, &output, "wide", "json")
 	sc.addFlag(cmd)
@@ -302,10 +353,45 @@ add one with add --force to have Knapsack manage it.`,
 	return cmd
 }
 
+// printList writes list's table, with a PROFILE column under -A and more
+// columns, and the full ref as the source, with -o wide.
+func printList(w io.Writer, list []app.Installed, all, wide bool) error {
+	tw := newTable(w)
+	out := &printer{w: tw}
+	if all {
+		out.printf("PROFILE\t")
+	}
+	if wide {
+		out.printf("ADDON\tSTATUS\tVERSION\tAVAILABLE\tSOURCE\tINSTALLED\tFOLDERS\n")
+	} else {
+		out.printf("ADDON\tSTATUS\tVERSION\tSOURCE\n")
+	}
+	rows := make([]nameRow, len(list))
+	for i, in := range list {
+		rows[i] = nameRow{in.Profile, in.Name(), in.Ref}
+	}
+	names := uniqueNames(rows)
+	for i, in := range list {
+		if all {
+			out.printf("%s\t", in.Profile)
+		}
+		name, version, src := names[i], orDash(in.Version), sourceColumn(in.Ref, wide)
+		if wide {
+			out.printf("%s\t%s\t%s\t%s\t%s\t%s\t%s\n", name, in.Status, version, orDash(in.Available), src,
+				formatTime(in.InstalledAt), orDash(strings.Join(in.Folders, ",")))
+		} else {
+			out.printf("%s\t%s\t%s\t%s\n", name, in.Status, version, src)
+		}
+	}
+	if out.err != nil {
+		return out.err
+	}
+	return tw.Flush()
+}
+
 // detailsJSON is info's JSON output.
 type detailsJSON struct {
 	installedJSON
-	Title      string `json:"title,omitempty"`
 	Author     string `json:"author,omitempty"`
 	Notes      string `json:"notes,omitempty"`
 	Interfaces []int  `json:"interfaces,omitempty"`
@@ -317,8 +403,8 @@ func newInfoCmd(c *cli) *cobra.Command {
 		Use:   "info <addon>",
 		Short: "Show details of one addon",
 		Long: `Show one addon's ref, status, version, folders and install time, with
-the title, author, notes and Interface numbers from its TOC. Like list, it
-looks nothing up online.`,
+the title, author, notes and Interface numbers from its TOC. It looks
+nothing up online.`,
 		Example: `  knapsack info baganator-mirror`,
 		Args:    exactArgs("addon"),
 		PreRunE: c.buildApp,
@@ -331,7 +417,7 @@ looks nothing up online.`,
 			if output == "json" {
 				return writeJSON(w, detailsJSON{
 					installedJSON: toInstalledJSON(d.Installed),
-					Title:         d.Title, Author: d.Author, Notes: d.Notes, Interfaces: d.Interfaces,
+					Author:        d.Author, Notes: d.Notes, Interfaces: d.Interfaces,
 				})
 			}
 			tw := newTable(w)

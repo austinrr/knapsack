@@ -6,6 +6,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // File is a parsed TOC file's metadata. File lists aren't kept: Knapsack
@@ -28,6 +29,80 @@ type File struct {
 // it's absent. Keys are matched without regard to case.
 func (f File) Get(key string) string {
 	return f.headers[strings.ToLower(key)]
+}
+
+// Plain removes the escape sequences WoW draws text with from s, such as a
+// colored ## Title: |cff00ff00Leatrix|r Maps is "Leatrix Maps". It removes
+// colors (|cAARRGGBB, named |cnNAME: and |r), textures (|T…|t) and
+// atlases (|A…|a), and turns || into |. Anything that isn't one of these,
+// such as |c not followed by eight hex digits, is kept as it is.
+func Plain(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] != '|' || i+1 == len(s) {
+			b.WriteByte(s[i])
+			continue
+		}
+		switch s[i+1] {
+		case '|':
+			b.WriteByte('|')
+			i++
+		case 'c', 'C':
+			if n := colorCode(s[i+2:]); n > 0 {
+				i += 1 + n
+			} else {
+				b.WriteByte(s[i])
+			}
+		case 'r', 'R':
+			i++
+		case 'T', 'A':
+			// Skip to the closing |t or |a, if there is one.
+			closing := "|" + strings.ToLower(s[i+1:i+2])
+			if end := strings.Index(s[i+2:], closing); end >= 0 {
+				i += 2 + end + len(closing) - 1
+			} else {
+				b.WriteByte(s[i])
+			}
+		default:
+			b.WriteByte(s[i])
+		}
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
+}
+
+// colorCode returns how many bytes after "|c" belong to a color code: 8 for
+// AARRGGBB in hex, or for a named color (nNAME:, as in |cnPURE_GREEN_COLOR:)
+// through the colon. It's 0 when rest doesn't start with either.
+func colorCode(rest string) int {
+	if len(rest) >= 8 && isHex(rest[:8]) {
+		return 8
+	}
+	if strings.HasPrefix(rest, "n") {
+		if end := strings.IndexByte(rest, ':'); end > 1 && isColorName(rest[1:end]) {
+			return end + 1
+		}
+	}
+	return 0
+}
+
+func isHex(s string) bool {
+	for _, r := range s {
+		if !strings.ContainsRune("0123456789abcdefABCDEF", r) {
+			return false
+		}
+	}
+	return true
+}
+
+// isColorName reports whether s is a named color: an identifier such as
+// PURE_GREEN_COLOR.
+func isColorName(s string) bool {
+	for _, r := range s {
+		if r != '_' && !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return true
 }
 
 // bom is the UTF-8 byte order mark some editors put at the start of a file.

@@ -60,6 +60,7 @@ knapsack add https://github.com/austinrr/syndicator-mirror -p retail
 And keep them up to date:
 
 ```sh
+knapsack list            # each addon, and whether it's up to date
 knapsack check           # what update would do; exits 1 if anything is pending
 knapsack update          # upgrade outdated addons, install missing ones
 knapsack update -A       # every profile
@@ -82,7 +83,7 @@ compared by checksum, not version number.
 | `remove <addon>...` (`rm`) | Uninstall addons, deleting only the folders Knapsack installed |
 | `update [addon...]` | Upgrade outdated addons, and install any in config that aren't installed; `--prune` also removes addons no longer in config |
 | `check [addon...]` | Show what `update` would do, without changing anything |
-| `list` (`ls`) | List the profile's addons and whether each is installed, without looking anything up online. `--unmanaged` also lists folders Knapsack didn't install |
+| `list` (`ls`) | List the profile's addons by title, with whether each is up to date and its source. `--no-check` skips the network; `--unmanaged` also lists folders Knapsack didn't install |
 | `info <addon>` | Show one addon's version, folders, install time and TOC details |
 | `config set-profile [name] --path <AddOns>` | Create or change a profile, named after its flavor unless you name it |
 | `config get-profiles`, `use-profile`, `current-profile`, `delete-profile`, `view` | Manage profiles, like kubectl contexts |
@@ -100,7 +101,7 @@ URL, or its short name (`baganator-mirror`) when only one addon matches.
 |---|---|
 | `-p, --profile <name>` | Act on this profile instead of the current one (or `$KNAPSACK_PROFILE`) |
 | `-A, --all-profiles` | Act on every profile (`update`, `check`, `list`) |
-| `-o, --output <format>` | `json`, or `wide` for `list` |
+| `-o, --output <format>` | `json`, or `wide` for `list` and `check` (adds the full ref as the source) |
 | `--force` | Replace folders in AddOns that no addon owns (`add`, `update`) |
 | `-v, --verbose` | Show each step and the underlying cause of errors |
 | `--config <file>` | Use another config file |

@@ -1,7 +1,7 @@
 # exit: 2
 # stdout:
-ADDON  INSTALLED  AVAILABLE  ACTION
-nope   -          -          failed
+ADDON  INSTALLED  AVAILABLE  ACTION  SOURCE
+nope   -          -          failed  -
 
 forever: 1 failed
 # stderr:

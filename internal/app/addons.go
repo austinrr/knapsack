@@ -381,6 +381,14 @@ func findAddon(s *session, known []ref.Ref, name string) (ref.Ref, error) {
 			matches = append(matches, r)
 		}
 	}
+	// list shows TOC titles, so they work too, when no short name does.
+	if len(matches) == 0 {
+		for _, r := range known {
+			if t := addonTitle(s, r); t != "" && strings.EqualFold(t, name) {
+				matches = append(matches, r)
+			}
+		}
+	}
 	switch len(matches) {
 	case 1:
 		return matches[0], nil

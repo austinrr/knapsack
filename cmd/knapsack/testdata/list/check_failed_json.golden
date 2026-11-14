@@ -1,0 +1,19 @@
+# exit: 2
+# stdout:
+[
+  {
+    "profile": "forever",
+    "ref": "github:austinrr/baganator-mirror",
+    "status": "not installed",
+    "available": "v1"
+  },
+  {
+    "profile": "forever",
+    "ref": "github:austinrr/gone",
+    "status": "not installed",
+    "error": "github austinrr/gone: no such repository, or it has no releases: not found"
+  }
+]
+# stderr:
+error: github austinrr/gone: no such repository, or it has no releases: not found
+hint: check the ref; a repository with no releases yet also counts as not found

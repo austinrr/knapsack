@@ -10,6 +10,7 @@ import (
 
 	"github.com/austinrr/knapsack/internal/install"
 	"github.com/austinrr/knapsack/internal/ref"
+	"github.com/austinrr/knapsack/internal/toc"
 )
 
 // Selector picks what a use case covers.
@@ -24,33 +25,60 @@ type Selector struct {
 // Status is how an addon's config and state compare.
 type Status string
 
-// The statuses List reports (DESIGN.md §8.4).
+// The statuses List reports (DESIGN.md §8.4). With ListOptions.Check, an
+// installed addon is up to date, has an update available, or is unknown
+// when the check failed; without it, it's just installed.
 const (
-	StatusInstalled   Status = "installed"     // in config and state
-	StatusMissing     Status = "missing"       // in config, never installed
-	StatusNotInConfig Status = "not in config" // installed, but not in config
-	StatusUnmanaged   Status = "unmanaged"     // a folder in AddOns no addon owns
+	StatusInstalled       Status = "installed"        // in config and state, not checked
+	StatusUpToDate        Status = "up to date"       // installed, and the newest release
+	StatusUpdateAvailable Status = "update available" // installed, and a newer release exists
+	StatusUnknown         Status = "unknown"          // the check failed; Err says why
+	StatusMissing         Status = "not installed"    // in config, never installed
+	StatusNotInConfig     Status = "not in config"    // installed, but not in config
+	StatusUnmanaged       Status = "unmanaged"        // a folder in AddOns no addon owns
 )
 
 // Installed is one addon in a profile, as List reports it. For an
 // unmanaged folder, Ref and InstalledAt are zero, Folders is that one
 // folder, and Version is from its TOC; Name gives the folder.
 type Installed struct {
-	Profile     string
-	Ref         ref.Ref
+	Profile string
+	Ref     ref.Ref
+	// Title is the addon's name from its TOC, "" when it isn't installed
+	// or has none. For an unmanaged folder it's the folder's TOC title,
+	// though Name shows the folder, which is what's in AddOns.
+	Title       string
 	Status      Status
 	Version     string // "" when missing, or unknown for an unmanaged folder
 	InstalledAt time.Time
 	Folders     []string
+	// Available is the newest release's version, and Err why checking
+	// failed, when List checked (ListOptions.Check).
+	Available string
+	Err       error
 }
 
-// Name is how the addon is shown: its ref, or for an unmanaged folder,
-// which has none, the folder.
+// Name is how the addon is shown (displayName). An unmanaged folder is
+// shown as the folder, which is what's in AddOns and what add --force
+// replaces.
 func (in Installed) Name() string {
 	if in.Status == StatusUnmanaged {
 		return in.Folders[0]
 	}
-	return in.Ref.String()
+	return displayName(in.Title, in.Ref, "")
+}
+
+// displayName is the one rule for naming an addon in output: its TOC
+// title, else its repo or project name, else fallback, what the user typed
+// for one that isn't in the profile. Commands accept all three (findAddon).
+func displayName(title string, r ref.Ref, fallback string) string {
+	switch {
+	case title != "":
+		return title
+	case r != (ref.Ref{}):
+		return r.ShortName()
+	}
+	return fallback
 }
 
 // ListOptions configure List.
@@ -58,6 +86,9 @@ type ListOptions struct {
 	// Unmanaged includes each profile's unmanaged folders in the result.
 	// Without it they're only counted.
 	Unmanaged bool
+	// Check resolves each addon as Check does, so statuses say whether
+	// it's up to date. It needs the network and the App's sources.
+	Check bool
 }
 
 // Listing is what List reports.
@@ -69,18 +100,34 @@ type Listing struct {
 }
 
 // List reports the addons in each selected profile from config, state and
-// a listing of AddOns, without the network, so it's instant (DESIGN.md
-// §8.4). Config's addons come first, in config order, then any only in
+// a listing of AddOns (DESIGN.md §8.4). Without opts.Check it doesn't use
+// the network, so it's instant; with it, each addon is checked as Check
+// does. Config's addons come first, in config order, then any only in
 // state, then the profile's unmanaged folders. Those aren't addons, so
 // they're left out when sel names addons.
 func (a *App) List(ctx context.Context, sel Selector, opts ListOptions) (Listing, error) {
 	var out Listing
 	err := a.eachProfile(ctx, sel.Profiles, readOnly, func(s *session) error {
-		for _, t := range targets(s, sel.Addons) {
+		ts := targets(s, sel.Addons)
+		for _, t := range ts {
 			if t.err != nil {
 				return t.err
 			}
-			out.Addons = append(out.Addons, installedInfo(s, t.ref))
+		}
+		var plans []Plan
+		if opts.Check {
+			plans = a.checkSession(ctx, s, ts)
+		}
+		for i, t := range ts {
+			var in Installed
+			if plans != nil {
+				// The check already read each title.
+				in = installedInfo(s, t.ref, plans[i].Title)
+				in.withPlan(plans[i])
+			} else {
+				in = installedInfo(s, t.ref, addonTitle(s, t.ref))
+			}
+			out.Addons = append(out.Addons, in)
 		}
 		if len(sel.Addons) > 0 {
 			return nil
@@ -95,7 +142,7 @@ func (a *App) List(ctx context.Context, sel Selector, opts ListOptions) (Listing
 			// A folder without a TOC for this client is still listed, as
 			// something the user put there.
 			if _, file, err := install.TOC(filepath.Join(s.addonsDir, name), s.profile.Flavor); err == nil {
-				in.Version = file.Get("Version")
+				in.Version, in.Title = file.Get("Version"), toc.Plain(file.Get("Title"))
 			}
 			out.Addons = append(out.Addons, in)
 		}
@@ -120,8 +167,42 @@ func unmanagedFolders(s *session) []string {
 	return names
 }
 
-func installedInfo(s *session, r ref.Ref) Installed {
-	in := Installed{Profile: s.name, Ref: r, Status: StatusMissing}
+// withPlan turns an installed addon's status into what checking found.
+func (in *Installed) withPlan(p Plan) {
+	in.Available = p.Available
+	switch p.Action {
+	case PlanFailed:
+		in.Err = p.Err
+		if in.Status == StatusInstalled {
+			in.Status = StatusUnknown
+		}
+	case PlanNone:
+		in.Status = StatusUpToDate
+	case PlanUpgrade:
+		in.Status = StatusUpdateAvailable
+	case PlanInstall, PlanPrune:
+		// Not installed or not in config either way.
+	}
+}
+
+// addonTitle is the title in an installed addon's TOC, as the client
+// loads it from the addon's main folder, without color codes; "" when it
+// isn't installed or the TOC can't be read.
+func addonTitle(s *session, r ref.Ref) string {
+	addon, ok := s.state.Addons[r]
+	if !ok || len(addon.Folders) == 0 {
+		return ""
+	}
+	_, file, err := install.TOC(filepath.Join(s.addonsDir, mainFolder(r, addon.Folders)), s.profile.Flavor)
+	if err != nil {
+		return ""
+	}
+	return toc.Plain(file.Get("Title"))
+}
+
+// installedInfo is what config and state say about r, with its title.
+func installedInfo(s *session, r ref.Ref, title string) Installed {
+	in := Installed{Profile: s.name, Ref: r, Status: StatusMissing, Title: title}
 	addon, installed := s.state.Addons[r]
 	if installed {
 		in.Status = StatusInstalled
@@ -171,17 +252,16 @@ func alnum(s string) string {
 // Details is everything Info knows about an addon.
 type Details struct {
 	Installed
-	// Title, Author, Notes and Interfaces come from the TOC the client
-	// loads from the addon's first folder. They're empty when it isn't
-	// installed or the TOC can't be read.
-	Title      string
+	// Author, Notes and Interfaces come from the TOC the client loads
+	// from the addon's main folder, as Installed.Title does. They're empty
+	// when it isn't installed or the TOC can't be read.
 	Author     string
 	Notes      string
 	Interfaces []int
 }
 
 // Info describes one addon in the profile ("" for the current one). name is
-// a ref or short name. Like List, it doesn't use the network; the title and
+// a ref, short name or title. It doesn't use the network; the title and
 // notes are read from the installed TOC.
 func (a *App) Info(ctx context.Context, profile, name string) (Details, error) {
 	var d Details
@@ -190,14 +270,15 @@ func (a *App) Info(ctx context.Context, profile, name string) (Details, error) {
 		if err != nil {
 			return err
 		}
-		d.Installed = installedInfo(s, r)
+		d.Installed = installedInfo(s, r, "")
 		if len(d.Folders) == 0 {
 			return nil
 		}
-		// If the folder was changed outside Knapsack, show what state knows.
+		// One read for every TOC field. If the folder was changed outside
+		// Knapsack, show what state knows.
 		main := mainFolder(r, d.Folders)
 		if _, file, err := install.TOC(filepath.Join(s.addonsDir, main), s.profile.Flavor); err == nil {
-			d.Title, d.Author, d.Notes, d.Interfaces = file.Get("Title"), file.Get("Author"), file.Get("Notes"), file.Interfaces
+			d.Title, d.Author, d.Notes, d.Interfaces = toc.Plain(file.Get("Title")), file.Get("Author"), file.Get("Notes"), file.Interfaces
 		}
 		return nil
 	})

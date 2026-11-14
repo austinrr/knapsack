@@ -13,7 +13,7 @@ Available Commands:
   config      Manage profiles and config.toml
   help        Help about any command
   info        Show details of one addon
-  list        List the profile's addons
+  list        List the profile's addons and whether they're up to date
   remove      Uninstall addons and remove them from the profile
   self-update Update knapsack to the newest release
   sources     List addon sources and manage their API keys

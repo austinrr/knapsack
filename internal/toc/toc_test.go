@@ -228,3 +228,29 @@ func FuzzParse(f *testing.F) {
 		}
 	})
 }
+
+func TestPlain(t *testing.T) {
+	t.Parallel()
+	for in, want := range map[string]string{
+		"Leatrix Maps":                           "Leatrix Maps",
+		"|cff00ff00Leatrix|r Maps":               "Leatrix Maps",
+		"|CFF00FF00Leatrix|R Maps":               "Leatrix Maps",
+		"|TInterface\\Icons\\inv:16|t Baganator": "Baganator",
+		"|A:raceicon-human:16:16|a Atlas":        "Atlas",
+		"Pipe || Name":                           "Pipe | Name",
+		"  Spaced   out ":                        "Spaced out",
+		"Trailing |":                             "Trailing |",
+		"|cff00":                                 "|cff00", // too short to be a color
+		"|Tunclosed":                             "|Tunclosed",
+		"|xother":                                "|xother",
+		"|cnPURE_GREEN_COLOR:MyAddon|r":          "MyAddon",
+		"Foo |config of things":                  "Foo |config of things",
+		"|cff00ff0gLeatrix":                      "|cff00ff0gLeatrix",
+		"|cn:empty":                              "|cn:empty",
+		"|cnbad name:x":                          "|cnbad name:x",
+	} {
+		if got := toc.Plain(in); got != want {
+			t.Errorf("Plain(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
