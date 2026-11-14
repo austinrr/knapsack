@@ -468,9 +468,10 @@ or connection resets.
 
 ```go
 type Options struct {
-    Flavor   flavor.Flavor
-    Previous []string // folders this addon owned before; may be replaced
-    Force    bool     // also replace folders owned by no one
+    Flavor          flavor.Flavor
+    ClientInterface int      // from flavor.ClientInterface; 0 if unknown
+    Previous        []string // folders this addon owned before; may be replaced
+    Force           bool     // also replace folders owned by no one
 }
 
 // Install installs the zip at archivePath into addonsDir and returns the
@@ -490,9 +491,14 @@ the temp directory.
 
 Pipeline:
 
-1. **Cleanup** leftovers from an interrupted run (`.knapsack-staging-*`,
-   `.knapsack-backup-*`). The app calls this before every operation on a
-   profile.
+1. **Cleanup** leftovers from an interrupted run. The app calls this before
+   every operation on a profile. Staging and trash folders are deleted, on a
+   best-effort basis, since leftovers there are harmless. A backup folder
+   without a trash mark means a swap was interrupted: every folder in it is moved
+   back, replacing any new folder already moved into its place, so AddOns
+   holds the release state still records rather than a mix. New folders
+   that had no old counterpart stay, unowned, as in the first row of the
+   table in §5.4.
 2. **Extract** into `addonsDir/.knapsack-staging-<rand>`, so the final move is
    a same-filesystem rename. Reject zip-slip paths, absolute paths (including
    drive letters), symlinks and other special files, and paths (folders
@@ -510,11 +516,25 @@ Pipeline:
    since an addon's files must be in a folder named after it.
 4. **Validate** each top-level folder against the flavor (§6.4).
 5. **Conflict check**: a target folder that exists and isn't in `Previous` is
-   refused unless `Force` is set.
-6. **Swap**: rename each existing folder to `.knapsack-backup-<rand>/…`,
-   rename the new folders into place, then delete the backups. On any failure,
-   roll back.
+   refused (`ErrConflict`) unless `Force` is set. Names match without regard
+   to case, but an exact match wins, so on a case-sensitive filesystem
+   holding both `Details` and `details` the right one is used. The installer
+   only knows this addon's folders; the app refuses a folder another addon
+   owns in state before calling it, even with `--force`, which only covers
+   folders no addon owns (§8.4).
+6. **Swap**: rename each folder being replaced, and each folder in `Previous`
+   the new release no longer has, into `.knapsack-backup-<rand>/`, then
+   rename the new folders into place. On any failure, undo every rename in
+   reverse. On success, mark the swap finished by renaming the backup to
+   `.knapsack-trash-<rand>`, which is atomic, then delete it. If that rename
+   fails, an empty `.knapsack-trash-<rand>` file is the mark instead, kept
+   until the backup is gone. Either way `Cleanup` never restores folders
+   from a swap that finished. If rollback itself fails, the backup is kept
+   and the error names it.
 7. Return the owned folders and any validation warnings.
+
+`Remove` uses the same swap with nothing moved in, so either every folder is
+removed or none is.
 
 Atomicity is per-folder rename. That isn't a true transaction, but with
 rollback and startup cleanup it's the most you can get portably, and it's far
@@ -522,8 +542,8 @@ better than extracting directly into `AddOns/`.
 
 **Windows:** renames can fail briefly while antivirus scans freshly extracted
 files. Retry a failed rename a few times over about two seconds before
-treating it as a real error. If it still fails with a sharing violation,
-report `close World of Warcraft and retry`.
+treating it as a real error. If it still fails with a sharing or lock
+violation, the error wraps `ErrInUse`, which the app reports as `close World of Warcraft and retry`.
 
 ### 6.4 TOC parsing and flavor validation
 
