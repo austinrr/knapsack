@@ -208,3 +208,30 @@ func TestDeleteProfileRemovesState(t *testing.T) {
 		t.Errorf("state file still exists after DeleteProfile: %v", err)
 	}
 }
+
+// If the state file can't be deleted, the profile stays in config, so the
+// command can be retried and no stale state is left for a new profile of
+// the same name.
+func TestDeleteProfileStateFailure(t *testing.T) {
+	t.Parallel()
+	a, store, addons := newApp(t)
+	ctx := context.Background()
+	if _, err := a.SetProfile(ctx, app.SetProfileRequest{Name: "forever", Path: addons}); err != nil {
+		t.Fatal(err)
+	}
+	// A non-empty directory where the state file goes can't be removed.
+	statePath := filepath.Join(filepath.Dir(store.Path()), "state", "forever.toml")
+	if err := os.MkdirAll(filepath.Join(statePath, "x"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.DeleteProfile(ctx, "forever"); err == nil {
+		t.Fatal("DeleteProfile succeeded although the state file couldn't be deleted")
+	}
+	c, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := c.Profiles["forever"]; !ok {
+		t.Error("profile was removed from config although its state wasn't")
+	}
+}

@@ -134,25 +134,6 @@ func (s *Store) Save(profile string, st *State) error {
 	return nil
 }
 
-// Rename moves from's state to to, for renaming a profile. It's a no-op if
-// from has no state, and an error if to already has some, so one profile's
-// state never replaces another's.
-func (s *Store) Rename(from, to string) error {
-	src, dst := s.pathFor(from), s.pathFor(to)
-	if _, err := os.Lstat(src); errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	if _, err := os.Lstat(dst); err == nil {
-		return fmt.Errorf("rename state: %s already exists", dst)
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("rename state: %w", err)
-	}
-	if err := os.Rename(src, dst); err != nil {
-		return fmt.Errorf("rename state: %w", err)
-	}
-	return nil
-}
-
 // Delete removes profile's state. A profile with no state file is fine.
 func (s *Store) Delete(profile string) error {
 	err := os.Remove(s.pathFor(profile))

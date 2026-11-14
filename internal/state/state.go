@@ -51,14 +51,22 @@ func (s *State) Refs() []ref.Ref {
 }
 
 // Owner returns the addon that owns folder, matched without regard to
-// case as on Windows and macOS, or false if none does.
+// case as on Windows and macOS, or false if none does. Validate ensures a
+// folder has at most one owner, so map order doesn't matter.
 func (s *State) Owner(folder string) (ref.Ref, bool) {
-	for _, r := range s.Refs() {
-		if slices.ContainsFunc(s.Addons[r].Folders, func(f string) bool { return strings.EqualFold(f, folder) }) {
+	key := folderKey(folder)
+	for r, a := range s.Addons {
+		if slices.ContainsFunc(a.Folders, func(f string) bool { return folderKey(f) == key }) {
 			return r, true
 		}
 	}
 	return ref.Ref{}, false
+}
+
+// folderKey is the form in which two folder names are the same folder on
+// Windows and macOS. Validate and Owner both compare with it, so they agree.
+func folderKey(name string) string {
+	return strings.ToLower(name)
 }
 
 var sha256Hex = regexp.MustCompile(`^[0-9a-f]{64}$`)
@@ -76,6 +84,9 @@ func (s *State) Validate() error {
 		}
 		if a.InstalledAt.IsZero() {
 			errs = append(errs, fmt.Errorf("addon %s: installed_at is missing", r))
+		} else if y := a.InstalledAt.UTC().Year(); y < 1 || y > 9999 {
+			// TOML can't represent other years, so the file couldn't be read back.
+			errs = append(errs, fmt.Errorf("addon %s: installed_at year %d is out of range", r, y))
 		}
 		if len(a.Folders) == 0 {
 			errs = append(errs, fmt.Errorf("addon %s: owns no folders", r))
@@ -85,7 +96,7 @@ func (s *State) Validate() error {
 				errs = append(errs, fmt.Errorf("addon %s: %w", r, err))
 				continue
 			}
-			key := strings.ToLower(f)
+			key := folderKey(f)
 			if other, ok := owners[key]; ok {
 				errs = append(errs, fmt.Errorf("addon %s: folder %q is also owned by %s", r, f, other))
 				continue
@@ -96,14 +107,34 @@ func (s *State) Validate() error {
 	return errors.Join(errs...)
 }
 
-// validateFolder checks that name is a single path element: no separators
-// on any OS, and not "." or "..".
+// validateFolder checks that name is a single path element that means the
+// same folder on every OS: no separators, not "." or "..", no trailing dot
+// or space (Windows strips them, so "Baganator." is "Baganator"), and not a
+// Windows device name such as NUL.
 func validateFolder(name string) error {
 	switch {
 	case name == "", name == ".", name == "..":
 		return fmt.Errorf("folder name %q isn't allowed", name)
 	case strings.ContainsAny(name, `/\:`) || strings.ContainsRune(name, 0):
 		return fmt.Errorf("folder name %q must be a plain name, not a path", name)
+	case strings.HasSuffix(name, ".") || strings.HasSuffix(name, " "):
+		return fmt.Errorf("folder name %q can't end in a dot or space", name)
+	case isDeviceName(name):
+		return fmt.Errorf("folder name %q is a Windows device name", name)
 	}
 	return nil
+}
+
+// isDeviceName reports whether name is reserved on Windows, with or
+// without an extension: CON, PRN, AUX, NUL, COM1–COM9 and LPT1–LPT9.
+func isDeviceName(name string) bool {
+	base, _, _ := strings.Cut(strings.ToUpper(name), ".")
+	switch base {
+	case "CON", "PRN", "AUX", "NUL":
+		return true
+	}
+	if len(base) == 4 && (strings.HasPrefix(base, "COM") || strings.HasPrefix(base, "LPT")) {
+		return base[3] >= '1' && base[3] <= '9'
+	}
+	return false
 }

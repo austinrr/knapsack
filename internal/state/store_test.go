@@ -144,6 +144,11 @@ installed_at = 2026-11-13T18:04:05Z
 		{"no folders", "version = 1\n" + addon, "owns no folders"},
 		{"parent folder", "version = 1\n" + addon + "folders = [\"..\"]\n", `folder name ".." isn't allowed`},
 		{"path folder", "version = 1\n" + addon + "folders = [\"../Other\"]\n", "must be a plain name"},
+		{"trailing dot", "version = 1\n" + addon + "folders = [\"Baganator.\"]\n", "can't end in a dot or space"},
+		{"trailing space", "version = 1\n" + addon + "folders = [\"Baganator \"]\n", "can't end in a dot or space"},
+		{"device name", "version = 1\n" + addon + "folders = [\"nul\"]\n", "is a Windows device name"},
+		{"device name with extension", "version = 1\n" + addon + "folders = [\"COM1.txt\"]\n", "is a Windows device name"},
+		{"year out of range", "version = 1\n" + strings.Replace(addon, "2026-11-13", "0000-01-01", 1) + "folders = [\"B\"]\n", "installed_at year 0 is out of range"},
 		{"windows path folder", "version = 1\n" + addon + "folders = [\"C:\\\\x\"]\n", "must be a plain name"},
 	}
 	for _, tt := range tests {
@@ -194,45 +199,50 @@ func TestOwner(t *testing.T) {
 	}
 }
 
-func TestRenameAndDelete(t *testing.T) {
+func TestDelete(t *testing.T) {
 	t.Parallel()
 	s, dir := newStore(t)
-	if err := s.Save("old", sample(t)); err != nil {
+	if err := s.Save("forever", sample(t)); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Rename("old", "new"); err != nil {
+	if err := s.Delete("forever"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "old.toml")); !os.IsNotExist(err) {
-		t.Errorf("old state still exists after Rename: %v", err)
-	}
-	got, err := s.Load("new")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got.Addons) != 2 {
-		t.Errorf("renamed state has %d addons, want 2", len(got.Addons))
-	}
-
-	// Renaming onto existing state is refused.
-	if err := s.Save("other", state.New()); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.Rename("new", "other"); err == nil {
-		t.Error("Rename onto existing state succeeded")
-	}
-	// Renaming a profile with no state is a no-op.
-	if err := s.Rename("none", "fresh"); err != nil {
-		t.Errorf("Rename with no state: %v", err)
-	}
-
-	if err := s.Delete("new"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "new.toml")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(dir, "forever.toml")); !os.IsNotExist(err) {
 		t.Errorf("state still exists after Delete: %v", err)
 	}
-	if err := s.Delete("new"); err != nil {
+	if err := s.Delete("forever"); err != nil {
 		t.Errorf("Delete of missing state: %v", err)
+	}
+}
+
+// Names that only look like device names are fine.
+func TestValidateFolderNames(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{"Console", "COM10", "LPT0", "NULL", "Auxiliary", "Details_DataStorage", ".hidden"} {
+		st := state.New()
+		st.Addons[mustRef(t, "github:a/b")] = state.Addon{
+			SHA256:      strings.Repeat("ab", 32),
+			InstalledAt: time.Now(),
+			Folders:     []string{name},
+		}
+		if err := st.Validate(); err != nil {
+			t.Errorf("folder %q: %v", name, err)
+		}
+	}
+}
+
+// A year TOML can't represent is rejected before it's written, so Save
+// never produces a file Load can't read.
+func TestValidateYear(t *testing.T) {
+	t.Parallel()
+	st := sample(t)
+	r := mustRef(t, "wago:VBNBxKx5")
+	a := st.Addons[r]
+	a.InstalledAt = time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)
+	st.Addons[r] = a
+	s, _ := newStore(t)
+	if err := s.Save("forever", st); err == nil || !strings.Contains(err.Error(), "year 10000 is out of range") {
+		t.Errorf("Save = %v, want a year error", err)
 	}
 }

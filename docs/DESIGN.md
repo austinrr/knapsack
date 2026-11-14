@@ -337,7 +337,7 @@ small hand-written encoder, so it stays easy to read when debugging.
   one. Version labels (`851`, `v1.2-beta`, `11.2.0`) are shown to the user
   but never sorted or compared, because they don't follow one scheme.
 - Folders are names relative to the profile's AddOns path, never absolute
-  paths. Renaming or deleting a profile renames or deletes its state file.
+  paths. Deleting a profile deletes its state file.
 - **Loading is strict**, because `remove` deletes the folders state lists:
   folder names must be single path elements (no separators, `.` or `..`), no
   folder can belong to two addons, refs must be in normal form, and unknown
@@ -1093,7 +1093,7 @@ one command group.
 **PR 10 — `state` store**
 - Title: `feat(state): load and save per-profile state`
 - Implements: §5.3, §5.4
-- `state.State` types, `Store` with `Load`/`Save`/`Rename`/`Delete`, schema
+- `state.State` types, `Store` with `Load`/`Save`/`Delete`, schema
   version check. Wires `config delete-profile` to remove the state file.
 - Done when: round-trip and golden TOML tests, an unknown schema version
   gives a clear error.
