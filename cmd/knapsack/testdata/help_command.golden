@@ -1,6 +1,8 @@
 # exit: 0
 # stdout:
-Print the knapsack version
+Print the knapsack version. It also checks for a newer release, and if
+there is one, says so on stderr with how to update. Set KNAPSACK_NO_UPDATE_NOTIFIER
+to skip the check.
 
 Usage:
   knapsack version [flags]

@@ -50,6 +50,16 @@ type Release struct {
 	SHA256 string
 }
 
+// Asset is one file attached to a published release, as Knapsack's own
+// releases are: an archive per platform.
+type Asset struct {
+	Name string
+	URL  string
+	// SHA256 is the digest in lowercase hex, or "" when the source
+	// publishes none.
+	SHA256 string
+}
+
 // Registry holds the configured sources by name.
 type Registry struct {
 	sources map[string]Source

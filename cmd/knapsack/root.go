@@ -33,7 +33,7 @@ func (c *cli) stopProgress() {
 
 // buildApp builds an App for local work from the environment and --config.
 // Commands that need it call it from PreRunE or PersistentPreRunE, after
-// flags are parsed (DESIGN.md §8.7); version and help never do.
+// flags are parsed (DESIGN.md §8.7); help never does.
 func (c *cli) buildApp(cmd *cobra.Command, _ []string) error {
 	return c.build(cmd, false)
 }
@@ -64,11 +64,24 @@ func (c *cli) build(cmd *cobra.Command, network bool) error {
 	}
 	if network {
 		opts.HTTP = httpx.NewClient(c.env.version)
-		token := githubToken(cmd.Context(), c.env.getenv, c.env.ghAuthToken)
-		opts.Sources = source.NewRegistry(github.New(opts.HTTP, c.env.githubURL, token))
+		gh := github.New(opts.HTTP, c.env.githubURL, githubToken(cmd.Context(), c.env.getenv, c.env.ghAuthToken))
+		opts.Sources, opts.Releases = source.NewRegistry(gh), gh
 	}
 	c.app = app.New(opts)
 	return nil
+}
+
+// selfBuild describes the running binary, for the update check and
+// self-update.
+func (c *cli) selfBuild() app.Build {
+	b := app.Build{Version: c.env.version, Released: c.env.released}
+	if c.env.executable == nil {
+		return b
+	}
+	if exe, err := c.env.executable(); err == nil {
+		b.Executable = exe
+	}
+	return b
 }
 
 // profileEnv picks the profile when -p isn't given, like kubectl's
@@ -123,7 +136,8 @@ func newRootCmd(c *cli) *cobra.Command {
 		newListCmd(c),
 		newInfoCmd(c),
 		newConfigCmd(c),
-		newVersionCmd(c.env.version),
+		newVersionCmd(c),
+		newSelfUpdateCmd(c),
 	)
 	return root
 }

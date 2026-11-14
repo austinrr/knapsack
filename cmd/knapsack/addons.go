@@ -210,8 +210,8 @@ func newListCmd(c *cli) *cobra.Command {
 		Short:   "List the profile's addons",
 		Long: `List the profile's addons and whether each is installed.
 
-It reads only config, state and the AddOns folder, never the network, so
-it's instant. An addon is installed, missing (in config but not installed),
+It reads only config, state and the AddOns folder, and looks nothing up
+online, so it's instant. An addon is installed, missing (in config but not installed),
 or not in config (installed, but no longer in config). Use check to see
 what's outdated.
 
@@ -304,7 +304,7 @@ func newInfoCmd(c *cli) *cobra.Command {
 		Short: "Show details of one addon",
 		Long: `Show one addon's ref, status, version, folders and install time, with
 the title, author, notes and Interface numbers from its TOC. Like list, it
-doesn't use the network.`,
+looks nothing up online.`,
 		Example: `  knapsack info baganator-mirror`,
 		Args:    exactArgs("addon"),
 		PreRunE: c.buildApp,

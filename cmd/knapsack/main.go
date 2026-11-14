@@ -6,10 +6,12 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime/debug"
 	"syscall"
 
 	"github.com/austinrr/knapsack/internal/app"
+	"github.com/austinrr/knapsack/internal/selfupdate"
 	"github.com/austinrr/knapsack/internal/source/github"
 )
 
@@ -27,6 +29,14 @@ type env struct {
 	stderr  io.Writer
 	getenv  func(string) string
 	version string
+	// released is true when version was set at build time, as in a
+	// release archive (version.go).
+	released bool
+	// executable returns the running binary's path, symlinks resolved.
+	executable func() (string, error)
+	// interactive is whether stderr is a terminal, which the update
+	// notice needs.
+	interactive bool
 	// githubURL is GitHub's API, and ghAuthToken asks the GitHub CLI for a
 	// token. Tests replace both, so they never reach the real GitHub.
 	githubURL   string
@@ -43,17 +53,33 @@ func main() {
 		stop()
 	}()
 
+	if exe, err := executable(); err == nil {
+		selfupdate.RemoveOld(exe) // left by a self-update on Windows
+	}
 	code := run(ctx, os.Args[1:], env{
-		stdout:  os.Stdout,
-		stderr:  os.Stderr,
-		getenv:  os.Getenv,
-		version: resolveVersion(buildVersion, debug.ReadBuildInfo),
+		stdout:      os.Stdout,
+		stderr:      os.Stderr,
+		getenv:      os.Getenv,
+		version:     resolveVersion(buildVersion, debug.ReadBuildInfo),
+		released:    buildVersion != "",
+		executable:  executable,
+		interactive: isTerminal(os.Stderr),
 
 		githubURL:   github.DefaultBaseURL,
 		ghAuthToken: ghAuthToken,
 	})
 	stop()
 	os.Exit(code)
+}
+
+// executable is the running binary's path with symlinks resolved, so
+// self-update replaces the file itself, not a link to it.
+func executable() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	return filepath.EvalSymlinks(exe)
 }
 
 // run executes the CLI with args and returns the process exit code. It is
@@ -68,7 +94,15 @@ func run(ctx context.Context, args []string, e env) int {
 	root.SetOut(e.stdout)
 	root.SetErr(e.stderr)
 
-	err := root.ExecuteContext(ctx)
+	notice := startUpdateCheck(ctx, root, args, c)
+	code := exitCode(c, root.ExecuteContext(ctx))
+	notice()
+	return code
+}
+
+// exitCode renders err, if any, and returns the exit code for it.
+func exitCode(c *cli, err error) int {
+	e := c.env
 	if errors.Is(err, errPending) {
 		return exitPending
 	}

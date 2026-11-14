@@ -47,6 +47,17 @@ type sandbox struct {
 
 	mu     sync.Mutex
 	bumped map[string]bool // repos whose newest release is v2, not v1
+
+	// The running binary, as self-update sees it: exe is a file in the
+	// sandbox, a release build unless notReleased, and stderr is a
+	// terminal when interactive.
+	exe         string
+	notReleased bool
+	interactive bool
+	// latest is the newest knapsack release on the fake GitHub; "" means
+	// none. Without a build for this platform when noBuild.
+	latest  string
+	noBuild bool
 }
 
 // bump publishes a new release, v2, of repo on the fake GitHub.
@@ -81,7 +92,13 @@ func newSandbox(t *testing.T) *sandbox {
 			t.Fatal(err)
 		}
 	}
-	s := &sandbox{t: t, home: home, bumped: map[string]bool{}}
+	s := &sandbox{t: t, home: home, bumped: map[string]bool{}, exe: filepath.Join(home, "bin", binaryFile())}
+	if err := os.MkdirAll(filepath.Dir(s.exe), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(s.exe, []byte("old binary"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	s.github = httptest.NewServer(http.HandlerFunc(s.serveFakeGitHub))
 	t.Cleanup(s.github.Close)
 	return s
@@ -99,6 +116,9 @@ var fakeReleases = map[string]map[string]string{
 // one zip, and serves the zip at /download/<repo>.zip. No digest is
 // published, so update and check download to compare.
 func (s *sandbox) serveFakeGitHub(w http.ResponseWriter, r *http.Request) {
+	if s.serveFakeKnapsack(w, r) {
+		return
+	}
 	if repo, ok := strings.CutPrefix(r.URL.Path, "/download/"); ok {
 		repo = strings.TrimSuffix(repo, ".zip")
 		folders, ok := fakeReleases[repo]
@@ -155,6 +175,9 @@ func (s *sandbox) run(args ...string) result {
 	var stdout, stderr bytes.Buffer
 	code := run(context.Background(), expanded, env{
 		stdout: &stdout, stderr: &stderr, getenv: getenv, version: testVersion,
+		released:    !s.notReleased,
+		executable:  func() (string, error) { return s.exe, nil },
+		interactive: s.interactive,
 		githubURL:   s.github.URL,
 		ghAuthToken: func(context.Context) string { return "" },
 	})
@@ -186,11 +209,13 @@ func (s *sandbox) writeConfig(contents string) {
 var timestamp = regexp.MustCompile(`\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ`)
 
 // normalize replaces the sandbox path with <home>, including its escaped
-// form in TOML and JSON, the fake GitHub's address with <github>, and
-// install times with <time>, and uses / as the separator, so one golden
-// file works on every OS and every run.
+// form in TOML and JSON, the fake GitHub's address with <github>, install
+// times with <time>, and this OS and architecture with <platform>, and
+// uses / as the separator, so one golden file works on every OS and every
+// run.
 func (s *sandbox) normalize(out string) string {
 	out = strings.ReplaceAll(out, s.github.URL, "<github>")
+	out = strings.ReplaceAll(out, runtime.GOOS+"/"+runtime.GOARCH, "<platform>")
 	out = timestamp.ReplaceAllString(out, "<time>")
 	for _, h := range []string{strings.ReplaceAll(s.home, `\`, `\\`), s.home, filepath.ToSlash(s.home)} {
 		out = strings.ReplaceAll(out, h, "<home>")
@@ -248,6 +273,13 @@ type cliCase struct {
 	setup  [][]string
 	after  func(*sandbox) // runs after setup, before args
 	args   []string
+
+	// For the update check and self-update, set for args only: the newest
+	// knapsack release, whether stderr is a terminal, and whether the
+	// binary isn't a release build.
+	latest      string
+	interactive bool
+	notReleased bool
 }
 
 func runCases(t *testing.T, cases []cliCase) {
@@ -266,6 +298,11 @@ func runCases(t *testing.T, cases []cliCase) {
 			if tc.after != nil {
 				tc.after(s)
 			}
+			if tc.latest != "" {
+				s.latest = tc.latest
+			}
+			s.interactive = s.interactive || tc.interactive
+			s.notReleased = tc.notReleased
 			checkGolden(t, tc.name, s.run(tc.args...))
 		})
 	}

@@ -1,0 +1,40 @@
+{
+  "assets": [
+    {
+      "browser_download_url": "https://github.com/austinrr/knapsack/releases/download/v0.1.0/checksums.txt",
+      "digest": "sha256:2c6a8c60974a197147681d9de21818d10184c7098faf09d9b202b6e7dd44c8a4",
+      "name": "checksums.txt"
+    },
+    {
+      "browser_download_url": "https://github.com/austinrr/knapsack/releases/download/v0.1.0/knapsack_0.1.0_darwin_amd64.tar.gz",
+      "digest": "sha256:91ca1c02e0675baaa05e0179c53da750453cab44655dd91bfd437e75329cf1bd",
+      "name": "knapsack_0.1.0_darwin_amd64.tar.gz"
+    },
+    {
+      "browser_download_url": "https://github.com/austinrr/knapsack/releases/download/v0.1.0/knapsack_0.1.0_darwin_arm64.tar.gz",
+      "digest": "sha256:358be8b04740cda568f30a9f1dbedc60438e92dceb5944f91e11f26a65d0db08",
+      "name": "knapsack_0.1.0_darwin_arm64.tar.gz"
+    },
+    {
+      "browser_download_url": "https://github.com/austinrr/knapsack/releases/download/v0.1.0/knapsack_0.1.0_linux_amd64.tar.gz",
+      "digest": "sha256:acc747c38da558608d5092651fcfc675bbc7f2038bc0e646c17d3704a55d9873",
+      "name": "knapsack_0.1.0_linux_amd64.tar.gz"
+    },
+    {
+      "browser_download_url": "https://github.com/austinrr/knapsack/releases/download/v0.1.0/knapsack_0.1.0_linux_arm64.tar.gz",
+      "digest": "sha256:0d56b37c0c090738e9594d81f4462d8808b4a4f12ac21302206c06ae5857d4d3",
+      "name": "knapsack_0.1.0_linux_arm64.tar.gz"
+    },
+    {
+      "browser_download_url": "https://github.com/austinrr/knapsack/releases/download/v0.1.0/knapsack_0.1.0_windows_amd64.zip",
+      "digest": "sha256:95498904a3d87332af4efaac2ff80d2ce6d671ef03f2f0f9db60a5787792b7e6",
+      "name": "knapsack_0.1.0_windows_amd64.zip"
+    },
+    {
+      "browser_download_url": "https://github.com/austinrr/knapsack/releases/download/v0.1.0/knapsack_0.1.0_windows_arm64.zip",
+      "digest": "sha256:16559b5de57a7999fcac5ee85eef10e686c45f5dfa76e4c6a89f19ed16777983",
+      "name": "knapsack_0.1.0_windows_arm64.zip"
+    }
+  ],
+  "tag_name": "v0.1.0"
+}

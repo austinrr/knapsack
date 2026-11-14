@@ -274,3 +274,33 @@ func TestName(t *testing.T) {
 		t.Errorf("Name = %q, want %q, the source name in refs", got, ref.GitHub)
 	}
 }
+
+// LatestAssets returns every asset with its digest: here Knapsack's own
+// v0.1.0 release, as GitHub returned it.
+func TestLatestAssets(t *testing.T) {
+	t.Parallel()
+	s, _ := newSource(t, "", nil)
+	version, assets, err := s.LatestAssets(context.Background(), "austinrr/knapsack")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if version != "v0.1.0" || len(assets) != 7 {
+		t.Fatalf("LatestAssets = %s with %d assets, want v0.1.0 with 7", version, len(assets))
+	}
+	for _, a := range assets {
+		if a.Name == "" || !strings.HasPrefix(a.URL, "https://github.com/austinrr/knapsack/releases/download/v0.1.0/") || len(a.SHA256) != 64 {
+			t.Errorf("asset %+v: want a name, download URL and SHA-256", a)
+		}
+	}
+
+	bad, _ := newSource(t, "", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"tag_name":"v1.0.0","assets":[{"name":"a.tar.gz","digest":"md5:abc"}]}`))
+	})
+	if _, _, err := bad.LatestAssets(context.Background(), "o/r"); err == nil {
+		t.Error("LatestAssets accepted an md5 digest")
+	}
+	missing, _ := newSource(t, "", nil)
+	if _, _, err := missing.LatestAssets(context.Background(), "o/missing"); !errors.Is(err, source.ErrNotFound) {
+		t.Errorf("LatestAssets of a missing repo = %v, want ErrNotFound", err)
+	}
+}

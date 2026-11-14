@@ -1,0 +1,5 @@
+# exit: 0
+# stdout:
+knapsack v0.0.0-test
+# stderr:
+couldn't check for a newer release: github austinrr/knapsack: no such repository, or it has no releases: not found
