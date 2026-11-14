@@ -357,7 +357,16 @@ func newGetProfilesCmd(c *cli) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get-profiles",
 		Short: "List profiles",
-		Args:  noArgs,
+		Long: `List profiles: which is current, each one's flavor, how many addons
+it has, and its folder.
+
+The folder is shortened to the client folder, with ~ for your home and …
+for the usual part of a Wine install (drive_c/Program Files
+(x86)/World of Warcraft). -o wide shows each profile's full AddOns path,
+and -o json always has it.`,
+		Example: `  knapsack config get-profiles
+  knapsack config get-profiles -o wide`,
+		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			profiles, err := c.app.Profiles(cmd.Context())
 			if err != nil {
@@ -379,7 +388,11 @@ func newGetProfilesCmd(c *cli) *cobra.Command {
 				if p.Current {
 					current = "*"
 				}
-				out.printf("%s\t%s\t%s\t%d\t%s\n", current, p.Name, p.Flavor, len(p.Addons), p.Path)
+				path := p.Path
+				if output != "wide" {
+					path = displayPath(path, c.env.home)
+				}
+				out.printf("%s\t%s\t%s\t%d\t%s\n", current, p.Name, p.Flavor, len(p.Addons), path)
 			}
 			if out.err != nil {
 				return out.err
@@ -387,8 +400,31 @@ func newGetProfilesCmd(c *cli) *cobra.Command {
 			return t.Flush()
 		},
 	}
-	addOutputFlag(cmd, &output, "json")
+	addOutputFlag(cmd, &output, "json", "wide")
 	return cmd
+}
+
+// displayPath shortens a profile's AddOns path for a table. A path in a
+// client folder is shown as that folder, since it's what --path takes, and
+// in a Wine prefix, the standard part from drive_c to World of Warcraft
+// becomes …: ~/Games/battlenet/…/_retail_. A home is ~, as shortPath has it.
+func displayPath(path, home string) string {
+	path = filepath.Clean(path)
+	interfaceDir := filepath.Dir(path)
+	client := filepath.Dir(interfaceDir)
+	if !strings.EqualFold(filepath.Base(path), "AddOns") || !strings.EqualFold(filepath.Base(interfaceDir), "Interface") ||
+		!flavor.IsClientFolder(filepath.Base(client)) {
+		return shortPath(path, home)
+	}
+	sep := string(filepath.Separator)
+	parts := strings.Split(client, sep)
+	// The Wine prefix's drive_c, and the game folder after it.
+	drive := slices.IndexFunc(parts, func(p string) bool { return strings.EqualFold(p, "drive_c") })
+	game := len(parts) - 2
+	if drive > 0 && game > drive && strings.EqualFold(parts[game], "World of Warcraft") {
+		client = strings.Join(parts[:drive], sep) + sep + "…" + sep + parts[len(parts)-1]
+	}
+	return shortPath(client, home)
 }
 
 func newUseProfileCmd(c *cli) *cobra.Command {

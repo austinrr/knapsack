@@ -1,0 +1,6 @@
+# exit: 0
+# stdout:
+CURRENT  NAME     FLAVOR   ADDONS  PATH
+*        forever  forever  0       <home>/wow/_forever_/Interface/AddOns
+         retail   retail   0       <home>/wow/_retail_/Interface/AddOns
+# stderr:

@@ -148,6 +148,8 @@ func TestConfigCommands(t *testing.T) {
 		{name: "config/get_profiles_empty", args: []string{"config", "get-profiles"}},
 		{name: "config/get_profiles", setup: [][]string{addForever, addRetail},
 			args: []string{"config", "get-profiles"}},
+		{name: "config/get_profiles_wide", setup: [][]string{addForever, addRetail},
+			args: []string{"config", "get-profiles", "-o", "wide"}},
 		{name: "config/get_profiles_json", config: configWithKey, setup: [][]string{addRetail},
 			args: []string{"config", "get-profiles", "-o", "json"}},
 		{name: "config/get_profiles_json_empty", args: []string{"config", "get-profiles", "-o", "json"}},
