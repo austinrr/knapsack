@@ -854,7 +854,7 @@ knapsack config delete-profile <name>
 knapsack config view
 
 # Sources (shared by every profile)
-knapsack sources                   each source, whether it's ready, and where its key comes from
+knapsack sources list              each source, whether it's ready, and where its key comes from
 knapsack sources set-key <source>  store an API key (prompted, or from stdin)
 knapsack sources unset-key <source>
 

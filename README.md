@@ -104,7 +104,7 @@ compared by checksum, not version number.
 | `info <addon>` | Show one addon's version, folders, install time and TOC details |
 | `config set-profile [name] --path <AddOns>` | Create or change a profile, named after its flavor unless you name it |
 | `config get-profiles`, `use-profile`, `current-profile`, `delete-profile`, `view` | Manage profiles, like kubectl contexts |
-| `sources` | List addon sources and where their API keys come from; `sources set-key` / `unset-key` manage keys for every profile |
+| `sources list`, `set-key`, `unset-key` | List addon sources and where their API keys come from, and manage keys for every profile |
 | `version` | Print Knapsack's version, and say if there's a newer one |
 | `self-update` | Update Knapsack to the newest release |
 
@@ -128,7 +128,7 @@ any error.
 
 ### Sources and API keys
 
-`knapsack sources` lists where addons come from and whether each is ready.
+`knapsack sources list` shows where addons come from and whether each is ready.
 GitHub allows 60 anonymous API requests an hour. Knapsack uses a token
 from `GITHUB_TOKEN`, `GH_TOKEN` or the [GitHub CLI](https://cli.github.com/)
 (`gh auth login`) when there is one, which raises that to 5,000. It never

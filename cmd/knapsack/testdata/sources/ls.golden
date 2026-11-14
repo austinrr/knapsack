@@ -1,0 +1,7 @@
+# exit: 0
+# stdout:
+NAME        STATUS     KEY
+github      ready      none (60 requests an hour)
+curseforge  not yet    -
+wago        needs key  -
+# stderr:
