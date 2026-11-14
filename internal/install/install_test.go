@@ -353,3 +353,67 @@ func mustReadDir(t *testing.T, dir string) []fs.DirEntry {
 	}
 	return entries
 }
+
+// A finished swap whose backup couldn't be renamed to trash is marked with
+// a trash file instead, and Cleanup deletes such a backup rather than
+// restoring it.
+func TestDiscardFallbackMark(t *testing.T) {
+	t.Parallel()
+	addons := t.TempDir()
+	backup := filepath.Join(addons, backupPrefix+"x")
+	writeTree(t, backup, installed("v1", "A"))
+	discard(backup, func(string, string) error { return errors.New("injected") })
+	if got := mustReadDir(t, addons); len(got) != 0 {
+		t.Errorf("AddOns after discard = %v, want empty", got)
+	}
+
+	// If deleting the backup was interrupted, the mark is still there.
+	writeTree(t, addons, installed("v2", "A"))
+	writeTree(t, backup, installed("v1", "A"))
+	if err := os.WriteFile(trashFor(backup), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := Cleanup(addons); err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff(installed("v2", "A"), tree(t, addons)); diff != "" {
+		t.Errorf("AddOns after Cleanup of a finished swap (-want +got):\n%s", diff)
+	}
+	assertNoWorkFolders(t, addons)
+}
+
+// If an old folder can't be moved back, the newer one is put back rather
+// than leaving neither, and the backup is kept for the next Cleanup.
+func TestRestoreFailureKeepsNewer(t *testing.T) {
+	t.Parallel()
+	addons := t.TempDir()
+	writeTree(t, addons, installed("v2", "A"))
+	backup := filepath.Join(addons, backupPrefix+"x")
+	writeTree(t, backup, installed("v1", "A"))
+
+	// Call 1 moves the newer A aside; call 2, restoring the old A, fails.
+	if err := restore(addons, backup, failingRename(2, false)); err == nil {
+		t.Fatal("restore succeeded despite the injected failure")
+	}
+	got := tree(t, addons)
+	if got["A/Core.lua"] != "v2" || got[backupPrefix+"x/A/Core.lua"] != "v1" {
+		t.Errorf("after a failed restore, AddOns = %v; want the newer A in place and the old one in the backup", got)
+	}
+}
+
+// On a case-sensitive filesystem, an exact name wins over a case variant,
+// so the wrong folder is never removed or replaced.
+func TestExactNameWins(t *testing.T) {
+	t.Parallel()
+	addons := t.TempDir()
+	writeTree(t, addons, map[string]string{"Details/x": "owned", "details/x": "hand-installed"})
+	if len(mustReadDir(t, addons)) != 2 {
+		t.Skip("filesystem is case-insensitive")
+	}
+	if err := Remove(addons, []string{"Details"}); err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff(map[string]string{"details/x": "hand-installed"}, tree(t, addons)); diff != "" {
+		t.Errorf("AddOns after Remove (-want +got):\n%s", diff)
+	}
+}

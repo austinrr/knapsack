@@ -17,7 +17,7 @@ import (
 var (
 	// ErrConflict means a folder the archive installs already exists and
 	// isn't one the addon owned before. Options.Force replaces it.
-	ErrConflict = errors.New("folders already exist and belong to no known addon")
+	ErrConflict = errors.New("folders already exist and this addon doesn't own them")
 	// ErrInUse means a folder couldn't be moved because a file in it is
 	// open, on Windows usually by the game.
 	ErrInUse = errors.New("folder is in use")
@@ -95,51 +95,86 @@ func Install(ctx context.Context, archivePath, addonsDir string, opts Options) (
 // foldersToReplace returns the existing folders to move out of AddOns, by
 // their names on disk: each folder the new release has, and each previous
 // folder it no longer has. A new folder that exists but isn't in previous is
-// a conflict unless force is set. Names are matched without regard to case,
-// as on Windows and macOS.
-func foldersToReplace(incoming, previous []string, onDisk map[string]string, force bool) ([]string, error) {
-	owned := map[string]bool{}
-	for _, p := range previous {
-		owned[strings.ToLower(p)] = true
-	}
+// a conflict unless force is set. Names are matched as listing.find does.
+func foldersToReplace(incoming, previous []string, onDisk listing, force bool) ([]string, error) {
+	owned, kept := foldSet(previous), foldSet(incoming)
 	var out, conflicts []string
+	seen := map[string]bool{}
+	add := func(actual string) {
+		if !seen[actual] {
+			seen[actual] = true
+			out = append(out, actual)
+		}
+	}
 	for _, f := range incoming {
-		actual, exists := onDisk[strings.ToLower(f)]
+		actual, exists := onDisk.find(f)
 		if !exists {
 			continue
 		}
 		if !owned[strings.ToLower(f)] && !force {
 			conflicts = append(conflicts, actual)
 		}
-		out = append(out, actual)
+		add(actual)
 	}
 	if len(conflicts) > 0 {
 		return nil, fmt.Errorf("%w: %s", ErrConflict, strings.Join(conflicts, ", "))
 	}
 	for _, p := range previous {
-		actual, exists := onDisk[strings.ToLower(p)]
-		dropped := !slices.ContainsFunc(incoming, func(f string) bool { return strings.EqualFold(f, p) })
-		if exists && dropped && !slices.Contains(out, actual) {
-			out = append(out, actual)
+		if kept[strings.ToLower(p)] {
+			continue
+		}
+		if actual, exists := onDisk.find(p); exists {
+			add(actual)
 		}
 	}
 	return out, nil
 }
 
-// listDir maps the lower-cased name of everything in dir to its name on
-// disk, skipping Knapsack's own working folders.
-func listDir(dir string) (map[string]string, error) {
+// foldSet returns the lower-cased names as a set.
+func foldSet(names []string) map[string]bool {
+	set := make(map[string]bool, len(names))
+	for _, n := range names {
+		set[strings.ToLower(n)] = true
+	}
+	return set
+}
+
+// listing is what's in AddOns, apart from Knapsack's own working folders.
+type listing struct {
+	exact  map[string]bool
+	folded map[string]string // lower-cased name → first name on disk with it
+}
+
+// find returns the name on disk of the folder called name. An exact match
+// wins; otherwise names are matched without regard to case, as on Windows
+// and macOS. On a case-sensitive filesystem that holds both Details and
+// details, find("Details") is Details, never the other folder.
+func (l listing) find(name string) (string, bool) {
+	if l.exact[name] {
+		return name, true
+	}
+	actual, ok := l.folded[strings.ToLower(name)]
+	return actual, ok
+}
+
+// listDir lists dir for find.
+func listDir(dir string) (listing, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, err
+		return listing{}, err
 	}
-	names := map[string]string{}
+	l := listing{exact: map[string]bool{}, folded: map[string]string{}}
 	for _, e := range entries {
-		if !isWorkFolder(e.Name()) {
-			names[strings.ToLower(e.Name())] = e.Name()
+		name := e.Name()
+		if isWorkFolder(name) {
+			continue
+		}
+		l.exact[name] = true
+		if _, ok := l.folded[strings.ToLower(name)]; !ok {
+			l.folded[strings.ToLower(name)] = name
 		}
 	}
-	return names, nil
+	return l, nil
 }
 
 // isWorkFolder reports whether name is one of Knapsack's own folders in
@@ -208,15 +243,30 @@ func rollback(done []move, backup string, cause error, rename func(oldpath, newp
 	return cause
 }
 
-// discard deletes a backup folder after a successful swap. Renaming it to
-// trash first, which is atomic, means that if deleting it is interrupted or
-// fails, Cleanup deletes it rather than restoring folders from it.
+// discard deletes a backup folder after a successful swap. It first marks
+// the swap finished, so that if deleting is interrupted or fails, Cleanup
+// deletes what's left rather than restoring old folders from it. Renaming
+// the backup to trash is the mark; it's atomic. If the rename fails (on
+// Windows, a scanner may hold a file in it), an empty trash file of the same
+// name is the mark instead, and it's removed once the backup is gone.
 func discard(backup string, rename func(oldpath, newpath string) error) {
-	trash := filepath.Join(filepath.Dir(backup), trashPrefix+strings.TrimPrefix(filepath.Base(backup), backupPrefix))
+	trash := trashFor(backup)
 	if rename(backup, trash) == nil {
-		backup = trash
+		_ = os.RemoveAll(trash) // best effort; Cleanup catches anything left
+		return
 	}
-	_ = os.RemoveAll(backup) // best effort; Cleanup catches anything left
+	if err := os.WriteFile(trash, nil, 0o600); err != nil {
+		return // unmarked; Cleanup will treat it as interrupted
+	}
+	if os.RemoveAll(backup) == nil {
+		_ = os.Remove(trash)
+	}
+}
+
+// trashFor is the trash name that marks backup's swap as finished: the same
+// random suffix after trashPrefix.
+func trashFor(backup string) string {
+	return filepath.Join(filepath.Dir(backup), trashPrefix+strings.TrimPrefix(filepath.Base(backup), backupPrefix))
 }
 
 // Remove deletes folders from addonsDir. Folders that don't exist are
@@ -234,7 +284,7 @@ func Remove(addonsDir string, folders []string) error {
 	}
 	var out []string
 	for _, f := range folders {
-		if actual, ok := onDisk[strings.ToLower(f)]; ok && !slices.Contains(out, actual) {
+		if actual, ok := onDisk.find(f); ok && !slices.Contains(out, actual) {
 			out = append(out, actual)
 		}
 	}
@@ -244,45 +294,66 @@ func Remove(addonsDir string, folders []string) error {
 	return swap(addonsDir, "", nil, out, rename)
 }
 
-// Cleanup resolves what an interrupted run left in addonsDir. Staging and
-// trash folders are deleted. A backup means a swap didn't finish, so every
-// folder in it is moved back, replacing any new folder already moved into
-// its place: AddOns then holds the release state still records, rather
-// than a mix of old and new folders. A backup that can't be fully restored
-// is kept, so nothing is lost.
+// Cleanup resolves what an interrupted run left in addonsDir.
+//
+// A backup means a swap didn't finish, unless discard marked it finished.
+// Every folder in an unfinished backup is moved back, replacing any new
+// folder already moved into its place: AddOns then holds the release state
+// still records, rather than a mix of old and new folders. A backup that
+// can't be fully restored is kept, so nothing is lost, and that is the only
+// error. Staging and trash are deleted on a best-effort basis: leftovers
+// there are harmless, and failing over them would block every operation
+// while, say, a scanner holds a file.
 func Cleanup(addonsDir string) error {
 	entries, err := os.ReadDir(addonsDir)
 	if err != nil {
 		return err
 	}
+	finished := map[string]bool{} // backup suffixes marked finished
+	for _, e := range entries {
+		if suffix, ok := strings.CutPrefix(e.Name(), trashPrefix); ok {
+			finished[suffix] = true
+		}
+	}
+
 	var errs []error
 	for _, e := range entries {
 		path := filepath.Join(addonsDir, e.Name())
+		suffix, isBackup := strings.CutPrefix(e.Name(), backupPrefix)
 		switch {
-		case strings.HasPrefix(e.Name(), stagingPrefix), strings.HasPrefix(e.Name(), trashPrefix):
-			if err := os.RemoveAll(path); err != nil {
-				errs = append(errs, err)
-			}
-		case strings.HasPrefix(e.Name(), backupPrefix):
-			if err := restore(addonsDir, path); err != nil {
+		case strings.HasPrefix(e.Name(), stagingPrefix):
+			_ = os.RemoveAll(path)
+		case isBackup && finished[suffix]:
+			_ = os.RemoveAll(path)
+		case isBackup:
+			if err := restore(addonsDir, path, rename); err != nil {
 				errs = append(errs, err)
 				continue
 			}
-			if err := os.RemoveAll(path); err != nil {
-				errs = append(errs, err)
-			}
+			_ = os.Remove(path) // empty now
 		}
 	}
+	// Delete trash last, and keep a mark while its backup still exists.
+	for _, e := range entries {
+		suffix, ok := strings.CutPrefix(e.Name(), trashPrefix)
+		if !ok {
+			continue
+		}
+		if _, err := os.Lstat(filepath.Join(addonsDir, backupPrefix+suffix)); err == nil {
+			continue
+		}
+		_ = os.RemoveAll(filepath.Join(addonsDir, e.Name()))
+	}
 	if err := errors.Join(errs...); err != nil {
-		return fmt.Errorf("clean up after an interrupted run: %w", err)
+		return fmt.Errorf("restore folders after an interrupted run: %w", err)
 	}
 	return nil
 }
 
 // restore moves each folder in backup back into addonsDir. A folder of the
 // same name already there is the new one from the unfinished swap, so it's
-// moved to trash first.
-func restore(addonsDir, backup string) error {
+// moved aside into trash first, and moved back if the old one can't be.
+func restore(addonsDir, backup string, rename func(oldpath, newpath string) error) error {
 	saved, err := os.ReadDir(backup)
 	if err != nil {
 		return err
@@ -291,22 +362,34 @@ func restore(addonsDir, backup string) error {
 	if err != nil {
 		return err
 	}
-	trash := filepath.Join(addonsDir, trashPrefix+strings.TrimPrefix(filepath.Base(backup), backupPrefix))
+	var aside string // trash for the newer folders, created when needed
 	var errs []error
 	for _, e := range saved {
-		if newer, ok := onDisk[strings.ToLower(e.Name())]; ok {
-			if err := os.MkdirAll(trash, 0o700); err != nil {
-				return err
+		name := e.Name()
+		newer, exists := onDisk.find(name)
+		if exists {
+			if aside == "" {
+				if aside, err = os.MkdirTemp(addonsDir, trashPrefix); err != nil {
+					return err
+				}
 			}
-			if err := rename(filepath.Join(addonsDir, newer), filepath.Join(trash, newer)); err != nil {
+			if err := rename(filepath.Join(addonsDir, newer), filepath.Join(aside, newer)); err != nil {
 				errs = append(errs, err)
 				continue
 			}
 		}
-		if err := rename(filepath.Join(backup, e.Name()), filepath.Join(addonsDir, e.Name())); err != nil {
+		if err := rename(filepath.Join(backup, name), filepath.Join(addonsDir, name)); err != nil {
 			errs = append(errs, err)
+			if exists {
+				// Put the newer folder back rather than leave neither.
+				if err := rename(filepath.Join(aside, newer), filepath.Join(addonsDir, newer)); err != nil {
+					errs = append(errs, err)
+				}
+			}
 		}
 	}
-	_ = os.RemoveAll(trash) // best effort; the next Cleanup deletes it
+	if aside != "" && len(errs) == 0 {
+		_ = os.RemoveAll(aside) // best effort; the next Cleanup deletes it
+	}
 	return errors.Join(errs...)
 }
