@@ -60,7 +60,7 @@ type limits struct {
 }
 
 func download(ctx context.Context, c *http.Client, url, dir, wantSHA256 string, lim limits) (path, sum string, err error) {
-	if wantSHA256 != "" && !isSHA256(wantSHA256) {
+	if wantSHA256 != "" && !IsSHA256(wantSHA256) {
 		// The source's data is wrong, not the file, so this isn't
 		// ErrChecksum.
 		return "", "", fmt.Errorf("download %s: expected sha256 %q isn't 64 hex digits", url, wantSHA256)
@@ -140,8 +140,9 @@ func download(ctx context.Context, c *http.Client, url, dir, wantSHA256 string, 
 	return f.Name(), sum, nil
 }
 
-// isSHA256 reports whether s is a SHA-256 in hex, in either case.
-func isSHA256(s string) bool {
+// IsSHA256 reports whether s is a SHA-256 in hex, in either case. Sources
+// use it to check the digests they publish, so both sides agree.
+func IsSHA256(s string) bool {
 	if len(s) != sha256.Size*2 {
 		return false
 	}

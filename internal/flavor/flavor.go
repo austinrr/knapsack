@@ -3,6 +3,7 @@ package flavor
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 )
 
@@ -72,6 +73,10 @@ func (r Range) String() string {
 var table = []struct {
 	flavor Flavor
 	client Client
+	// markers are the suffixes release assets use for this client, as in
+	// Addon-1.0-forever.zip. "classic" means Classic Era, as in the BigWigs
+	// packager's file names, not the _classic_ client.
+	markers []string
 }{
 	{Retail, Client{
 		Folder:    "_retail_",
@@ -79,35 +84,35 @@ var table = []struct {
 		Family:    FamilyMainline,
 		Interface: Range{Min: 100000, Max: NoMax},
 		Product:   "wow",
-	}},
+	}, []string{"mainline", "retail"}},
 	{Classic, Client{
 		Folder:    "_classic_",
 		GameType:  "mists",
 		Family:    FamilyClassic,
 		Interface: Range{Min: 50000, Max: 59999},
 		Product:   "wow_classic",
-	}},
+	}, []string{"mists", "mop"}},
 	{ClassicEra, Client{
 		Folder:    "_classic_era_",
 		GameType:  "vanilla",
 		Family:    FamilyClassic,
 		Interface: Range{Min: 11000, Max: 11999},
 		Product:   "wow_classic_era",
-	}},
+	}, []string{"vanilla", "classic", "era", "classic_era"}},
 	{Anniversary, Client{
 		Folder:    "_anniversary_",
 		GameType:  "tbc",
 		Family:    FamilyClassic,
 		Interface: Range{Min: 20000, Max: 29999},
 		Product:   "", // unconfirmed, see DESIGN.md §13
-	}},
+	}, []string{"tbc", "bcc"}},
 	{Forever, Client{
 		Folder:    "_forever_",
 		GameType:  "forever",
 		Family:    FamilyMainline,
 		Interface: Range{Min: 16000, Max: 16999},
 		Product:   "wowf",
-	}},
+	}, []string{"forever"}},
 }
 
 // gameTypes are the names the client recognizes in AllowLoadGameType and
@@ -124,6 +129,35 @@ var gameTypes = map[string]bool{
 // AllowLoadGameType, so validation needs to tell them apart.
 func KnownGameType(name string) bool {
 	return gameTypes[name]
+}
+
+// otherMarkers are asset suffixes for game types Knapsack has no flavor
+// for. An asset with one is for some other client, so it never counts as
+// unmarked.
+// Season of Discovery and Hardcore run on the Classic Era client but get
+// their own builds, so they're here too.
+var otherMarkers = []string{"wrath", "wotlk", "wotlkc", "cata", "cataclysm", "sod", "hardcore"}
+
+// AssetMarkers returns the suffixes that mark a release asset as built for
+// this flavor, such as "forever" in Addon-1.0-forever.zip.
+func (f Flavor) AssetMarkers() []string {
+	for _, row := range table {
+		if row.flavor == f {
+			return slices.Clone(row.markers)
+		}
+	}
+	return nil
+}
+
+// AllAssetMarkers returns every known asset suffix, for every flavor and
+// for game types Knapsack doesn't support, so an asset without one can be
+// recognized as built for any client.
+func AllAssetMarkers() []string {
+	all := slices.Clone(otherMarkers)
+	for _, row := range table {
+		all = append(all, row.markers...)
+	}
+	return all
 }
 
 // All returns every supported flavor in display order.

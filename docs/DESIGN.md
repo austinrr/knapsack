@@ -151,7 +151,7 @@ GitHub SDKs (go-github), git libraries, ORMs/SQLite.
    | `config`, `state` | `flavor`, `ref`, `atomicfile`, `tomlenc` |
    | `install` | `flavor`, `toc` |
    | `source` | `flavor`, `ref` |
-   | `source/*` | `source`, `flavor`, `httpx` |
+   | `source/*` | `source`, `flavor`, `ref`, `httpx` |
    | `app` | any of the above |
    | `cmd/knapsack`, `tui` | `app` (plus `flavor`, `ref` for parsing input) |
 
@@ -606,6 +606,16 @@ that knows about specific game versions:
 | `anniversary` | `_anniversary_` | `tbc` | `classic` | 20000–29999 | see §13 |
 | `forever` | `_forever_` | `forever` | `mainline` | 16000–16999 | `wowf` |
 
+Each row also lists the **asset markers** that name release files built for
+that client: `mainline`/`retail`, `mists`/`mop`,
+`vanilla`/`classic`/`era`/`classic_era`, `tbc`/`bcc` and `forever`. `classic`
+means Classic Era, as in the BigWigs packager's file names, not the
+`_classic_` client. `wrath`, `wotlk`, `wotlkc`, `cata`, `cataclysm`, `sod`
+and `hardcore` are known markers for clients or realms with no flavor, so
+such files are never mistaken for unmarked ones. A tag Knapsack doesn't know
+still reads as unmarked; the TOC check at install (§6.4) rejects a build for
+the wrong client either way.
+
 When Blizzard changes what a folder runs (`_classic_` has been Cataclysm and
 is now Mists), only this table changes.
 
@@ -696,13 +706,26 @@ write user-facing text.
 
 1. `GET /repos/{owner}/{repo}/releases/latest`.
 2. Choose an asset, in order:
-   1. A `.zip` whose name matches the flavor (`-forever`, `-classic`,
-      `-mainline`, …).
-   2. Exactly one `.zip` with no flavor marker.
+   1. The `.zip` whose name ends with one of the flavor's markers
+      (`-forever`, `-mists`, `-mainline`, …, after `-` or `_`). Markers are
+      in the flavor table (§6.4). Only the end counts, so
+      `Classic_Castbars-1.0.zip` isn't a classic build.
+   2. Exactly one `.zip` with no marker for any client.
    3. Otherwise, fail with `ErrNoCompatibleRelease` and list the assets seen.
-3. Use the asset's `digest` as `Release.SHA256`. It's verified on download
-   and compared with state to detect updates.
-4. Never fall back to source tarballs automatically. Mixed-TOC source trees
+      Several candidates at one step is also a failure, rather than a guess.
+
+   `-nolib` zips are skipped: they need their libraries installed
+   separately. Other assets, such as the packager's `release.json`, are
+   ignored.
+3. Use the asset's `digest` (`sha256:<hex>`) as `Release.SHA256`. It's
+   verified on download and compared with state to detect updates. Assets
+   uploaded before GitHub recorded digests have none; `SHA256` is then empty,
+   and the release can only be identified by downloading and hashing it.
+4. A 404 is `ErrNotFound` (GitHub also answers 404 for a repo with no
+   releases), 401 is `ErrUnauthorized`, and 429, or 403 with no requests left
+   or a `Retry-After`, is `ErrRateLimited`, with the reset time and, without a
+   token, a note that one raises the limit.
+5. Never fall back to source tarballs automatically. Mixed-TOC source trees
    are what caused the OpenMap problem.
 
 CurseForge projects that block third-party access are covered by the existing
@@ -1177,9 +1200,9 @@ one command group.
 - Title: `feat(source): add source registry and github source`
 - Implements: §6.1, §7 (GitHub resolution)
 - `Source` interface, `Release`, `Registry`, sentinel errors, and
-  `source/github` with asset selection and digests. GitHub token discovery
-  (`GITHUB_TOKEN`, `GH_TOKEN`, `gh auth token`) lives in `cmd/knapsack`
-  wiring and is passed in.
+  `source/github` with asset selection and digests. The token is a
+  parameter; discovering it is wiring, so it lands with the first commands
+  that need it (PR 16).
 - Done when: fixture-based tests for each asset-selection rule, 404, 401,
   rate limiting, and a missing digest.
 - Not yet: CurseForge and Wago.
@@ -1199,6 +1222,8 @@ one command group.
 - Title: `feat: add add, remove, list and info commands`
 - Implements: §8.1, §8.4, §8.6 for these four commands, and §8.3 `-p` with
   `KNAPSACK_PROFILE`
+- GitHub token discovery in `cmd/knapsack` (`GITHUB_TOKEN`, `GH_TOKEN`,
+  `gh auth token`), passed to `github.New`.
 - Commands, `rm`/`ls` aliases, table/`wide`/`json` output, the CLI
   `Reporter` (lines, or a progress bar on a TTY).
 - Done when: golden tests for each command, including errors with hints and

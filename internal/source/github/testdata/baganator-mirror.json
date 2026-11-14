@@ -1,0 +1,15 @@
+{
+    "assets": [
+        {
+            "browser_download_url": "https://github.com/austinrr/baganator-mirror/releases/download/854/Baganator-854.zip",
+            "digest": "sha256:29b37eae631a7ad40c74693312e60716732fe2136306b2d3a85c343368433c9b",
+            "name": "Baganator-854.zip"
+        },
+        {
+            "browser_download_url": "https://github.com/austinrr/baganator-mirror/releases/download/854/release.json",
+            "digest": "sha256:35ae177d448f032132a66b529cb13142273ed03ab78cb6635cc59e03a3017fbf",
+            "name": "release.json"
+        }
+    ],
+    "tag_name": "854"
+}

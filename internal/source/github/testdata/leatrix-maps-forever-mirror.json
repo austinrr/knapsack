@@ -1,0 +1,15 @@
+{
+    "assets": [
+        {
+            "browser_download_url": "https://github.com/austinrr/leatrix-maps-forever-mirror/releases/download/1.60.31/Leatrix_Maps-1.60.31-forever.zip",
+            "digest": "sha256:3f4a7e5d1519a2b99b8baa9dcddc559a2fb1e29f806621451cc1bb7255ac935a",
+            "name": "Leatrix_Maps-1.60.31-forever.zip"
+        },
+        {
+            "browser_download_url": "https://github.com/austinrr/leatrix-maps-forever-mirror/releases/download/1.60.31/release.json",
+            "digest": "sha256:78ad533b44384cfb8e28eae5adf9ad9fddf9c04f270380b9dde0f2e19a1a0db4",
+            "name": "release.json"
+        }
+    ],
+    "tag_name": "1.60.31"
+}

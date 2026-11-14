@@ -22,13 +22,13 @@ linters:
         - G304 # file paths from variables; a file manager does this by design
   exclusions:
     rules:
-      # Tests write and walk fixtures under paths they built themselves
-      # (t.TempDir, testdata/), which taint analysis (G703) and the
-      # walk-callback TOCTOU check (G122) flag. Production code is still
-      # checked.
+      # Tests write, walk and serve fixtures from paths they built
+      # themselves (t.TempDir, testdata/), which taint analysis (G703, and
+      # G705 for fake servers) and the walk-callback TOCTOU check (G122)
+      # flag. Production code is still checked.
       - path: _test\.go
         linters: [gosec]
-        text: G703|G122
+        text: G703|G705|G122
 
 formatters:
   enable:
