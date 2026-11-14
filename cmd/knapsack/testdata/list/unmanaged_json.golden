@@ -1,0 +1,30 @@
+# exit: 0
+# stdout:
+[
+  {
+    "profile": "forever",
+    "ref": "github:austinrr/baganator-mirror",
+    "status": "installed",
+    "version": "v1",
+    "installed_at": "<time>",
+    "folders": [
+      "Baganator"
+    ]
+  },
+  {
+    "profile": "forever",
+    "status": "unmanaged",
+    "folders": [
+      "LibStub"
+    ]
+  },
+  {
+    "profile": "forever",
+    "status": "unmanaged",
+    "version": "5.12.0",
+    "folders": [
+      "WeakAuras"
+    ]
+  }
+]
+# stderr:

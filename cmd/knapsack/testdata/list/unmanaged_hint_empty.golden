@@ -1,0 +1,5 @@
+# exit: 0
+# stdout:
+# stderr:
+No addons in this profile.
+2 folders in AddOns aren't managed by Knapsack; see them with --unmanaged.

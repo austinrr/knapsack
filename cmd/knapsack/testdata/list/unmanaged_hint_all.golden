@@ -1,0 +1,6 @@
+# exit: 0
+# stdout:
+PROFILE  ADDON                             STATUS     VERSION
+forever  github:austinrr/baganator-mirror  installed  v1
+# stderr:
+3 folders in AddOns aren't managed by Knapsack; see them with --unmanaged.

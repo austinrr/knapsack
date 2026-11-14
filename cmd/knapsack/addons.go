@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -161,10 +162,35 @@ func noteEmpty(cmd *cobra.Command, all bool) error {
 	return err
 }
 
-// installedJSON is one addon in list and info's JSON output.
+// addonName is how list names an addon: its ref, or for an unmanaged
+// folder, which has none, the folder.
+func addonName(in app.Installed) string {
+	if in.Status == app.StatusUnmanaged {
+		return in.Folders[0]
+	}
+	return in.Ref.String()
+}
+
+// noteUnmanaged says how many unmanaged folders list left out, and how to
+// see them, so a profile made over an existing AddOns folder doesn't look
+// empty without explanation.
+func noteUnmanaged(cmd *cobra.Command, n int) error {
+	if n == 0 {
+		return nil
+	}
+	note := fmt.Sprintf("%d folders in AddOns aren't managed by Knapsack; see them with --unmanaged.", n)
+	if n == 1 {
+		note = "1 folder in AddOns isn't managed by Knapsack; see it with --unmanaged."
+	}
+	_, err := fmt.Fprintln(cmd.ErrOrStderr(), note)
+	return err
+}
+
+// installedJSON is one addon in list and info's JSON output. Ref is empty
+// for an unmanaged folder.
 type installedJSON struct {
 	Profile     string     `json:"profile"`
-	Ref         string     `json:"ref"`
+	Ref         string     `json:"ref,omitempty"`
 	Status      string     `json:"status"`
 	Version     string     `json:"version,omitempty"`
 	InstalledAt *time.Time `json:"installed_at,omitempty"`
@@ -173,6 +199,9 @@ type installedJSON struct {
 
 func toInstalledJSON(in app.Installed) installedJSON {
 	j := installedJSON{Profile: in.Profile, Ref: in.Ref.String(), Status: string(in.Status), Version: in.Version, Folders: in.Folders}
+	if in.Status == app.StatusUnmanaged {
+		j.Ref = ""
+	}
 	if !in.InstalledAt.IsZero() {
 		t := in.InstalledAt.UTC()
 		j.InstalledAt = &t
@@ -183,15 +212,24 @@ func toInstalledJSON(in app.Installed) installedJSON {
 func newListCmd(c *cli) *cobra.Command {
 	var output string
 	var sc scope
+	var unmanaged bool
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   "List the profile's addons",
 		Long: `List the profile's addons and whether each is installed.
 
-It reads only config and state, never the network, so it's instant. An
-addon is installed, missing (in config but not installed), or not in config
-(installed, but no longer in config). Use check to see what's outdated.`,
+It reads only config, state and the AddOns folder, never the network, so
+it's instant. An addon is installed, missing (in config but not installed),
+or not in config (installed, but no longer in config). Use check to see
+what's outdated.
+
+Folders in AddOns that Knapsack didn't install, such as addons installed by
+hand or by another manager, are left alone. --unmanaged lists them too;
+add one with add --force to have Knapsack manage it.`,
+		Example: `  knapsack list
+  knapsack list -A -o wide
+  knapsack list --unmanaged`,
 		Args:    sc.args(false),
 		PreRunE: c.buildApp,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -199,9 +237,14 @@ addon is installed, missing (in config but not installed), or not in config
 			if err != nil {
 				return err
 			}
-			list, err := c.app.List(cmd.Context(), sel)
+			all, err := c.app.List(cmd.Context(), sel)
 			if err != nil {
 				return err
+			}
+			list, hidden := all, 0
+			if !unmanaged {
+				list = slices.DeleteFunc(slices.Clone(all), func(in app.Installed) bool { return in.Status == app.StatusUnmanaged })
+				hidden = len(all) - len(list)
 			}
 			w := cmd.OutOrStdout()
 			if output == "json" {
@@ -212,7 +255,10 @@ addon is installed, missing (in config but not installed), or not in config
 				return writeJSON(w, out)
 			}
 			if len(list) == 0 {
-				return noteEmpty(cmd, sc.all)
+				if err := noteEmpty(cmd, sc.all); err != nil {
+					return err
+				}
+				return noteUnmanaged(cmd, hidden)
 			}
 			tw := newTable(w)
 			out := &printer{w: tw}
@@ -229,19 +275,23 @@ addon is installed, missing (in config but not installed), or not in config
 				if sc.all {
 					out.printf("%s\t", in.Profile)
 				}
-				version := orDash(in.Version)
+				name, version := addonName(in), orDash(in.Version)
 				if wide {
-					out.printf("%s\t%s\t%s\t%s\t%s\n", in.Ref, in.Status, version, formatTime(in.InstalledAt), orDash(strings.Join(in.Folders, ",")))
+					out.printf("%s\t%s\t%s\t%s\t%s\n", name, in.Status, version, formatTime(in.InstalledAt), orDash(strings.Join(in.Folders, ",")))
 				} else {
-					out.printf("%s\t%s\t%s\n", in.Ref, in.Status, version)
+					out.printf("%s\t%s\t%s\n", name, in.Status, version)
 				}
 			}
 			if out.err != nil {
 				return out.err
 			}
-			return tw.Flush()
+			if err := tw.Flush(); err != nil {
+				return err
+			}
+			return noteUnmanaged(cmd, hidden)
 		},
 	}
+	cmd.Flags().BoolVar(&unmanaged, "unmanaged", false, "also list folders in AddOns that Knapsack didn't install")
 	addOutputFlag(cmd, &output, "wide", "json")
 	sc.addFlag(cmd)
 	c.addProfileFlag(cmd)

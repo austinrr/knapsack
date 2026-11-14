@@ -439,15 +439,30 @@ func TestListAndInfo(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Two folders installed some other way, one with a TOC. Orphan is on
+	// disk too, but state owns it.
+	for _, d := range []string{"Hand", "Loose", "Orphan"} {
+		if err := os.Mkdir(filepath.Join(e.addons, d), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(e.addons, "Hand", "Hand.toc"), []byte("## Interface: 11508\n## Version: 1.2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
 	list, err := e.app.List(context.Background(), app.Selector{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	var got []string
 	for _, in := range list {
-		got = append(got, in.Ref.String()+" "+string(in.Status))
+		name := in.Ref.String()
+		if in.Status == app.StatusUnmanaged {
+			name = strings.Join(in.Folders, ",")
+		}
+		got = append(got, strings.TrimSpace(name+" "+string(in.Status)+" "+in.Version))
 	}
-	want := []string{"github:o/details installed", "github:o/missing missing", "github:o/orphan not in config"}
+	want := []string{"github:o/details installed v1", "github:o/missing missing", "github:o/orphan not in config v0", "Hand unmanaged 1.2", "Loose unmanaged"}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("list (-want +got):\n%s", diff)
 	}

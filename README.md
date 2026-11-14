@@ -51,6 +51,11 @@ knapsack update          # install missing addons, upgrade outdated ones
 knapsack update -A       # every profile
 ```
 
+If the AddOns folder already has addons, Knapsack leaves them alone:
+`list` says how many folders it doesn't manage, and `list --unmanaged` shows
+them. To have Knapsack take one over, `add` it with `--force`, which
+replaces the folder with the release.
+
 `update` makes a profile match its config, so on a new machine,
 `config set-profile` plus `update` reinstalls everything. Releases are
 compared by checksum, not version number.
@@ -63,7 +68,7 @@ compared by checksum, not version number.
 | `remove <addon>...` (`rm`) | Uninstall addons, deleting only the folders Knapsack installed |
 | `update [addon...]` | Install missing addons and upgrade outdated ones; `--prune` also removes addons no longer in config |
 | `check [addon...]` | Show what `update` would do, without changing anything |
-| `list` (`ls`) | List the profile's addons and whether each is installed; never uses the network |
+| `list` (`ls`) | List the profile's addons and whether each is installed; never uses the network. `--unmanaged` also lists folders Knapsack didn't install |
 | `info <addon>` | Show one addon's version, folders, install time and TOC details |
 | `config set-profile <name> --path <AddOns>` | Create or change a profile |
 | `config get-profiles`, `use-profile`, `current-profile`, `delete-profile`, `view` | Manage profiles, like kubectl contexts |

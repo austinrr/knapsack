@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -29,21 +30,25 @@ const (
 	StatusInstalled   Status = "installed"     // in config and state
 	StatusMissing     Status = "missing"       // in config, never installed
 	StatusNotInConfig Status = "not in config" // installed, but not in config
+	StatusUnmanaged   Status = "unmanaged"     // a folder in AddOns no addon owns
 )
 
-// Installed is one addon in a profile, as List reports it.
+// Installed is one addon in a profile, as List reports it. For an
+// unmanaged folder, Ref and InstalledAt are zero, Folders is that one
+// folder, and Version is from its TOC.
 type Installed struct {
 	Profile     string
 	Ref         ref.Ref
 	Status      Status
-	Version     string // "" when missing
+	Version     string // "" when missing, or unknown for an unmanaged folder
 	InstalledAt time.Time
 	Folders     []string
 }
 
-// List reports the addons in each selected profile from config and state
-// alone, without the network, so it's instant (DESIGN.md §8.4). Config's
-// addons come first, in config order, then any only in state.
+// List reports the addons in each selected profile from config, state and
+// a listing of AddOns, without the network, so it's instant (DESIGN.md
+// §8.4). Config's addons come first, in config order, then any only in
+// state, then, unless sel names addons, the profile's unmanaged folders.
 func (a *App) List(ctx context.Context, sel Selector) ([]Installed, error) {
 	var out []Installed
 	err := a.eachProfile(ctx, sel.Profiles, readOnly, func(s *session) error {
@@ -53,9 +58,37 @@ func (a *App) List(ctx context.Context, sel Selector) ([]Installed, error) {
 			}
 			out = append(out, installedInfo(s, t.ref))
 		}
-		return nil
+		if len(sel.Addons) > 0 {
+			return nil
+		}
+		unmanaged, err := unmanagedFolders(s)
+		out = append(out, unmanaged...)
+		return err
 	})
 	return out, err
+}
+
+// unmanagedFolders lists the folders in the profile's AddOns that no addon
+// in state owns, with the version from each one's TOC when it has one.
+func unmanagedFolders(s *session) ([]Installed, error) {
+	var owned []string
+	for _, addon := range s.state.Addons {
+		owned = append(owned, addon.Folders...)
+	}
+	names, err := install.Unmanaged(s.addonsDir, owned)
+	if err != nil {
+		return nil, fmt.Errorf("listing AddOns: %w", err)
+	}
+	out := make([]Installed, len(names))
+	for i, name := range names {
+		out[i] = Installed{Profile: s.name, Status: StatusUnmanaged, Folders: []string{name}}
+		// A folder without a TOC for this client is still listed, as
+		// something the user put there.
+		if _, file, err := install.TOC(filepath.Join(s.addonsDir, name), s.profile.Flavor); err == nil {
+			out[i].Version = file.Get("Version")
+		}
+	}
+	return out, nil
 }
 
 func installedInfo(s *session, r ref.Ref) Installed {

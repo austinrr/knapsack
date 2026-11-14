@@ -792,7 +792,7 @@ knapsack add <ref|url>...          add to config and install
 knapsack remove <addon>...         uninstall owned folders and remove from config   (alias: rm)
 knapsack update [addon...]         install missing addons, upgrade outdated ones
 knapsack check [addon...]          show what update would do; changes nothing
-knapsack list                      installed addons; offline                       (alias: ls)
+knapsack list [--unmanaged]        installed addons; offline                       (alias: ls)
 knapsack info <addon>              ref, version, owned folders, TOC flavors, install time
 
 # Profiles
@@ -864,10 +864,16 @@ forever: 1 upgrade · retail: 1 install
   changes (install, upgrade, prune candidates) without making any.
 - **`remove`** deletes only the folders recorded as owned in state, then
   removes the addon from state and config.
-- **`list`** reads config and state only. It never touches the network, so
-  it's instant. Each addon's status is `installed`, `missing` (in config, not
-  installed) or `not in config` (in state only). Use `check` to see what's
-  outdated.
+- **`list`** reads config, state and a listing of AddOns. It never touches
+  the network, so it's instant. Each addon's status is `installed`,
+  `missing` (in config, not installed) or `not in config` (in state only).
+  Use `check` to see what's outdated. Folders in AddOns that no addon in
+  state owns are `unmanaged`: installed by hand or by another manager.
+  They're listed only with `--unmanaged` (named by folder, with the TOC's
+  `## Version`), since most users have many; otherwise a note on stderr
+  says how many there are, so a profile made over an existing AddOns
+  folder doesn't look empty without explanation. Hidden folders, files and
+  Knapsack's own working folders don't count.
 - **`config set-profile`** creates or updates a profile. If `--flavor` is
   omitted, it's inferred from the client folder in the path (`_forever_` →
   `forever`), and it's an error if it can't be. The first profile created
@@ -1313,6 +1319,8 @@ one command group.
   of `check`, and flag conflicts (`-A` with `-p`).
 - Followed by `feat(cli): show download progress on a terminal`: the
   progress bar, with byte counts from `httpx`.
+- Followed, after v0.1.0, by `feat(cli): list unmanaged folders`:
+  `list --unmanaged`, and the note when they're hidden (§8.4).
 
 #### M5 — First release
 
