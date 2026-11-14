@@ -18,6 +18,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/austinrr/knapsack/internal/paths"
@@ -58,6 +59,8 @@ type sandbox struct {
 	// none. Without a build for this platform when noBuild.
 	latest  string
 	noBuild bool
+	// ghCalls counts how often the CLI asked gh for a token.
+	ghCalls atomic.Int32
 }
 
 // bump publishes a new release, v2, of repo on the fake GitHub.
@@ -176,10 +179,10 @@ func (s *sandbox) run(args ...string) result {
 	code := run(context.Background(), expanded, env{
 		stdout: &stdout, stderr: &stderr, getenv: getenv, version: testVersion,
 		released:    !s.notReleased,
-		executable:  func() (string, error) { return s.exe, nil },
+		executable:  s.exe,
 		interactive: s.interactive,
 		githubURL:   s.github.URL,
-		ghAuthToken: func(context.Context) string { return "" },
+		ghAuthToken: func(context.Context) string { s.ghCalls.Add(1); return "" },
 	})
 	return result{Stdout: s.normalize(stdout.String()), Stderr: s.normalize(stderr.String()), Code: code}
 }

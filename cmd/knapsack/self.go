@@ -9,11 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/austinrr/knapsack/internal/app"
-	"github.com/austinrr/knapsack/internal/config"
-	"github.com/austinrr/knapsack/internal/httpx"
 	"github.com/austinrr/knapsack/internal/paths"
-	"github.com/austinrr/knapsack/internal/source/github"
-	"github.com/austinrr/knapsack/internal/state"
 )
 
 // noNotifierEnv turns off the update check, like gh's
@@ -32,8 +28,24 @@ const (
 
 // noCheck are the commands that don't start the daily check: version and
 // self-update look for themselves, and help and completion are for typing
-// commands, not running them.
+// commands, not running them. Asking a command for --help, or running one
+// that only groups others, like config or knapsack itself, which print
+// help, is help too.
 var noCheck = []string{"version", "self-update", "help", "completion", cobra.ShellCompRequestCmd, cobra.ShellCompNoDescRequestCmd}
+
+// isHelp reports whether args ask for help: -h or --help before any --,
+// where flags end.
+func isHelp(args []string) bool {
+	for _, a := range args {
+		switch a {
+		case "--":
+			return false
+		case "-h", "--help":
+			return true
+		}
+	}
+	return false
+}
 
 // startUpdateCheck starts the daily check for a newer Knapsack release,
 // in the background while the command runs (DESIGN.md §8.4). It returns
@@ -46,16 +58,21 @@ func startUpdateCheck(ctx context.Context, root *cobra.Command, args []string, c
 	if !e.interactive || e.getenv("CI") != "" || e.getenv(noNotifierEnv) != "" {
 		return func() {}
 	}
+	// Cobra adds help and completion only when it runs, so add them now
+	// for Find to see.
+	root.InitDefaultHelpCmd()
+	root.InitDefaultCompletionCmd()
 	cmd, _, err := root.Find(args)
 	b := c.selfBuild()
-	if err != nil || cmd == root || slices.Contains(noCheck, cmd.Name()) || app.UpdateHint(b) == "" {
+	if err != nil || cmd.HasSubCommands() ||
+		slices.Contains(noCheck, cmd.Name()) || isHelp(args) || app.UpdateHint(b) == "" {
 		return func() {}
 	}
 	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	found := make(chan app.Latest, 1)
 	go func() {
 		defer close(found)
-		a, err := newSelfApp(ctx, e)
+		a, err := newSelfApp(e)
 		if err != nil {
 			return
 		}
@@ -72,22 +89,15 @@ func startUpdateCheck(ctx context.Context, root *cobra.Command, args []string, c
 	}
 }
 
-// newSelfApp builds an App for the update check alone. It doesn't use
-// the cli's flags, which are still being parsed while it runs, so it
+// newSelfApp builds an App for the update check. It doesn't use the
+// cli's flags, which are still being parsed while the check runs, so it
 // can't race with them; the check needs only the cache and GitHub.
-func newSelfApp(ctx context.Context, e env) (*app.App, error) {
+func newSelfApp(e env) (*app.App, error) {
 	p, err := paths.Resolve(e.getenv)
 	if err != nil {
 		return nil, err
 	}
-	client := httpx.NewClient(e.version)
-	return app.New(app.Options{
-		Paths:    p,
-		Config:   config.NewStore(p.ConfigFile),
-		State:    state.NewStore(p.StateFile),
-		HTTP:     client,
-		Releases: github.New(client, e.githubURL, githubToken(ctx, e.getenv, e.ghAuthToken)),
-	}), nil
+	return newApp(e, p, true, nil), nil
 }
 
 // checkFromVersion is the check version makes every time it runs, unless
@@ -101,7 +111,7 @@ func checkFromVersion(cmd *cobra.Command, c *cli) {
 	}
 	ctx, cancel := context.WithTimeout(cmd.Context(), versionTimeout)
 	defer cancel()
-	a, err := newSelfApp(ctx, c.env)
+	a, err := newSelfApp(c.env)
 	var latest app.Latest
 	if err == nil {
 		latest, err = a.LatestVersion(ctx, b, 0)

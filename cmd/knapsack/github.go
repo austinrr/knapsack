@@ -2,10 +2,52 @@ package main
 
 import (
 	"context"
+	"net/http"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/austinrr/knapsack/internal/flavor"
+	"github.com/austinrr/knapsack/internal/ref"
+	"github.com/austinrr/knapsack/internal/source"
+	"github.com/austinrr/knapsack/internal/source/github"
 )
+
+// lazyGitHub is the GitHub source, built on first use. Finding the token
+// may run the GitHub CLI, so it waits until a request is really made: a
+// command that turns out not to need GitHub, like the update check
+// within its daily interval, stays instant. The token is looked up with
+// the first request's context, so Ctrl-C stops a hung gh too.
+type lazyGitHub struct {
+	client      *http.Client
+	baseURL     string
+	getenv      func(string) string
+	ghAuthToken func(context.Context) string
+
+	once sync.Once
+	src  *github.Source
+}
+
+func (l *lazyGitHub) source(ctx context.Context) *github.Source {
+	l.once.Do(func() {
+		l.src = github.New(l.client, l.baseURL, githubToken(ctx, l.getenv, l.ghAuthToken))
+	})
+	return l.src
+}
+
+// Name implements source.Source.
+func (l *lazyGitHub) Name() string { return ref.GitHub }
+
+// Resolve implements source.Source.
+func (l *lazyGitHub) Resolve(ctx context.Context, id string, f flavor.Flavor) (source.Release, error) {
+	return l.source(ctx).Resolve(ctx, id, f)
+}
+
+// LatestAssets implements app.Releases.
+func (l *lazyGitHub) LatestAssets(ctx context.Context, id string) (string, []source.Asset, error) {
+	return l.source(ctx).LatestAssets(ctx, id)
+}
 
 // githubToken finds a GitHub token the way the LemonUp fork did: GITHUB_TOKEN,
 // then GH_TOKEN, then the GitHub CLI's login. Knapsack never stores it

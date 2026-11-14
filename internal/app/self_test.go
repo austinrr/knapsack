@@ -66,26 +66,34 @@ func TestLatestVersionCaches(t *testing.T) {
 }
 
 // Being offline is recorded too, so commands don't each wait for a check
-// that fails; a cancelled check isn't.
+// that fails, and so is running out of time, as on a network that drops
+// requests. A check the user cancelled isn't.
 func TestLatestVersionRecordsFailure(t *testing.T) {
 	t.Parallel()
-	rel := &fakeReleases{err: errors.New("offline")}
-	a, _ := newSelfApp(t, rel)
+	for name, failed := range map[string]func() (context.Context, context.CancelFunc){
+		"offline":   func() (context.Context, context.CancelFunc) { return context.Background(), func() {} },
+		"timed out": func() (context.Context, context.CancelFunc) { return context.WithTimeout(context.Background(), 0) },
+	} {
+		rel := &fakeReleases{err: errors.New("offline")}
+		a, _ := newSelfApp(t, rel)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	if _, err := a.LatestVersion(ctx, released, time.Hour); err == nil {
-		t.Fatal("check succeeded")
-	}
-	if _, err := a.LatestVersion(context.Background(), released, time.Hour); err == nil {
-		t.Fatal("check succeeded")
-	}
-	if rel.asked.Load() != 2 {
-		t.Errorf("asked %d times, want 2: a cancelled check isn't recorded", rel.asked.Load())
-	}
-	got, err := a.LatestVersion(context.Background(), released, time.Hour)
-	if err != nil || got.Newer || !got.Cached || rel.asked.Load() != 2 {
-		t.Errorf("after a failed check = %+v, %v after %d requests; want a cached nothing", got, err, rel.asked.Load())
+		cancelled, cancel := context.WithCancel(context.Background())
+		cancel()
+		if _, err := a.LatestVersion(cancelled, released, time.Hour); err == nil {
+			t.Fatal("check succeeded")
+		}
+		ctx, done := failed()
+		if _, err := a.LatestVersion(ctx, released, time.Hour); err == nil {
+			t.Fatal("check succeeded")
+		}
+		done()
+		if rel.asked.Load() != 2 {
+			t.Errorf("%s: asked %d times, want 2: a cancelled check isn't recorded", name, rel.asked.Load())
+		}
+		got, err := a.LatestVersion(context.Background(), released, time.Hour)
+		if err != nil || got.Newer || !got.Cached || rel.asked.Load() != 2 {
+			t.Errorf("%s: after a failed check = %+v, %v after %d requests; want a cached nothing", name, got, err, rel.asked.Load())
+		}
 	}
 }
 
@@ -132,8 +140,12 @@ func TestSelfUpdateRefuses(t *testing.T) {
 			t.Errorf("%s: UpdateHint = %q, want %q", name, got, tc.hint)
 		}
 	}
-	if got := app.UpdateHint(app.Build{Version: "dev"}); got != "" {
-		t.Errorf("UpdateHint for a dev build = %q, want none", got)
+	// Builds from a checkout are dev builds too, whatever version Go
+	// stamps on them: go install @latest would replace work in progress.
+	for _, v := range []string{"dev", "", "v0.1.1-0.20261114183000-abcdef123456", "v0.1.0+dirty", "v0.1.1-0.20261114183000-abcdef123456+dirty"} {
+		if got := app.UpdateHint(app.Build{Version: v}); got != "" {
+			t.Errorf("UpdateHint for a %q build = %q, want none", v, got)
+		}
 	}
 }
 

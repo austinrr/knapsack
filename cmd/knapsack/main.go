@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"syscall"
 
@@ -32,8 +33,10 @@ type env struct {
 	// released is true when version was set at build time, as in a
 	// release archive (version.go).
 	released bool
-	// executable returns the running binary's path, symlinks resolved.
-	executable func() (string, error)
+	// executable is the running binary's path, symlinks resolved, or ""
+	// if it can't be found. It's resolved once, so the path self-update
+	// checks is the one it replaces.
+	executable string
 	// interactive is whether stderr is a terminal, which the update
 	// notice needs.
 	interactive bool
@@ -53,8 +56,12 @@ func main() {
 		stop()
 	}()
 
-	if exe, err := executable(); err == nil {
-		selfupdate.RemoveOld(exe) // left by a self-update on Windows
+	exe, err := executable()
+	if err != nil {
+		exe = ""
+	}
+	if exe != "" && runtime.GOOS == "windows" {
+		selfupdate.RemoveOld(exe) // only Windows' self-update leaves one
 	}
 	code := run(ctx, os.Args[1:], env{
 		stdout:      os.Stdout,
@@ -62,7 +69,7 @@ func main() {
 		getenv:      os.Getenv,
 		version:     resolveVersion(buildVersion, debug.ReadBuildInfo),
 		released:    buildVersion != "",
-		executable:  executable,
+		executable:  exe,
 		interactive: isTerminal(os.Stderr),
 
 		githubURL:   github.DefaultBaseURL,

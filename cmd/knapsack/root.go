@@ -8,7 +8,6 @@ import (
 	"github.com/austinrr/knapsack/internal/httpx"
 	"github.com/austinrr/knapsack/internal/paths"
 	"github.com/austinrr/knapsack/internal/source"
-	"github.com/austinrr/knapsack/internal/source/github"
 	"github.com/austinrr/knapsack/internal/state"
 )
 
@@ -39,8 +38,9 @@ func (c *cli) buildApp(cmd *cobra.Command, _ []string) error {
 }
 
 // buildNetApp is buildApp plus sources and an HTTP client, for commands
-// that download. Only these look for a GitHub token, which may run the
-// GitHub CLI, so offline commands stay instant.
+// that download. Only these, and the update check, look for a GitHub
+// token, which may run the GitHub CLI, and only once they make a request,
+// so offline commands stay instant.
 func (c *cli) buildNetApp(cmd *cobra.Command, _ []string) error {
 	return c.build(cmd, true)
 }
@@ -56,32 +56,32 @@ func (c *cli) build(cmd *cobra.Command, network bool) error {
 		}
 	}
 	c.progress = newReporter(cmd.ErrOrStderr(), c.verbose, c.env.getenv)
+	c.app = newApp(c.env, p, network, c.progress)
+	return nil
+}
+
+// newApp builds an App on p. With network, it gets an HTTP client and the
+// GitHub source, which looks for a token only when it first makes a
+// request, so a command that ends up not needing GitHub never runs gh.
+func newApp(e env, p paths.Paths, network bool, reporter app.Reporter) *app.App {
 	opts := app.Options{
 		Paths:    p,
 		Config:   config.NewStore(p.ConfigFile),
 		State:    state.NewStore(p.StateFile),
-		Reporter: c.progress,
+		Reporter: reporter,
 	}
 	if network {
-		opts.HTTP = httpx.NewClient(c.env.version)
-		gh := github.New(opts.HTTP, c.env.githubURL, githubToken(cmd.Context(), c.env.getenv, c.env.ghAuthToken))
+		opts.HTTP = httpx.NewClient(e.version)
+		gh := &lazyGitHub{client: opts.HTTP, baseURL: e.githubURL, getenv: e.getenv, ghAuthToken: e.ghAuthToken}
 		opts.Sources, opts.Releases = source.NewRegistry(gh), gh
 	}
-	c.app = app.New(opts)
-	return nil
+	return app.New(opts)
 }
 
 // selfBuild describes the running binary, for the update check and
 // self-update.
 func (c *cli) selfBuild() app.Build {
-	b := app.Build{Version: c.env.version, Released: c.env.released}
-	if c.env.executable == nil {
-		return b
-	}
-	if exe, err := c.env.executable(); err == nil {
-		b.Executable = exe
-	}
-	return b
+	return app.Build{Version: c.env.version, Released: c.env.released, Executable: c.env.executable}
 }
 
 // profileEnv picks the profile when -p isn't given, like kubectl's

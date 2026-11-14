@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -102,11 +103,18 @@ func PackageManager(exe string) string {
 // megabytes.
 const maxBinary = 256 << 20
 
-// ErrNoBinary means the archive has no knapsack binary at its root.
-var ErrNoBinary = errors.New("archive has no knapsack binary")
+// Errors from Replace. Match them with errors.Is.
+var (
+	// ErrNoBinary means the archive has no knapsack binary at its root.
+	ErrNoBinary = errors.New("archive has no knapsack binary")
+	// ErrOldInUse means, on Windows, that the binary an earlier update
+	// replaced is still running, so its .old file can't make way.
+	ErrOldInUse = errors.New("the previously replaced knapsack binary is still running")
+)
 
 // Replace replaces the binary at exe with the one in the release archive
-// at archivePath, keeping exe's permissions. The archive is this
+// at archivePath, with exe's permissions. The new file belongs to whoever
+// runs Replace. The archive is this
 // platform's, as AssetName names it: a .zip on Windows, else a .tar.gz;
 // the file's own name doesn't matter.
 // The new binary is written next to exe first, so a failed extraction
@@ -130,7 +138,7 @@ func Replace(exe, archivePath string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.Chmod(tmpPath, info.Mode().Perm()|0o111); err != nil {
+	if err := os.Chmod(tmpPath, info.Mode().Perm()); err != nil {
 		return err
 	}
 	return swap(exe, tmpPath, runtime.GOOS == "windows")
@@ -161,7 +169,11 @@ func swap(exe, newPath string, windows bool) error {
 		return os.Rename(newPath, exe)
 	}
 	old := OldPath(exe)
-	_ = os.Remove(old) // left by an earlier update
+	// One left by an earlier update must go first. If it can't, it's
+	// still running, and renaming exe onto it would fail less clearly.
+	if err := os.Remove(old); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("%w: remove %s: %w", ErrOldInUse, old, err)
+	}
 	if err := os.Rename(exe, old); err != nil {
 		return err
 	}
