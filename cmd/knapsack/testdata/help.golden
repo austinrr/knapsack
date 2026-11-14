@@ -15,6 +15,7 @@ Available Commands:
   info        Show details of one addon
   list        List the profile's addons
   remove      Uninstall addons and remove them from the profile
+  self-update Update knapsack to the newest release
   update      Install missing addons and upgrade outdated ones
   version     Print the knapsack version
 

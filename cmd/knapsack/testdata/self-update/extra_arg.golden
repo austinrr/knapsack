@@ -1,0 +1,4 @@
+# exit: 2
+# stdout:
+# stderr:
+error: knapsack self-update takes no arguments, got "now"

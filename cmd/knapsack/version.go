@@ -29,16 +29,20 @@ func resolveVersion(injected string, readBuildInfo func() (*debug.BuildInfo, boo
 	return "dev"
 }
 
-func newVersionCmd(version string) *cobra.Command {
+func newVersionCmd(c *cli) *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Print the knapsack version",
-		Args:  noArgs,
+		Long: `Print the knapsack version. It also checks for a newer release, and if
+there is one, says so on stderr with how to update. Set ` + noNotifierEnv + `
+to skip the check.`,
+		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			_, err := fmt.Fprintf(cmd.OutOrStdout(), "knapsack %s\n", version)
+			_, err := fmt.Fprintf(cmd.OutOrStdout(), "knapsack %s\n", c.env.version)
 			if err != nil {
 				return fmt.Errorf("write version: %w", err)
 			}
+			checkFromVersion(cmd, c)
 			return nil
 		},
 	}

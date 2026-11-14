@@ -21,6 +21,9 @@ type Options struct {
 	// Sources resolves refs to releases, and HTTP downloads them.
 	Sources *source.Registry
 	HTTP    *http.Client
+	// Releases finds Knapsack's own releases, for the update check and
+	// SelfUpdate.
+	Releases Releases
 	// Reporter receives progress events. Nil means NopReporter.
 	Reporter Reporter
 }
@@ -33,6 +36,7 @@ type App struct {
 	state    *state.Store
 	sources  *source.Registry
 	http     *http.Client
+	releases Releases
 	reporter Reporter
 }
 
@@ -48,6 +52,7 @@ func New(opts Options) *App {
 		state:    opts.State,
 		sources:  opts.Sources,
 		http:     opts.HTTP,
+		releases: opts.Releases,
 		reporter: reporter,
 	}
 }

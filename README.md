@@ -25,6 +25,15 @@ go install github.com/austinrr/knapsack/cmd/knapsack@latest
 
 Check it works with `knapsack version`.
 
+### Updating Knapsack
+
+`knapsack self-update` replaces Knapsack with the newest release, after
+checking the download's SHA-256. Once a day, any command run in a terminal
+checks for a newer release and says so on stderr; `knapsack version`
+checks every time. Set `KNAPSACK_NO_UPDATE_NOTIFIER=1` to turn the check
+off. If you installed with `go install`, run it again with `@latest`
+instead.
+
 ## Getting started
 
 Make a profile for each game client, pointing at its `Interface/AddOns`
@@ -68,11 +77,12 @@ compared by checksum, not version number.
 | `remove <addon>...` (`rm`) | Uninstall addons, deleting only the folders Knapsack installed |
 | `update [addon...]` | Install missing addons and upgrade outdated ones; `--prune` also removes addons no longer in config |
 | `check [addon...]` | Show what `update` would do, without changing anything |
-| `list` (`ls`) | List the profile's addons and whether each is installed; never uses the network. `--unmanaged` also lists folders Knapsack didn't install |
+| `list` (`ls`) | List the profile's addons and whether each is installed, without looking anything up online. `--unmanaged` also lists folders Knapsack didn't install |
 | `info <addon>` | Show one addon's version, folders, install time and TOC details |
 | `config set-profile <name> --path <AddOns>` | Create or change a profile |
 | `config get-profiles`, `use-profile`, `current-profile`, `delete-profile`, `view` | Manage profiles, like kubectl contexts |
-| `version` | Print Knapsack's version |
+| `version` | Print Knapsack's version, and say if there's a newer one |
+| `self-update` | Update Knapsack to the newest release |
 
 An addon can be named by its ref (`github:austinrr/baganator-mirror`), its
 URL, or its short name (`baganator-mirror`) when only one addon matches.

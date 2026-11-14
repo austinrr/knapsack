@@ -1,0 +1,5 @@
+# exit: 0
+# stdout:
+knapsack v0.0.0-test
+# stderr:
+v0.0.1 is available; run `go install github.com/austinrr/knapsack/cmd/knapsack@latest`.

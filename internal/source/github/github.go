@@ -61,33 +61,9 @@ const maxResponse = 4 << 20
 
 // Resolve implements source.Source. id is "owner/repo".
 func (s *Source) Resolve(ctx context.Context, id string, f flavor.Flavor) (source.Release, error) {
-	owner, repo, ok := strings.Cut(id, "/")
-	if !ok || owner == "" || repo == "" || strings.Contains(repo, "/") {
-		return source.Release{}, fmt.Errorf("github %s: want owner/repo", id)
-	}
-	endpoint := fmt.Sprintf("%s/repos/%s/%s/releases/latest", s.baseURL, url.PathEscape(owner), url.PathEscape(repo))
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	rel, err := s.latest(ctx, id)
 	if err != nil {
-		return source.Release{}, fmt.Errorf("github %s: %w", id, err)
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	if s.token != "" {
-		req.Header.Set("Authorization", "Bearer "+s.token)
-	}
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return source.Release{}, fmt.Errorf("github %s: %w", id, err)
-	}
-	defer func() { _ = resp.Body.Close() }() // read-only; nothing to flush
-	if err := checkStatus(resp, s.token != ""); err != nil {
-		return source.Release{}, fmt.Errorf("github %s: %w", id, err)
-	}
-
-	var rel release
-	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponse)).Decode(&rel); err != nil {
-		return source.Release{}, fmt.Errorf("github %s: decode release: %w", id, err)
+		return source.Release{}, err
 	}
 	a, err := chooseAsset(rel.Assets, f)
 	if err != nil {
@@ -98,6 +74,59 @@ func (s *Source) Resolve(ctx context.Context, id string, f flavor.Flavor) (sourc
 		return source.Release{}, fmt.Errorf("github %s %s: asset %s: %w", id, rel.TagName, a.Name, err)
 	}
 	return source.Release{Version: rel.TagName, DownloadURL: a.BrowserDownloadURL, SHA256: sum}, nil
+}
+
+// LatestAssets returns the newest release of id ("owner/repo") with all
+// its assets, for a program's own releases rather than an addon's: the tag
+// and an archive per platform.
+func (s *Source) LatestAssets(ctx context.Context, id string) (string, []source.Asset, error) {
+	rel, err := s.latest(ctx, id)
+	if err != nil {
+		return "", nil, err
+	}
+	assets := make([]source.Asset, len(rel.Assets))
+	for i, a := range rel.Assets {
+		sum, err := digest(a.Digest)
+		if err != nil {
+			return "", nil, fmt.Errorf("github %s %s: asset %s: %w", id, rel.TagName, a.Name, err)
+		}
+		assets[i] = source.Asset{Name: a.Name, URL: a.BrowserDownloadURL, SHA256: sum}
+	}
+	return rel.TagName, assets, nil
+}
+
+// latest fetches the newest release of id, "owner/repo". GitHub's latest
+// release is the newest that's neither a draft nor a pre-release.
+func (s *Source) latest(ctx context.Context, id string) (release, error) {
+	owner, repo, ok := strings.Cut(id, "/")
+	if !ok || owner == "" || repo == "" || strings.Contains(repo, "/") {
+		return release{}, fmt.Errorf("github %s: want owner/repo", id)
+	}
+	endpoint := fmt.Sprintf("%s/repos/%s/%s/releases/latest", s.baseURL, url.PathEscape(owner), url.PathEscape(repo))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return release{}, fmt.Errorf("github %s: %w", id, err)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	if s.token != "" {
+		req.Header.Set("Authorization", "Bearer "+s.token)
+	}
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return release{}, fmt.Errorf("github %s: %w", id, err)
+	}
+	defer func() { _ = resp.Body.Close() }() // read-only; nothing to flush
+	if err := checkStatus(resp, s.token != ""); err != nil {
+		return release{}, fmt.Errorf("github %s: %w", id, err)
+	}
+
+	var rel release
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponse)).Decode(&rel); err != nil {
+		return release{}, fmt.Errorf("github %s: decode release: %w", id, err)
+	}
+	return rel, nil
 }
 
 // checkStatus turns an unsuccessful response into a source error.

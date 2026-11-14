@@ -1,0 +1,21 @@
+# exit: 0
+# stdout:
+Replace this knapsack binary with the newest release's, after checking the
+download's SHA-256.
+
+A knapsack built with go install, or installed by a package manager, is
+updated the same way it was installed; self-update says how.
+
+Every command checks for a newer release once a day, and version every
+time, and says so on stderr. Set KNAPSACK_NO_UPDATE_NOTIFIER to stop that.
+
+Usage:
+  knapsack self-update [flags]
+
+Flags:
+  -h, --help   help for self-update
+
+Global Flags:
+      --config string   use this config file instead of the default
+  -v, --verbose         show progress and the underlying cause of errors
+# stderr:

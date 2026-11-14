@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: knapsack was installed with go install
+hint: run `go install github.com/austinrr/knapsack/cmd/knapsack@latest`

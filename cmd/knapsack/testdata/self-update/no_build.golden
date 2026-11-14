@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: knapsack v0.0.1 has no build for <platform>
+hint: build it from source with `go install github.com/austinrr/knapsack/cmd/knapsack@latest`
