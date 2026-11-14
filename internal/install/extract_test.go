@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -146,6 +147,24 @@ func TestExtractFolders(t *testing.T) {
 			wantFolders: []string{"Addon"},
 		},
 		{
+			name: "hidden folders in a wrapper",
+			entries: []entry{
+				{name: "repo-1.2/.github/workflows/ci.yml"},
+				{name: "repo-1.2/Addon/Addon.toc"},
+			},
+			wantRoot:    "repo-1.2",
+			wantFolders: []string{"Addon"},
+		},
+		{
+			name: "finder zip",
+			entries: []entry{
+				{name: "Addon/Addon.toc"},
+				{name: "__MACOSX/Addon/._Addon.toc"},
+			},
+			wantRoot:    ".",
+			wantFolders: []string{"Addon"},
+		},
+		{
 			name: "dot-slash prefix",
 			entries: []entry{
 				{name: "./"},
@@ -220,7 +239,12 @@ func TestExtractRejects(t *testing.T) {
 		{"symlink", []entry{{name: "Addon/Addon.toc"}, {name: "Addon/link", body: "/etc/passwd", mode: fs.ModeSymlink | 0o777}}, "is a symlink"},
 		{"named pipe", []entry{{name: "Addon/fifo", mode: fs.ModeNamedPipe | 0o644}}, "is a named pipe"},
 		{"duplicate entry", []entry{{name: "Addon/a.lua"}, {name: "Addon/a.lua"}}, "appears twice"},
-		{"case collision", []entry{{name: "Addon/A.lua"}, {name: "Addon/a.lua"}}, "are the same file on Windows and macOS"},
+		{"duplicate spelled two ways", []entry{{name: "Addon/a.lua"}, {name: `Addon\a.lua`}}, `"Addon/a.lua" appears twice`},
+		{"case collision", []entry{{name: "Addon/A.lua"}, {name: "Addon/a.lua"}}, "are the same path on Windows and macOS"},
+		{"folder case collision", []entry{{name: "Addon/Libs/a.lua"}, {name: "Addon/libs/b.lua"}}, `"Addon/Libs" and "Addon/libs" are the same path`},
+		{"folder entry case collision", []entry{{name: "Addon/Libs/"}, {name: "Addon/libs/"}}, "are the same path"},
+		{"file then folder", []entry{{name: "Addon/x"}, {name: "Addon/x/y.lua"}}, `"Addon/x" is both a file and a folder`},
+		{"folder then file", []entry{{name: "Addon/x/"}, {name: "Addon/x"}}, `"Addon/x" is both a file and a folder`},
 		{"empty archive", nil, "no addon folders"},
 		{"files only", []entry{{name: "README.md"}}, "no addon folders"},
 		{"toc at top level", []entry{{name: "Addon.toc"}, {name: "Libs/Lib.lua"}}, "Addon.toc isn't in an addon folder"},
@@ -235,6 +259,67 @@ func TestExtractRejects(t *testing.T) {
 			}
 			assertEmpty(t, addons)
 		})
+	}
+}
+
+// Data that fails its checksum is a bad archive, not an I/O error.
+func TestExtractCorrupt(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	w, err := zw.CreateHeader(&zip.FileHeader{Name: "Addon/Addon.toc", Method: zip.Store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write([]byte("## Interface: 16001\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	data := bytes.Replace(buf.Bytes(), []byte("16001"), []byte("16002"), 1)
+	path := filepath.Join(t.TempDir(), "addon.zip")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	addons := t.TempDir()
+	if _, err := extract(context.Background(), path, addons); !errors.Is(err, ErrBadArchive) || !errors.Is(err, zip.ErrChecksum) {
+		t.Errorf("extract error = %v, want ErrBadArchive and zip.ErrChecksum", err)
+	}
+	assertEmpty(t, addons)
+}
+
+// A file that can't be read is an I/O error, not a bad archive.
+func TestExtractMissingFile(t *testing.T) {
+	t.Parallel()
+	_, err := extract(context.Background(), filepath.Join(t.TempDir(), "gone.zip"), t.TempDir())
+	if !errors.Is(err, fs.ErrNotExist) || errors.Is(err, ErrBadArchive) {
+		t.Errorf("extract error = %v, want fs.ErrNotExist and not ErrBadArchive", err)
+	}
+}
+
+func TestExtractTooManyEntries(t *testing.T) {
+	t.Parallel()
+	entries := make([]entry, maxEntries+1)
+	for i := range entries {
+		entries[i] = entry{name: fmt.Sprintf("Addon/%d/", i)}
+	}
+	addons := t.TempDir()
+	_, err := extract(context.Background(), writeZip(t, entries...), addons)
+	if !errors.Is(err, ErrBadArchive) || !strings.Contains(err.Error(), "entries") {
+		t.Errorf("extract error = %v, want too many entries", err)
+	}
+	assertEmpty(t, addons)
+}
+
+// Cancelling stops an entry mid-copy, not only between entries.
+func TestEntryReaderCancelled(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	r := &entryReader{ctx: ctx, r: strings.NewReader("data"), name: "x"}
+	if _, err := r.Read(make([]byte, 4)); !errors.Is(err, context.Canceled) {
+		t.Errorf("Read error = %v, want context.Canceled", err)
 	}
 }
 
@@ -268,8 +353,9 @@ func TestExtractSizeLimit(t *testing.T) {
 	if _, err := extractInto(context.Background(), &zr.Reader, t.TempDir(), 120); err != nil {
 		t.Errorf("extract at exactly the limit: %v", err)
 	}
-	if _, err := extractInto(context.Background(), &zr.Reader, t.TempDir(), 119); !errors.Is(err, ErrBadArchive) {
-		t.Errorf("extract over the limit = %v, want ErrBadArchive", err)
+	_, err = extractInto(context.Background(), &zr.Reader, t.TempDir(), 119)
+	if !errors.Is(err, ErrBadArchive) || !strings.Contains(err.Error(), "more than 119 bytes") {
+		t.Errorf("extract over the limit = %v, want ErrBadArchive naming the limit", err)
 	}
 }
 
