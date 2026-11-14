@@ -22,7 +22,8 @@ const (
 	// Interface/AddOns folder yet.
 	SkipNoAddOns SkipReason = "no-addons"
 	// SkipNameTaken is a second copy of a client: the profile named after
-	// it already uses the copy in TakenBy.
+	// it already uses another folder. Err wraps a NameTakenError saying
+	// which.
 	SkipNameTaken SkipReason = "name-taken"
 	// SkipFailed is any other problem with the folder; Err says what.
 	SkipFailed SkipReason = "failed"
@@ -36,9 +37,6 @@ type AutoProfile struct {
 	// says why one wasn't instead.
 	Result SetProfileResult
 	Skip   SkipReason
-	// TakenBy is, for SkipNameTaken, the profile with the name this client
-	// would get, and TakenPath the AddOns folder it uses.
-	TakenBy, TakenPath string
 	// Err is the error that skipped it, with a hint, for SkipFailed and
 	// SkipNameTaken.
 	Err error
@@ -140,10 +138,10 @@ func (a *App) AutoProfiles(ctx context.Context, game string) (AutoProfilesResult
 		}
 		r, err := a.SetProfile(ctx, SetProfileRequest{Path: dir})
 		var ue *UserError
-		var taken *nameTakenError
+		var taken *NameTakenError
 		switch {
 		case errors.As(err, &taken):
-			p.Skip, p.TakenBy, p.TakenPath, p.Err = SkipNameTaken, taken.name, taken.path, err
+			p.Skip, p.Err = SkipNameTaken, err
 		case errors.As(err, &ue):
 			// One client can't be added; the others still can.
 			p.Skip, p.Err = SkipFailed, err
@@ -161,7 +159,7 @@ func (a *App) AutoProfiles(ctx context.Context, game string) (AutoProfilesResult
 	if !slices.ContainsFunc(done, func(p AutoProfile) bool { return p.Skip == NotSkipped }) {
 		return res, &UserError{
 			Msg:  "no profiles made: every client folder found was skipped",
-			Hint: "see why above; a client that's never been started needs its Interface/AddOns folder first",
+			Hint: "the table above says why each was skipped, and what to do about it",
 		}
 	}
 	return res, nil

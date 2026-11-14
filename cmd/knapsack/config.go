@@ -58,12 +58,14 @@ each client in it. It leaves existing profiles alone and skips clients
 that have never been started. To search one game folder, add --path; -v
 lists where it looks.
 
-To set up one client, pass its folder, such as _retail_, with --path.
-Quote it, since the usual path has spaces in it.
+To set up one client, pass its folder, such as _retail_, or its
+Interface/AddOns folder, with --path. Quote it, since the usual path has
+spaces in it.
 
 Name: leave it off, and the profile is named after its flavor (retail,
-forever), plus the test for a test client (retail-ptr). Only a second copy
-of the same client needs a name of its own.
+forever), plus the test for a test client (retail-ptr). A folder that
+already has a profile keeps it, so running this again changes nothing.
+Only a second copy of the same client needs a name of its own.
 
 Flavor: read from the client folder. Test clients such as _ptr_ and
 _classic_beta_ get their live client's flavor; pass --flavor to choose
@@ -75,7 +77,7 @@ profile you make becomes the current one.`,
 			"  knapsack config set-profile --path " + app.Quoted(app.ExampleClientFolder()) + "\n" +
 			"  knapsack config set-profile retail-test --path " + app.Quoted(filepath.Join(filepath.Dir(filepath.Dir(app.ExampleClientFolder())), "WoW Test", "_retail_")),
 		Args: func(cmd *cobra.Command, args []string) error {
-			if err := splitPath(c.rawArgs); err != nil {
+			if err := splitPath(c.rawArgs, c.env.home); err != nil {
 				return err
 			}
 			if auto {
@@ -186,12 +188,11 @@ func printAutoProfiles(out *printer, profiles []app.AutoProfile, home string) {
 			return fmt.Sprintf("[%d] %s", slices.Index(games, p.Game)+1, p.Client)
 		}
 	}
-	// inGame names the client folder an AddOns path is in, as label does,
-	// or "" when it's in none of games.
+	// inGame names the client whose AddOns folder addons is, as label
+	// does, or "" when it's none of those found.
 	inGame := func(addons string) string {
-		client := filepath.Dir(filepath.Dir(addons))
 		for _, p := range profiles {
-			if config.SamePath(filepath.Join(p.Game, p.Client), client) {
+			if sameFolder(filepath.Join(p.Game, p.Client, "Interface", "AddOns"), addons) {
 				return label(p)
 			}
 		}
@@ -218,14 +219,17 @@ func printAutoProfiles(out *printer, profiles []app.AutoProfile, home string) {
 			result = "skipped: never started, no Interface/AddOns yet"
 			unstarted = append(unstarted, p)
 		case app.SkipNameTaken:
-			where := inGame(p.TakenPath)
+			var taken *app.NameTakenError
+			_ = errors.As(p.Err, &taken) // always there for SkipNameTaken
+			where := inGame(taken.Path)
 			if where == "" {
-				where = shortPath(p.TakenPath, home)
+				where = shortPath(taken.Path, home)
 			}
-			result = fmt.Sprintf("skipped: %q already uses %s", p.TakenBy, where)
+			result = fmt.Sprintf("skipped: %q already uses %s", taken.Name, where)
 			copies = append(copies, p)
 		case app.SkipFailed:
-			result = "skipped: " + p.Err.Error()
+			// The message can hold a long path, so it goes below.
+			result = "skipped: see below"
 			failed = append(failed, p)
 		}
 		row.printf("%s\t%s\t%s\n", name, label(p), result)
@@ -243,19 +247,36 @@ func printAutoProfiles(out *printer, profiles []app.AutoProfile, home string) {
 	if len(copies) > 0 {
 		out.printf("\nA second copy of a client needs its own profile name:\n")
 		for _, p := range copies {
-			out.printf("  knapsack config set-profile <name> --path %s\n", app.Quoted(shortPath(filepath.Join(p.Game, p.Client), home)))
+			out.printf("  knapsack config set-profile <name> --path %s\n", app.Quoted(hintPath(filepath.Join(p.Game, p.Client), home)))
 		}
 		out.printf("Or use the existing profile's name there to move it to that copy.\n")
 	}
 	if len(unstarted) > 0 {
-		out.printf("\nStart a skipped client once so it makes its AddOns folder, then run this again.\n")
+		out.printf("\nStart a never-started client once, or make its Interface/AddOns folder,\nthen run this again.\n")
 	}
 	for _, p := range failed {
+		out.printf("\n%s: %s\n", label(p), p.Err)
 		var ue *app.UserError
 		if errors.As(p.Err, &ue) && ue.Hint != "" {
-			out.printf("\n%s: %s\n", label(p), ue.Hint)
+			out.printf("  hint: %s\n", ue.Hint)
 		}
 	}
+}
+
+// sameFolder reports whether a and b are the same path, ignoring case only
+// where the filesystem does, on Windows and macOS.
+func sameFolder(a, b string) bool {
+	a, b = filepath.Clean(a), filepath.Clean(b)
+	return a == b || (runtime.GOOS == "windows" || runtime.GOOS == "darwin") && strings.EqualFold(a, b)
+}
+
+// hintPath is a path for a command to copy, quoted: one under home starts
+// with $HOME, which shells expand inside double quotes, unlike ~.
+func hintPath(path, home string) string {
+	if short := shortPath(path, home); short != path {
+		return "$HOME" + strings.TrimPrefix(short, "~")
+	}
+	return path
 }
 
 // shortPath shows a path under home as ~/…, which --path accepts too.
@@ -275,12 +296,12 @@ func shortPath(path, home string) string {
 // since only their order shows which words followed --path's value: those
 // up to the next flag. They're the rest of the path unless the value is a
 // folder on its own, as with --path …\AddOns retail, a name after the path.
-func splitPath(raw []string) error {
+func splitPath(raw []string, home string) error {
 	value, rest, ok := afterFlag(raw, "--path")
 	if !ok || len(rest) == 0 {
 		return nil
 	}
-	if info, err := os.Stat(value); err == nil && info.IsDir() {
+	if info, err := os.Stat(app.ExpandHome(value, home)); err == nil && info.IsDir() {
 		return nil
 	}
 	joined := strings.Join(append([]string{value}, rest...), " ")

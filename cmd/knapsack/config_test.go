@@ -110,6 +110,8 @@ func TestConfigCommands(t *testing.T) {
 		{name: "config/set_profile_client_without_addons", after: noAddOns("_xptr_"), args: []string{"config", "set-profile", "--path", "{home}/wow/_xptr_"}},
 		// --auto makes a profile per client folder with AddOns in it.
 		{name: "config/auto", after: noAddOns("_xptr_"), args: []string{"config", "set-profile", "--auto", "--path", "{home}/wow"}},
+		// A quoted ~ path, which the shell leaves alone, then a name.
+		{name: "config/set_profile_tilde_then_name", args: []string{"config", "set-profile", "--path", "~/wow/_retail_", "main"}},
 		{name: "config/auto_again", setup: [][]string{{"config", "set-profile", "--auto", "--path", "{home}/wow"}},
 			args: []string{"config", "set-profile", "--auto", "--path", "{home}/wow"}},
 		{name: "config/auto_name_taken", setup: [][]string{{"config", "set-profile", "retail", "--path", plain, "--flavor", "retail"}},

@@ -5,7 +5,8 @@ Found World of Warcraft in <home>/fresh
 PROFILE  CLIENT    RESULT
 -        _retail_  skipped: never started, no Interface/AddOns yet
 
-Start a skipped client once so it makes its AddOns folder, then run this again.
+Start a never-started client once, or make its Interface/AddOns folder,
+then run this again.
 # stderr:
 error: no profiles made: every client folder found was skipped
-hint: see why above; a client that's never been started needs its Interface/AddOns folder first
+hint: the table above says why each was skipped, and what to do about it
