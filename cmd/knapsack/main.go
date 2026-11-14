@@ -15,8 +15,9 @@ import (
 
 // Exit codes, following the diff/grep convention (DESIGN.md §8.6).
 const (
-	exitOK    = 0
-	exitError = 2
+	exitOK      = 0
+	exitPending = 1 // check only: changes are pending
+	exitError   = 2
 )
 
 // env is everything the CLI takes from its surroundings. Tests build their
@@ -67,7 +68,11 @@ func run(ctx context.Context, args []string, e env) int {
 	root.SetOut(e.stdout)
 	root.SetErr(e.stderr)
 
-	if err := root.ExecuteContext(ctx); err != nil {
+	err := root.ExecuteContext(ctx)
+	if errors.Is(err, errPending) {
+		return exitPending
+	}
+	if err != nil {
 		// A command acting on several addons returns each failure
 		// separately, so each gets its own error and hint lines.
 		var errs addonErrors

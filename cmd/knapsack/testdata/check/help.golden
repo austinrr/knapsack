@@ -1,0 +1,27 @@
+# exit: 0
+# stdout:
+Resolve each addon's newest release, as update would, and show the
+changes it would make: install, upgrade, or prune (installed but no longer
+in config, which update removes only with --prune).
+
+It exits 0 when everything is up to date, 1 when changes are pending, and 2
+on errors, like kubectl diff.
+
+Usage:
+  knapsack check [addon...] [flags]
+
+Examples:
+  knapsack check
+  knapsack check -A
+  knapsack check baganator-mirror -o json
+
+Flags:
+  -A, --all-profiles     act on every profile
+  -h, --help             help for check
+  -o, --output format    output format: json
+  -p, --profile string   profile to act on (default $KNAPSACK_PROFILE, then the current profile)
+
+Global Flags:
+      --config string   use this config file instead of the default
+  -v, --verbose         show progress and the underlying cause of errors
+# stderr:

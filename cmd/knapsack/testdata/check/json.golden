@@ -1,0 +1,12 @@
+# exit: 1
+# stdout:
+[
+  {
+    "profile": "forever",
+    "ref": "github:austinrr/baganator-mirror",
+    "action": "upgrade",
+    "installed": "v1",
+    "available": "v2"
+  }
+]
+# stderr:

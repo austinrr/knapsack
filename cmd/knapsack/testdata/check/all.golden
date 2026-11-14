@@ -1,0 +1,8 @@
+# exit: 1
+# stdout:
+PROFILE  ADDON                             INSTALLED  AVAILABLE  ACTION
+forever  github:austinrr/baganator-mirror  v1         v2         upgrade
+retail   github:austinrr/retail-only       v1         v1         -
+
+forever: 1 upgrade · retail: up to date
+# stderr:

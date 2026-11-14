@@ -1,0 +1,6 @@
+# exit: 0
+# stdout:
+PROFILE  ADDON                             STATUS     VERSION
+forever  github:austinrr/baganator-mirror  installed  v1
+retail   github:austinrr/retail-only       installed  v1
+# stderr:

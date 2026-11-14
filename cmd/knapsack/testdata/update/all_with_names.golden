@@ -1,0 +1,4 @@
+# exit: 2
+# stdout:
+# stderr:
+error: --all-profiles can't be combined with named addons

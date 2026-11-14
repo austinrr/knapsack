@@ -1,0 +1,8 @@
+# exit: 1
+# stdout:
+ADDON                             INSTALLED  AVAILABLE  ACTION
+github:austinrr/baganator-mirror  v1         v2         upgrade
+github:austinrr/details-mirror    v1         -          prune
+
+1 upgrade, 1 prune
+# stderr:
