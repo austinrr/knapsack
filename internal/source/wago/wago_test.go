@@ -135,6 +135,23 @@ func TestKeyOnlyToWago(t *testing.T) {
 	}
 }
 
+// The same host spelled another way is still Wago's API.
+func TestKeyToWagoHowEverSpelled(t *testing.T) {
+	t.Parallel()
+	fake := &fakeWago{}
+	srv := httptest.NewTLSServer(fake)
+	defer srv.Close()
+	fake.body = `{"recent_release": {"stable": {"label": "1", "download_link": "` +
+		strings.ToUpper(srv.URL) + `/download"}}}`
+	got, err := New(srv.Client(), srv.URL, "secret").Resolve(context.Background(), "x", flavor.Retail)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Header.Get("Authorization") != "Bearer secret" {
+		t.Errorf("no key for %s: %v", got.DownloadURL, got.Header)
+	}
+}
+
 func TestResolveErrors(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -158,7 +175,9 @@ func TestResolveErrors(t *testing.T) {
 			body: `{"recent_release": {"beta": {"label": "2", "download_link": "x"}, "alpha": {"label": "3", "download_link": "y"}}}`,
 			want: source.ErrNoCompatibleRelease, msg: "no stable release for retail, only alpha, beta",
 		},
-		{name: "no link", key: "k", body: `{"recent_release": {"stable": {"label": "1"}}}`, want: source.ErrNoCompatibleRelease},
+		{name: "no link", key: "k", body: `{"recent_release": {"stable": {"label": "1"}}}`, want: source.ErrNoCompatibleRelease,
+			msg: "the stable release for retail has no download link"},
+		{name: "too large", key: "k", body: `{"description": "` + strings.Repeat("x", maxResponse) + `"}`, msg: "over 4 MiB"},
 		{name: "bad JSON", key: "k", body: `{"recent_release": "soon"}`, msg: "decode releases"},
 	}
 	for _, tt := range tests {

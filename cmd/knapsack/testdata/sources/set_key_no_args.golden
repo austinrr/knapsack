@@ -2,4 +2,4 @@
 # stdout:
 # stderr:
 error: knapsack sources set-key needs a source
-hint: for example, `knapsack sources set-key curseforge`; `knapsack sources set-key --help` shows more
+hint: for example, `knapsack sources set-key wago`; `knapsack sources set-key --help` shows more

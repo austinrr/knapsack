@@ -800,11 +800,14 @@ instawow use, which agree.
 2. `recent_release` maps a stability to that game's newest release of it.
    Only `stable` is installed, as only GitHub's latest release is, never a
    pre-release. Without one, it's `ErrNoCompatibleRelease`, naming the
-   stabilities there are. Wago sends `[]` for none.
+   stabilities there are, with a hint that only stable releases are
+   installed. Wago sends `[]` for none.
 3. The release's `label` is `Release.Version` and `download_link` the
    download. The download sends the key in the same header, as instawow
    does (WowUp adds `?token=<key>` instead), but only when the link has the
-   API's own scheme and host, so the key never goes anywhere else.
+   API's own origin (scheme, host and port, ignoring case). `httpx.Download`
+   drops it from a redirect to any other origin, where Go's default would
+   forward it to subdomains and from https to http.
 4. Wago publishes no checksum, so `Release.SHA256` is empty: `check`
    downloads the archive to compare it with state.
 5. 404 is `ErrNotFound`, 401 and 403 are `ErrUnauthorized`, 429 is

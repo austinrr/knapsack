@@ -78,8 +78,8 @@ dotfiles repo can leave them out. GitHub needs no key: Knapsack uses a token
 from GITHUB_TOKEN, GH_TOKEN or the GitHub CLI when there is one, for a
 higher rate limit, and never stores it.`,
 		Example: `  knapsack sources
-  knapsack sources set-key curseforge
-  pass show curseforge | knapsack sources set-key curseforge`,
+  knapsack sources set-key wago
+  pass show wago | knapsack sources set-key wago`,
 		Args:    subcommandArgs,
 		PreRunE: c.buildApp,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -125,8 +125,8 @@ On a terminal it asks for the key without showing it. Otherwise it reads
 the key's first line from stdin, so it can come from a password manager
 such as pass, which prints the secret first. It never takes the key as an
 argument, which would leave it in your shell history.`,
-		Example: `  knapsack sources set-key curseforge
-  pass show curseforge | knapsack sources set-key curseforge`,
+		Example: `  knapsack sources set-key wago
+  pass show wago | knapsack sources set-key wago`,
 		Args:    exactArgs("source"),
 		PreRunE: c.buildApp,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -162,7 +162,7 @@ func newUnsetKeyCmd(c *cli) *cobra.Command {
 	return &cobra.Command{
 		Use:     "unset-key <source>",
 		Short:   "Remove a source's API key from config",
-		Example: `  knapsack sources unset-key curseforge`,
+		Example: `  knapsack sources unset-key wago`,
 		Args:    exactArgs("source"),
 		PreRunE: c.buildApp,
 		RunE: func(cmd *cobra.Command, args []string) error {

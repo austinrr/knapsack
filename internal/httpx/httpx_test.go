@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	neturl "net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -75,6 +76,60 @@ func TestDownloadSendsHeader(t *testing.T) {
 	_ = os.Remove(path)
 	if got := header.Get("Authorization"); got != "Bearer key" {
 		t.Errorf("Download changed the header it was given: %q", got)
+	}
+}
+
+// A header goes along a redirect only to the same origin: never to another
+// host, as a CDN would be, where Go's own rule would send it to subdomains.
+func TestDownloadDropsHeaderOnRedirectElsewhere(t *testing.T) {
+	t.Parallel()
+	var gotElsewhere, gotHere atomic.Value
+	elsewhere, _ := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		gotElsewhere.Store(r.Header.Get("Authorization"))
+		ok(w, r)
+	})
+	var here string
+	here, _ = serve(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/away":
+			http.Redirect(w, r, elsewhere+"/file", http.StatusFound)
+		case "/stay":
+			http.Redirect(w, r, here+"/file", http.StatusFound)
+		default:
+			gotHere.Store(r.Header.Get("Authorization"))
+			ok(w, r)
+		}
+	})
+	header := http.Header{"Authorization": {"Bearer key"}}
+	for _, p := range []string{"/away", "/stay"} {
+		path, _, err := Download(context.Background(), testClient(), here+p, header, t.TempDir(), "", nil)
+		if err != nil {
+			t.Fatalf("%s: %v", p, err)
+		}
+		_ = os.Remove(path)
+	}
+	if got := gotElsewhere.Load(); got != "" {
+		t.Errorf("other origin got Authorization %q", got)
+	}
+	if got := gotHere.Load(); got != "Bearer key" {
+		t.Errorf("same origin got Authorization %q, want it kept", got)
+	}
+}
+
+func TestOrigin(t *testing.T) {
+	t.Parallel()
+	same := []string{"https://Addons.Wago.io/x", "https://addons.wago.io:443/y", "HTTPS://addons.wago.io"}
+	for _, raw := range same {
+		u, _ := neturl.Parse(raw)
+		if got := Origin(u); got != "https://addons.wago.io:443" {
+			t.Errorf("Origin(%s) = %s", raw, got)
+		}
+	}
+	for _, raw := range []string{"http://addons.wago.io", "https://addons.wago.io:8443", "https://cdn.addons.wago.io"} {
+		u, _ := neturl.Parse(raw)
+		if Origin(u) == "https://addons.wago.io:443" {
+			t.Errorf("Origin(%s) matched addons.wago.io", raw)
+		}
 	}
 }
 

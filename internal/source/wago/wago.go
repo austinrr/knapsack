@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/austinrr/knapsack/internal/flavor"
+	"github.com/austinrr/knapsack/internal/httpx"
 	"github.com/austinrr/knapsack/internal/ref"
 	"github.com/austinrr/knapsack/internal/source"
 )
@@ -27,9 +28,10 @@ const DefaultBaseURL = "https://addons.wago.io/api/external"
 type Source struct {
 	client  *http.Client
 	baseURL string
-	// origin is baseURL's scheme and host, the only place the key is sent.
-	scheme, host string
-	key          string
+	// origin is baseURL's, as httpx.Origin has it: the only place the key
+	// is sent.
+	origin string
+	key    string
 }
 
 // New returns a Source using client. baseURL is DefaultBaseURL except in
@@ -38,7 +40,7 @@ func New(client *http.Client, baseURL, key string) *Source {
 	baseURL = strings.TrimSuffix(baseURL, "/")
 	s := &Source{client: client, baseURL: baseURL, key: key}
 	if u, err := url.Parse(baseURL); err == nil {
-		s.scheme, s.host = u.Scheme, u.Host
+		s.origin = httpx.Origin(u)
 	}
 	return s
 }
@@ -94,13 +96,17 @@ func (s *Source) Resolve(ctx context.Context, id string, f flavor.Flavor) (sourc
 		return source.Release{}, fmt.Errorf("wago %s: decode releases: %w", id, err)
 	}
 	rel, ok := rels[stable]
-	if !ok || rel.DownloadLink == "" {
+	switch {
+	case !ok:
 		return source.Release{}, fmt.Errorf("wago %s: %w: %s", id, source.ErrNoCompatibleRelease, noStable(rels, f))
+	case rel.DownloadLink == "":
+		return source.Release{}, fmt.Errorf("wago %s %s: %w: the stable release for %s has no download link", id, rel.Label, source.ErrNoCompatibleRelease, f)
 	}
 	out := source.Release{Version: rel.Label, DownloadURL: rel.DownloadLink}
 	// The download needs the key too, but only Wago's own API may see it,
-	// should a link ever point somewhere else.
-	if u, err := url.Parse(rel.DownloadLink); err == nil && u.Scheme == s.scheme && u.Host == s.host && s.host != "" {
+	// should a link ever point somewhere else. httpx.Download drops it on
+	// a redirect anywhere else, too.
+	if u, err := url.Parse(rel.DownloadLink); err == nil && s.origin != "" && httpx.Origin(u) == s.origin {
 		out.Header = s.authHeader()
 	}
 	return out, nil
@@ -149,8 +155,15 @@ func (s *Source) details(ctx context.Context, id, gv string) (addon, error) {
 	if err := checkStatus(resp); err != nil {
 		return addon{}, fmt.Errorf("wago %s: %w", id, err)
 	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse+1))
+	if err != nil {
+		return addon{}, fmt.Errorf("wago %s: %w", id, err)
+	}
+	if len(body) > maxResponse {
+		return addon{}, fmt.Errorf("wago %s: API response is over %d MiB", id, maxResponse>>20)
+	}
 	var a addon
-	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponse)).Decode(&a); err != nil {
+	if err := json.Unmarshal(body, &a); err != nil {
 		return addon{}, fmt.Errorf("wago %s: decode addon: %w", id, err)
 	}
 	return a, nil

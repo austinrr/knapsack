@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/austinrr/knapsack/internal/config"
 	"github.com/austinrr/knapsack/internal/install"
 	"github.com/austinrr/knapsack/internal/ref"
 	"github.com/austinrr/knapsack/internal/source"
@@ -36,7 +37,8 @@ func explain(err error, r ref.Ref) error {
 	case errors.Is(err, source.ErrUnauthorized) && r.Source == ref.GitHub:
 		hint = "check the token Knapsack is using: GITHUB_TOKEN, GH_TOKEN or `gh auth token`"
 	case errors.Is(err, source.ErrUnauthorized):
-		hint = fmt.Sprintf("check the key%s, and set it again with `knapsack sources set-key %s`", keyPage(r.Source, " at "), r.Source)
+		hint = fmt.Sprintf("check the key%s, and set it again with `knapsack sources set-key %s`%s",
+			keyPage(r.Source, " at "), r.Source, envOverride(r.Source))
 	case errors.Is(err, source.ErrSourceNotConfigured) && builtSources[r.Source]:
 		// A built source that isn't configured is one missing its key.
 		hint = fmt.Sprintf("%s needs an API key: get one%s, then run `knapsack sources set-key %s`", r.Source, keyPage(r.Source, " from "), r.Source)
@@ -44,6 +46,8 @@ func explain(err error, r ref.Ref) error {
 		hint = fmt.Sprintf("Knapsack can't install from %s yet; `knapsack sources` shows which sources it can", r.Source)
 	case errors.Is(err, install.ErrWrongGame):
 		hint = "the release isn't built for this profile's flavor"
+	case errors.Is(err, source.ErrNoCompatibleRelease) && r.Source == ref.Wago:
+		hint = "Knapsack installs only stable releases; check the addon's page on Wago for one for this flavor"
 	case errors.Is(err, source.ErrNoCompatibleRelease):
 		hint = "the release needs exactly one file Knapsack can tell is for this flavor; check its files on the source"
 	default:
@@ -55,6 +59,17 @@ func explain(err error, r ref.Ref) error {
 // keyPages are where each keyed source's users manage their API keys.
 var keyPages = map[string]string{
 	ref.Wago: "https://addons.wago.io/account/apikeys",
+}
+
+// envOverride notes the variable that overrides the source's stored key,
+// which set-key can't fix while it's set.
+func envOverride(name string) string {
+	for _, ks := range config.KeyedSources() {
+		if ks.Name == name {
+			return fmt.Sprintf(" (or fix %s, which overrides it, if that's set)", ks.Env)
+		}
+	}
+	return ""
 }
 
 // keyPage is the source's key page after prep, for a hint, or "" when

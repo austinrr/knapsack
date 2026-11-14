@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"slices"
 	"strings"
@@ -93,6 +94,9 @@ func download(ctx context.Context, c *http.Client, url string, header http.Heade
 	for k, vs := range header {
 		req.Header[k] = slices.Clone(vs)
 	}
+	if len(header) > 0 {
+		c = keepHeaderAtOrigin(c, req.URL, header)
+	}
 	resp, err := c.Do(req)
 	if err != nil {
 		return "", "", wrap(err)
@@ -159,6 +163,45 @@ func download(ctx context.Context, c *http.Client, url string, header http.Heade
 		return "", "", fmt.Errorf("download %s: %w: got sha256 %s, want %s", url, ErrChecksum, sum, strings.ToLower(wantSHA256))
 	}
 	return f.Name(), sum, nil
+}
+
+// Origin is u's scheme, host and port, lower-cased and with the scheme's
+// default port filled in, so two spellings of one server compare equal.
+func Origin(u *neturl.URL) string {
+	scheme, port := strings.ToLower(u.Scheme), u.Port()
+	if port == "" {
+		switch scheme {
+		case "https":
+			port = "443"
+		case "http":
+			port = "80"
+		}
+	}
+	return scheme + "://" + strings.ToLower(u.Hostname()) + ":" + port
+}
+
+// keepHeaderAtOrigin returns c, changed to drop header's keys from a
+// redirect to anywhere but first's origin. Go's own rule forwards them to
+// subdomains, and from https to http, which would leak a key.
+func keepHeaderAtOrigin(c *http.Client, first *neturl.URL, header http.Header) *http.Client {
+	cc := *c
+	next := c.CheckRedirect
+	origin := Origin(first)
+	cc.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if Origin(req.URL) != origin {
+			for k := range header {
+				req.Header.Del(k)
+			}
+		}
+		if next != nil {
+			return next(req, via)
+		}
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		return nil
+	}
+	return &cc
 }
 
 // IsSHA256 reports whether s is a SHA-256 in hex, in either case. Sources
