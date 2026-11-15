@@ -1456,10 +1456,11 @@ func twoProfiles() *fake {
 }
 
 // tab, 2 and 1 switch views; the profiles view lists each profile, the
-// current one marked.
+// current one marked. No Home: ~ isn't used on Windows (app.ShortenHome),
+// so the screen would differ by OS.
 func TestProfilesView(t *testing.T) {
 	t.Parallel()
-	h := newHarness(t, twoProfiles(), Options{Home: "/home/me"})
+	h := newHarness(t, twoProfiles(), Options{})
 	h.keys("tab")
 	h.golden("profiles")
 	h.keys("1")

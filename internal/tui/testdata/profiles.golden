@@ -3,7 +3,7 @@
 ┌──────────────────────────────── profiles[2] ─────────────────────────────────┐
 │   NAME          FLAVOR    ADDONS   PATH                                      │
 │   forever (*)   forever   4        C:\Program Fi…\_forever_\Interface\AddOns │
-│   retail        retail    1        ~/Games/battle…/_retail_/Interface/AddOns │
+│   retail        retail    1        /home/me/Games…/_retail_/Interface/AddOns │
 │                                                                              │
 │                                                                              │
 │                                                                              │
