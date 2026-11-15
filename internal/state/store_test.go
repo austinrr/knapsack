@@ -33,7 +33,8 @@ func mustRef(t *testing.T, s string) ref.Ref {
 	return r
 }
 
-// sample is a State with two addons, one owning several folders.
+// sample is a State with three addons: one owning several folders, and
+// one added as another ref than it's kept as.
 func sample(t *testing.T) *state.State {
 	t.Helper()
 	st := state.New()
@@ -48,6 +49,14 @@ func sample(t *testing.T) *state.State {
 		SHA256:      strings.Repeat("1a", 32),
 		InstalledAt: time.Date(2026, 11, 13, 18, 4, 9, 0, time.UTC),
 		Folders:     []string{"Details", "Details_DataStorage", "Details_EncounterDetails"},
+	}
+	// Added by its link, kept as its project ID.
+	st.Addons[mustRef(t, "curseforge:988370")] = state.Addon{
+		Version:     "290",
+		SHA256:      strings.Repeat("7e", 32),
+		InstalledAt: time.Date(2026, 11, 15, 9, 0, 0, 0, time.UTC),
+		Folders:     []string{"Syndicator"},
+		AddedAs:     "curseforge:syndicator",
 	}
 	return st
 }
@@ -142,6 +151,7 @@ installed_at = 2026-11-13T18:04:05Z
 		{"ref not normal", "version = 1\n" + strings.Replace(addon, "github:a/b", "github:A/B", 1) + "folders = [\"B\"]\n", `"github:A/B": ref isn't in normal form (want "github:a/b")`},
 		{"bad sha", "version = 1\n" + strings.Replace(addon, "d3d3", "D3D3", 1) + "folders = [\"B\"]\n", "isn't 64 lowercase hex digits"},
 		{"no folders", "version = 1\n" + addon, "owns no folders"},
+		{"bad added_as", "version = 1\n" + addon + "folders = [\"B\"]\nadded_as = \"wago:x\"\n", `added_as "wago:x" isn't a normalized github ref`},
 		{"parent folder", "version = 1\n" + addon + "folders = [\"..\"]\n", `folder name ".." isn't allowed`},
 		{"path folder", "version = 1\n" + addon + "folders = [\"../Other\"]\n", "must be a plain name"},
 		{"trailing dot", "version = 1\n" + addon + "folders = [\"Baganator.\"]\n", "can't end in a dot or space"},

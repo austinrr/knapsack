@@ -48,14 +48,6 @@ type siteFile struct {
 	GameVersionTypeIDs []int  `json:"gameVersionTypeIds"`
 }
 
-// Files are listed newest first, a page at a time. A project's release
-// for a flavor is normally among its newest few files, but one that
-// publishes alphas often, or a file per flavor, can have many above it.
-const (
-	filesPerPage = 50
-	maxPages     = 4
-)
-
 // Resolve implements source.Source. id is the project's numeric ID, as
 // ID stores it, or a slug written in config by hand, which is looked up
 // each time.
@@ -142,13 +134,14 @@ func (w *Website) ID(ctx context.Context, id string) (string, error) {
 // when it's added, and its ID kept (DESIGN.md §7).
 func (w *Website) projectID(ctx context.Context, slug string) (string, error) {
 	endpoint := w.widgetURL + "/wow/addons/" + url.PathEscape(slug)
-	resp, err := w.get(ctx, endpoint, "application/json")
+	// CFWidget answers 202 for a project it hasn't seen yet, and has it a
+	// moment later.
+	resp, err := w.get(ctx, endpoint, "application/json", http.StatusAccepted)
 	if err != nil {
 		return "", err
 	}
 	defer func() { _ = resp.Body.Close() }() // read-only; nothing to flush
 	if resp.StatusCode == http.StatusAccepted {
-		// CFWidget answers a project it hasn't seen yet once it has it.
 		return "", fmt.Errorf("CFWidget is still looking the project up; retry in a minute")
 	}
 	var project struct {
@@ -164,8 +157,8 @@ func (w *Website) projectID(ctx context.Context, slug string) (string, error) {
 }
 
 // get fetches url from the website, turning an unsuccessful answer into
-// an error.
-func (w *Website) get(ctx context.Context, url, accept string) (*http.Response, error) {
+// an error, unless its status is one of also, which the caller handles.
+func (w *Website) get(ctx context.Context, url, accept string, also ...int) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -175,8 +168,8 @@ func (w *Website) get(ctx context.Context, url, accept string) (*http.Response, 
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode == http.StatusAccepted {
-		return resp, nil // the caller decides
+	if slices.Contains(also, resp.StatusCode) {
+		return resp, nil
 	}
 	if err := source.WebsiteStatus(resp, url); err != nil {
 		_ = resp.Body.Close()

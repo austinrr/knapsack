@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/austinrr/knapsack/internal/flavor"
@@ -35,6 +36,23 @@ var (
 	// downloaded only through the source's own app.
 	ErrNotDistributed = errors.New("the author doesn't allow other apps to download it")
 )
+
+// ErrTooLarge means a response was over the size ReadBody allows.
+var ErrTooLarge = errors.New("response too large")
+
+// ReadBody reads all of body, failing with ErrTooLarge once it's over
+// limit bytes: a source's answers are small, so a bigger one is a mistake,
+// not something to hold in memory.
+func ReadBody(body io.Reader, limit int) ([]byte, error) {
+	b, err := io.ReadAll(io.LimitReader(body, int64(limit)+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > limit {
+		return nil, fmt.Errorf("%w: it's over %d MiB", ErrTooLarge, limit>>20)
+	}
+	return b, nil
+}
 
 // WebsiteStatus turns a website's unsuccessful response to a GET of url
 // into an error, for a source read from its website rather than an API:

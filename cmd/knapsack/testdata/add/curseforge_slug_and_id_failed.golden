@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: curseforge 424242: the author doesn't allow other apps to download it
+hint: only the source's own app can install it; check whether the author publishes it on GitHub or Wago too

@@ -5,12 +5,11 @@ package curseforge
 
 import (
 	"encoding/json"
-	"fmt"
-	"io"
 	"net/http"
 	"strings"
 
 	"github.com/austinrr/knapsack/internal/flavor"
+	"github.com/austinrr/knapsack/internal/source"
 )
 
 // gameVersionTypes are CurseForge's IDs for the game each flavor runs, as
@@ -32,6 +31,15 @@ const wowGameID = 1
 // GitHub's latest release, never a pre-release.
 const releaseFile = 1
 
+// Files are listed a page at a time, the most either API gives at once. A
+// project's release for a flavor is normally among its newest few files,
+// but one that publishes alphas often, or a file per flavor, can have many
+// above it.
+const (
+	filesPerPage = 50
+	maxPages     = 4
+)
+
 // maxResponse bounds a response: a page of 50 files, or a project's page
 // on the website. Both are well under this.
 const maxResponse = 4 << 20
@@ -44,12 +52,9 @@ func isID(id string) bool {
 
 // readJSON decodes resp's body, at most maxResponse bytes, into v.
 func readJSON(resp *http.Response, v any) error {
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse+1))
+	body, err := source.ReadBody(resp.Body, maxResponse)
 	if err != nil {
 		return err
-	}
-	if len(body) > maxResponse {
-		return fmt.Errorf("the response is over %d MiB", maxResponse>>20)
 	}
 	return json.Unmarshal(body, v)
 }

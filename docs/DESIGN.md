@@ -335,6 +335,13 @@ version = "11.2.0"
 sha256 = "1ab4…"
 installed_at = 2026-11-13T18:04:09Z
 folders = ["Details", "Details_DataStorage", "Details_EncounterDetails"]
+
+[addons."curseforge:988370"]
+version = "290"
+sha256 = "7e3f…"
+installed_at = 2026-11-15T09:00:00Z
+folders = ["Syndicator"]
+added_as = "curseforge:syndicator"
 ```
 
 `version` is the schema version, for future migrations. A file with a newer
@@ -349,6 +356,13 @@ small hand-written encoder, so it stays easy to read when debugging.
   but never sorted or compared, because they don't follow one scheme.
 - Folders are names relative to the profile's AddOns path, never absolute
   paths. Deleting a profile deletes its state file.
+- **`added_as`** is the ref an addon was added as, when its source keeps
+  another ID for it (§7, CurseForge): the slug of a pasted link, say. So
+  `remove`, `update` and `info` find the addon by the link, ref or short
+  name it was added with, offline, without asking the source again. It's
+  written only when it differs, so a Knapsack older than CurseForge
+  support, which would refuse the unknown key, never meets it in a
+  profile it could otherwise read. Upgrades keep it.
 - **Loading is strict**, because `remove` deletes the folders state lists:
   folder names must be single path elements (no separators, `.` or `..`), no
   folder can belong to two addons, refs must be in normal form, and unknown
@@ -875,8 +889,11 @@ on the other sources.
 
 **The project ID is what's kept.** `add` stores `curseforge:<id>` whatever
 it's given (`source.Identifier`), so a pasted link or slug is looked up
-once, and either way of reading CurseForge can use the ref later. A slug
-written into config by hand still works, looked up on each resolve. The
+once, and either way of reading CurseForge can use the ref later. What it
+was added as is kept in state (`added_as`, §5.3), so the link or slug
+still names it. Duplicates are dropped after the lookup, so a slug and its
+ID given together are one addon. A slug written into config by hand still
+works, looked up on each resolve, and adding it again finds it there. The
 lookup is the official API's search, or for the website, CFWidget
 (below).
 
@@ -892,7 +909,10 @@ lookup is the official API's search, or for the website, CFWidget
 2. `GET https://www.curseforge.com/api/v1/mods/{id}/files?pageIndex={n}&pageSize=50&sort=dateCreated&sortDescending=true`,
    the JSON API the website lists files with, newest first. The first
    file with `releaseType` 1 and the flavor's type in `gameVersionTypeIds`
-   is the release, looking through at most 4 pages. No files at all is
+   is the release, looking through at most 4 pages. A file the author
+   allows only CurseForge's app to download isn't marked in this listing,
+   so unlike the official API, the website can't tell or refuse it: one
+   reason the official API is the default. No files at all is
    `ErrNotFound`: the API answers an unknown project with an empty list.
 3. The download is `…/mods/{id}/files/{fileId}/download`, which redirects
    to CurseForge's CDN. `displayName` is `Release.Version`. No checksum is
@@ -907,9 +927,11 @@ projects to GitHub releases.
 1. `x-api-key: <key>` on every request to `https://api.curseforge.com`.
 2. A slug's ID: `GET /v1/mods/search?gameId=1&slug={slug}`, the result with
    that exact slug. None is `ErrNotFound`.
-3. `GET /v1/mods/{id}/files?gameVersionTypeId={type}&pageSize=50`. The
-   docs don't promise an order, so the newest available release file by
-   `fileDate` is chosen.
+3. `GET /v1/mods/{id}/files?gameVersionTypeId={type}&index={n}&pageSize=50`,
+   paged until a page has an available release file, at most 4. The docs
+   don't promise an order, so the newest such file by `fileDate` is
+   chosen. The slug search sends no `classId`: the docs name none for
+   WoW's addons, and the exact slug is matched.
 4. A file without a `downloadUrl` is one whose author allows only
    CurseForge's own app to download it: `ErrNotDistributed`, whose hint
    suggests looking for it on GitHub or Wago. The CDN needs no key, so

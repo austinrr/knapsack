@@ -42,6 +42,7 @@ type fileAddon struct {
 	SHA256      string    `toml:"sha256"`
 	InstalledAt time.Time `toml:"installed_at"`
 	Folders     []string  `toml:"folders"`
+	AddedAs     string    `toml:"added_as"`
 }
 
 // Load reads and validates profile's state. A missing file isn't an error:

@@ -293,6 +293,38 @@ func TestID(t *testing.T) {
 	}
 }
 
+// The official API is paged too, until a page has a release, with each
+// page's index where the last ended.
+func TestAPIPages(t *testing.T) {
+	t.Parallel()
+	alpha := `{"id":1,"displayName":"a","releaseType":3,"isAvailable":true,"downloadUrl":"x"}`
+	full := `{"data":[` + strings.TrimSuffix(strings.Repeat(alpha+",", filesPerPage), ",") + `]}`
+	var indexes []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		indexes = append(indexes, r.URL.Query().Get("index"))
+		if r.URL.Query().Get("index") == "50" {
+			_, _ = w.Write([]byte(`{"data":[{"id":7,"displayName":"1.0","releaseType":1,"isAvailable":true,"downloadUrl":"https://cdn/x.zip"}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(full))
+	}))
+	defer srv.Close()
+	got, err := New(srv.Client(), srv.URL, "k").Resolve(context.Background(), "1", flavor.Retail)
+	if err != nil || got.Version != "1.0" || !cmp.Equal(indexes, []string{"0", "50"}) {
+		t.Errorf("Resolve = %+v, %v after pages %v; want 1.0 from index 50", got, err, indexes)
+	}
+}
+
+// Only CFWidget's lookup takes a 202, for a project it's still fetching;
+// from CurseForge it's unexpected.
+func TestWebsiteAccepted(t *testing.T) {
+	t.Parallel()
+	srv, _ := serve(t, map[string]route{"/api/v1/mods/1/files": {status: http.StatusAccepted, body: siteFiles}})
+	if _, err := NewWebsite(srv.Client(), srv.URL, srv.URL).Resolve(context.Background(), "1", flavor.Retail); !errors.Is(err, source.ErrUnexpectedWebsite) {
+		t.Errorf("err = %v, want a 202 from CurseForge to be unexpected", err)
+	}
+}
+
 // Every flavor has a game version type, and each is its own.
 func TestGameVersionTypes(t *testing.T) {
 	t.Parallel()

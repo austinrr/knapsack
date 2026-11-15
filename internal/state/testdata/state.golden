@@ -1,5 +1,12 @@
 version = 1
 
+[addons."curseforge:988370"]
+version = "290"
+sha256 = "7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e"
+installed_at = 2026-11-15T09:00:00Z
+folders = ["Syndicator"]
+added_as = "curseforge:syndicator"
+
 [addons."github:austinrr/baganator-mirror"]
 version = "851"
 sha256 = "d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3"

@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"maps"
 	"net/http"
 	"net/url"
@@ -155,12 +154,9 @@ func (s *Source) details(ctx context.Context, id, gv string) (addon, error) {
 	if err := checkStatus(resp); err != nil {
 		return addon{}, fmt.Errorf("wago %s: %w", id, err)
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse+1))
+	body, err := source.ReadBody(resp.Body, maxResponse)
 	if err != nil {
-		return addon{}, fmt.Errorf("wago %s: %w", id, err)
-	}
-	if len(body) > maxResponse {
-		return addon{}, fmt.Errorf("wago %s: API response is over %d MiB", id, maxResponse>>20)
+		return addon{}, fmt.Errorf("wago %s: API response: %w", id, err)
 	}
 	var a addon
 	if err := json.Unmarshal(body, &a); err != nil {

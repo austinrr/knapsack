@@ -3,9 +3,9 @@ package wago
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
-	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -101,12 +101,12 @@ func (w *Website) page(ctx context.Context, id string) (page, error) {
 	if err := source.WebsiteStatus(resp, endpoint); err != nil {
 		return page{}, err
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse+1))
+	body, err := source.ReadBody(resp.Body, maxResponse)
+	if errors.Is(err, source.ErrTooLarge) {
+		return page{}, fmt.Errorf("%w: the page %w", source.ErrUnexpectedWebsite, err)
+	}
 	if err != nil {
 		return page{}, err
-	}
-	if len(body) > maxResponse {
-		return page{}, fmt.Errorf("%w: the page is over %d MiB", source.ErrUnexpectedWebsite, maxResponse>>20)
 	}
 	m := dataPage.FindSubmatch(body)
 	if m == nil {

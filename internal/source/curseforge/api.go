@@ -63,18 +63,25 @@ func (s *Source) Resolve(ctx context.Context, id string, f flavor.Flavor) (sourc
 			return source.Release{}, fmt.Errorf("curseforge %s: %w", id, err)
 		}
 	}
-	var files struct {
-		Data []apiFile `json:"data"`
-	}
-	q := url.Values{"gameVersionTypeId": {strconv.Itoa(gvt)}, "pageSize": {"50"}}
-	if err := s.get(ctx, "/v1/mods/"+project+"/files?"+q.Encode(), &files); err != nil {
-		return source.Release{}, fmt.Errorf("curseforge %s: %w", id, err)
-	}
-	// The API doesn't say how it orders files, so the newest is chosen here.
+	// The API doesn't say how it orders files, so the newest release is
+	// chosen by date. Pages are read until one has a release, as a project
+	// can publish many alphas and betas between them.
 	var newest *apiFile
-	for i, file := range files.Data {
-		if file.ReleaseType == releaseFile && file.IsAvailable && (newest == nil || file.FileDate.After(newest.FileDate)) {
-			newest = &files.Data[i]
+	for page := 0; page < maxPages && newest == nil; page++ {
+		var files struct {
+			Data []apiFile `json:"data"`
+		}
+		q := url.Values{"gameVersionTypeId": {strconv.Itoa(gvt)}, "index": {strconv.Itoa(page * filesPerPage)}, "pageSize": {strconv.Itoa(filesPerPage)}}
+		if err := s.get(ctx, "/v1/mods/"+project+"/files?"+q.Encode(), &files); err != nil {
+			return source.Release{}, fmt.Errorf("curseforge %s: %w", id, err)
+		}
+		for i, file := range files.Data {
+			if file.ReleaseType == releaseFile && file.IsAvailable && (newest == nil || file.FileDate.After(newest.FileDate)) {
+				newest = &files.Data[i]
+			}
+		}
+		if len(files.Data) < filesPerPage {
+			break
 		}
 	}
 	switch {
