@@ -1,0 +1,24 @@
+ Profile: forever                                                    [1] addons
+ Path:    C:\Program Files (x86)\World of W…\_forever_\Interface\AddOns  ? help
+┌──────────────────────────────────── help ────────────────────────────────────┐
+│ Addons                                                                       │
+│   enter           describe the addon                                         │
+│   c               check every addon again                                    │
+│   /               filter by name, ref or source                              │
+│   esc             clear the filter                                           │
+│                                                                              │
+│ Describe                                                                     │
+│   esc             back to addons                                             │
+│                                                                              │
+│ Everywhere                                                                   │
+│   j k  ↓ ↑        move                                                       │
+│   g G             top, bottom                                                │
+│   ctrl+f ctrl+b   page down, up                                              │
+│   ?               this help; esc closes it                                   │
+│   q  ctrl+c       quit                                                       │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ esc close                                       5 addons · 1 update · 1 failed

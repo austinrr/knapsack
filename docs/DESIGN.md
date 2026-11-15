@@ -158,7 +158,8 @@ GitHub SDKs (go-github), git libraries, ORMs/SQLite.
    | `cmd/knapsack`, `tui` | `app`, plus `flavor` and `ref` for parsing input, and the packages `main` constructs for `app.Options` (`paths`, `config`, `state`, `httpx`, `source`, `source/github`) |
 
    Nothing imports `app` except the frontends, and `install` never touches
-   the network.
+   the network. `cmd/knapsack` also imports `tui`, to run it as
+   `knapsack tui`.
 4. **No global state.** No package-level clients, config singletons or
    `init()` side effects. Everything is constructed in `main` and passed down.
 5. **Interfaces are defined where they're used**, with one deliberate
@@ -1386,9 +1387,11 @@ does. Like the CLI, it never decides anything itself: every action is one
   with the current one bracketed and highlighted, and `? help`.
 - **Footer**: the current view's most-used keys on the left; `?` lists
   all of them. On the right, the status: counts after a check, the last
-  result, or an error with its hint, in red. A newer Knapsack release is
-  said here once, at startup, checked once a day as any command's is
-  (§8.4).
+  result, or an error with its hint, in red. When they don't all fit,
+  hints are left out whole, from the end.
+- **A newer Knapsack release** is said after quitting, by the same
+  notice as any command's (§8.4), since the daily check runs while the
+  TUI does; the TUI doesn't say it again inside.
 - **Rows** are named, ordered and labeled as in `list` (§8.4). STATUS is
   `app.Status`, with a glyph: `✓` up to date, `↑` update available, `○`
   not installed, `!` not in config, `✗` unknown, and a spinner while
@@ -1422,7 +1425,7 @@ add).
 | `j` `k`, `↓` `↑` | Move |
 | `g` / `G` | Top / bottom |
 | `ctrl-f` / `ctrl-b` | Page down / up |
-| `q`, `ctrl-c` | Quit. While a job runs, asks first; quitting cancels it, and installs in progress roll back (§9.6) |
+| `q`, `ctrl-c` | Quit. While a job that changes anything runs, asks first; quitting cancels it, and installs in progress roll back (§9.6). A read, such as a check, is just abandoned |
 
 **Addons**
 
@@ -1492,14 +1495,15 @@ import from `main`:
 type Options struct {
     // NewApp builds the App with the TUI's Reporter, which must exist
     // before the App does (app.Options.Reporter).
-    NewApp func(app.Reporter) *app.App
-    Build  app.Build // for the update notice
-    Home   string    // for shortening paths
+    NewApp  func(app.Reporter) *app.App
+    Profile string // -p or $KNAPSACK_PROFILE; "" for the current one
+    Home    string // for shortening paths
+    Running string // "v0.2.0 on linux/amd64", for report links
     // GitHubKeyFrom says where GitHub's token comes from ("GITHUB_TOKEN",
-    // "GH_TOKEN", "gh" or ""), as sources list finds it.
+    // "GH_TOKEN", "gh" or ""), as sources list finds it. (PR 25)
     GitHubKeyFrom func(context.Context) string
     // Edit runs the CLI's edit loop (§8.4, profiles edit) on a profile,
-    // with the terminal handed over to the editor.
+    // with the terminal handed over to the editor. (PR 24)
     Edit func(ctx context.Context, profile string) (saved bool, err error)
 }
 
@@ -2027,7 +2031,8 @@ one command group.
   keys, addons view without actions, describe), §9.3, §9.4 (the job
   queue, `Watcher`, what's known), §9.6 (Ctrl-C, colors), §9.7
 - The command, layout, instant list then the check, describe, filter,
-  help, `c`, quitting, and the update notice.
+  help, `c` and quitting. With no profiles, the screen names the
+  commands that make one, until the profiles view.
 - Done when: golden screens for a checked profile, a check in progress,
   an empty profile, no profiles and a too-small window; the command
   refuses a non-terminal.
