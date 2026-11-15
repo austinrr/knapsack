@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
+	"golang.org/x/text/width"
 
 	"github.com/austinrr/knapsack/internal/app"
 )
@@ -39,10 +40,12 @@ type liveTable[T any] struct {
 	waiting func(T) bool
 	profile func(T) string // the profile a row is in
 
-	spin  spinner
-	rows  []T
-	first map[string]int // the index in rows of each profile's first
-	drawn int            // lines on the screen now
+	spin    spinner
+	rows    []T
+	first   map[string]int // the index in rows of each profile's first
+	drawn   int            // lines on the screen now
+	dirty   bool           // a row changed since the last draw
+	stopped bool
 
 	tick     *ticker
 	stopOnce sync.Once
@@ -90,12 +93,20 @@ func newLiveTable[T any](w, errw io.Writer, size func() (int, int, error), spec 
 	}
 }
 
-// turn advances the spinner while any row is waiting.
+// turn advances the spinner while any row is waiting, and draws what
+// changed since the last turn. Drawing here, not as each row finishes,
+// keeps a burst of answers to one redraw a tick.
 func (t *liveTable[T]) turn() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if slices.ContainsFunc(t.rows, t.waiting) {
+	if t.stopped {
+		return
+	}
+	waiting := slices.ContainsFunc(t.rows, t.waiting)
+	if waiting {
 		t.spin.next()
+	}
+	if waiting || t.dirty {
 		t.draw()
 	}
 }
@@ -107,6 +118,9 @@ func (t *liveTable[T]) Listed(rows []T) {
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.stopped {
+		return
+	}
 	t.first[t.profile(rows[0])] = len(t.rows)
 	t.rows = append(t.rows, rows...)
 	t.draw()
@@ -116,8 +130,11 @@ func (t *liveTable[T]) Listed(rows []T) {
 func (t *liveTable[T]) Finished(profile string, i int, row T) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.stopped {
+		return
+	}
 	t.rows[t.first[profile]+i] = row
-	t.draw()
+	t.dirty = true // drawn on the next turn
 }
 
 // Event implements app.Reporter. Only warnings are shown: the spinners
@@ -130,7 +147,11 @@ func (t *liveTable[T]) Event(e app.Event) {
 	defer t.mu.Unlock()
 	t.erase()
 	_, _ = fmt.Fprintln(t.errw, warning(e)) // progress; nothing to fail for
-	t.draw()
+	if !t.stopped {
+		// After stop, the finished table is printing, so this one stays
+		// erased.
+		t.draw()
+	}
 }
 
 // stop erases the table and stops the spinner. It's safe to call more
@@ -140,6 +161,7 @@ func (t *liveTable[T]) stop() {
 		t.tick.stop() // before mu, since a turn in progress takes it
 		t.mu.Lock()
 		defer t.mu.Unlock()
+		t.stopped = true
 		t.erase()
 		if t.restore != nil {
 			t.restore()
@@ -176,12 +198,27 @@ func fit(lines []string, width, height int) []string {
 	}
 	if width > 1 {
 		for i, line := range lines {
-			if r := []rune(line); len(r) > width-1 {
-				lines[i] = string(r[:width-1])
-			}
+			lines[i] = cut(line, width-1)
 		}
 	}
 	return lines
+}
+
+// cut shortens line to at most n columns on screen. CJK characters, as
+// in a zhCN addon's title, take two columns.
+func cut(line string, n int) string {
+	cols := 0
+	for i, r := range line {
+		w := 1
+		if k := width.LookupRune(r).Kind(); k == width.EastAsianWide || k == width.EastAsianFullwidth {
+			w = 2
+		}
+		if cols+w > n {
+			return line[:i]
+		}
+		cols += w
+	}
+	return line
 }
 
 // draw writes the table over the one on screen. It's called with mu held.
@@ -197,7 +234,7 @@ func (t *liveTable[T]) draw() {
 	}
 	b.WriteString("\x1b[J") // and any lines below, from a longer table
 	_, _ = io.WriteString(t.w, b.String())
-	t.drawn = len(lines)
+	t.drawn, t.dirty = len(lines), false
 }
 
 // erase clears the table, leaving the cursor where it started. It's

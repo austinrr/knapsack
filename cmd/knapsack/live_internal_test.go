@@ -55,7 +55,11 @@ func TestLiveListRedraws(t *testing.T) {
 
 	out.Reset()
 	l.Finished("retail", 1, addon(t, "b", app.StatusUpToDate))
-	if got := out.String(); !strings.HasPrefix(got, "\r\x1b[4A") || !strings.Contains(got, "b      up to date  v1") || !strings.Contains(got, "a      * checking") {
+	if out.Len() != 0 {
+		t.Errorf("Finished drew %q, want it left for the next turn", out.String())
+	}
+	l.turn()
+	if got := out.String(); !strings.HasPrefix(got, "\r\x1b[4A") || !strings.Contains(got, "b      up to date  v1") || !strings.Contains(got, "a      + checking") {
 		t.Errorf("redraw = %q, want the cursor moved up over 4 lines and b up to date", got)
 	}
 
@@ -144,6 +148,10 @@ func TestFit(t *testing.T) {
 	if got := fit([]string{"Détails"}, 4, 0); got[0] != "Dét" {
 		t.Errorf("fit cut %q, want whole runes", got[0])
 	}
+	// Wide characters take two columns each.
+	if got := fit([]string{"大脚插件 x"}, 6, 0); got[0] != "大脚" {
+		t.Errorf("fit cut %q, want two wide characters in five columns", got[0])
+	}
 }
 
 // An unknown terminal size draws the whole table.
@@ -179,6 +187,11 @@ func TestLiveCheck(t *testing.T) {
 	plan.Action, plan.Available = app.PlanUpgrade, "v2"
 	l.Finished("retail", 0, plan)
 	out.Reset()
+	l.turn() // draws the finished row
+	if !strings.Contains(out.String(), "upgrade") {
+		t.Errorf("turn drew %q, want the finished row", out.String())
+	}
+	out.Reset()
 	l.turn()
 	if out.Len() != 0 {
 		t.Errorf("turn drew %q with nothing waiting", out.String())
@@ -206,14 +219,18 @@ func TestStatus(t *testing.T) {
 	out.Reset()
 	s.Event(app.Event{Kind: app.EventDownloading, Version: "v0.2.0"})
 	s.Event(app.Event{Kind: app.EventProgress, Version: "v0.2.0", Done: 1 << 20, Total: 2 << 20})
-	if got := out.String(); !strings.HasSuffix(got, "\r+ Downloading knapsack v0.2.0, 1.0 MiB of 2.0 MiB") {
+	if out.Len() != 0 {
+		t.Errorf("a progress event drew %q, want it left for the next turn", out.String())
+	}
+	s.turn()
+	if got := out.String(); !strings.HasSuffix(got, "\r* Downloading knapsack v0.2.0, 1.0 MiB of 2.0 MiB") {
 		t.Errorf("drew %q, want the download's progress", got)
 	}
 	out.Reset()
 	s.stop()
 	s.stop()
 	s.turn() // a tick after stop draws nothing
-	if got := out.String(); got != "\r"+spaces("+ Downloading knapsack v0.2.0, 1.0 MiB of 2.0 MiB")+"\r" {
+	if got := out.String(); got != "\r"+spaces("* Downloading knapsack v0.2.0, 1.0 MiB of 2.0 MiB")+"\r" {
 		t.Errorf("stop wrote %q, want the line erased", got)
 	}
 
@@ -238,4 +255,24 @@ func TestTicker(t *testing.T) {
 	tk.stop()
 	var none *ticker
 	none.stop()
+}
+
+// After stop, the table stays erased: a late warning prints, and nothing
+// redraws over the finished table.
+func TestLiveListAfterStop(t *testing.T) {
+	t.Parallel()
+	l, out, errOut := newTestLive(80, 24)
+	l.Listed([]app.Installed{addon(t, "a", app.StatusChecking)})
+	l.stop()
+	out.Reset()
+	l.Event(app.Event{Kind: app.EventWarned, Ref: l.rows[0].Ref, Message: "late"})
+	l.Listed([]app.Installed{addon(t, "b", app.StatusChecking)})
+	l.Finished("retail", 0, addon(t, "a", app.StatusUpToDate))
+	l.turn()
+	if out.Len() != 0 {
+		t.Errorf("drew %q after stop", out.String())
+	}
+	if !strings.Contains(errOut.String(), "late") {
+		t.Errorf("stderr = %q, want the warning", errOut.String())
+	}
 }

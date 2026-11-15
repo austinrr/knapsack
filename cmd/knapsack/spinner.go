@@ -159,7 +159,9 @@ func (s *status) turn() {
 	s.draw()
 }
 
-// set changes the message.
+// set changes the message, which shows on the next turn. A download's
+// progress sets it on every read, so drawing here would flood the
+// terminal.
 func (s *status) set(msg string) {
 	if s == nil {
 		return
@@ -167,9 +169,6 @@ func (s *status) set(msg string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.msg = msg
-	if s.visible && !s.stopped {
-		s.draw()
-	}
 }
 
 func (s *status) draw() { s.line.draw(s.spin.String() + " " + s.msg) }
@@ -198,11 +197,7 @@ func (s *status) Event(e app.Event) {
 	case app.EventDownloading:
 		s.set("Downloading knapsack " + e.Version)
 	case app.EventProgress:
-		got := formatBytes(e.Done)
-		if e.Total >= 0 {
-			got += " of " + formatBytes(e.Total)
-		}
-		s.set("Downloading knapsack " + e.Version + ", " + got)
+		s.set("Downloading knapsack " + e.Version + ", " + formatProgress(e.Done, e.Total))
 	case app.EventWarned:
 		s.mu.Lock()
 		defer s.mu.Unlock()

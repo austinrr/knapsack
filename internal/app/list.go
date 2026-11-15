@@ -137,7 +137,7 @@ func (a *App) List(ctx context.Context, sel Selector, opts ListOptions) (Listing
 			}
 		}
 		plans, at := a.planSession(s, ts)
-		addons := make([]Installed, len(ts), len(ts)+1)
+		addons := make([]Installed, len(ts))
 		for i, t := range ts {
 			// The plan already read each title.
 			addons[i] = installedInfo(s, t.ref, plans[i].Title)
@@ -164,20 +164,27 @@ func (a *App) List(ctx context.Context, sel Selector, opts ListOptions) (Listing
 // checkListed checks the addons listed for one profile, which start with
 // one for each plan, telling watch, if not nil, as each finishes.
 func (a *App) checkListed(ctx context.Context, s *session, addons []Installed, plans []Plan, at []int, watch Watcher[Installed]) {
-	if watch != nil {
-		shown := slices.Clone(addons)
-		for _, i := range at {
-			shown[i].Status = StatusChecking
-		}
-		watch.Listed(shown)
-	}
-	a.resolvePlans(ctx, s, plans, at, func(i int) {
+	pending := func(in *Installed) { in.Status = StatusChecking }
+	a.resolvePlans(ctx, s, plans, at, watched(watch, s.name, addons, at, pending, func(i int) Installed {
 		// Each addon is set by only its own check, so they don't race.
 		addons[i].withPlan(plans[i])
-		if watch != nil {
-			watch.Finished(s.name, i, addons[i])
-		}
-	})
+		return addons[i]
+	}))
+}
+
+// watched tells w, if not nil, a profile's rows, with those at the indexes
+// in at marked by pending, and returns resolvePlans' done: finish makes
+// row i final, and w is told it.
+func watched[T any](w Watcher[T], profile string, rows []T, at []int, pending func(*T), finish func(i int) T) func(int) {
+	if w == nil {
+		return func(i int) { finish(i) }
+	}
+	shown := slices.Clone(rows)
+	for _, i := range at {
+		pending(&shown[i])
+	}
+	w.Listed(shown)
+	return func(i int) { w.Finished(profile, i, finish(i)) }
 }
 
 // unmanagedInfo describes the unmanaged folders names.

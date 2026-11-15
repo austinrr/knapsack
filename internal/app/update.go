@@ -197,16 +197,8 @@ func (a *App) Check(ctx context.Context, sel Selector, opts CheckOptions) ([]Pla
 	var plans []Plan
 	err := a.eachProfile(ctx, sel.Profiles, readOnly, func(s *session) error {
 		ps, at := a.planSession(s, targets(s, sel.Addons))
-		var done func(int)
-		if w := opts.Watch; w != nil {
-			shown := slices.Clone(ps)
-			for _, i := range at {
-				shown[i].Action = PlanChecking
-			}
-			w.Listed(shown)
-			done = func(i int) { w.Finished(s.name, i, ps[i]) }
-		}
-		a.resolvePlans(ctx, s, ps, at, done)
+		pending := func(p *Plan) { p.Action = PlanChecking }
+		a.resolvePlans(ctx, s, ps, at, watched(opts.Watch, s.name, ps, at, pending, func(i int) Plan { return ps[i] }))
 		plans = append(plans, ps...)
 		return nil
 	})
