@@ -22,7 +22,8 @@ func newAddCmd(c *cli) *cobra.Command {
 		Long: `Add addons to the profile's config and install them.
 
 Each addon is a ref (github:owner/repo, wago:<id>) or its GitHub or
-addons.wago.io link. Wago needs an API key: see knapsack sources set-key.
+addons.wago.io link. Wago is read from its website, which needs no key, or
+its official API with one: see knapsack sources set-api.
 An addon already in config is left alone. Folders already in AddOns that
 no addon owns are refused unless --force is given; folders another addon
 owns are never replaced.`,

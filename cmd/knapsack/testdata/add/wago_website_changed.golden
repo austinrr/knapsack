@@ -1,0 +1,6 @@
+# exit: 2
+# stdout:
+# stderr:
+error: wago changed: unexpected answer from the website: GET <github>/wagosite/addons/changed has no data-page attribute
+hint: Knapsack reads wago's website, which may have changed since this release. `knapsack self-update` may fix it; if not, please report it with the link below, or use wago's official API, with a key: `knapsack sources set-api wago official`
+report: https://github.com/austinrr/knapsack/issues/new?body=Knapsack+couldn%27t+read+a+source%27s+website%3A%0A%0A%60%60%60%0Awago+changed%3A+unexpected+answer+from+the+website%3A+GET+<github>%2Fwagosite%2Faddons%2Fchanged+has+no+data-page+attribute%0A%60%60%60%0A%0AKnapsack+v0.0.0-test+on+testos%2Ftestarch%0A&title=Unexpected+answer+from+a+source%27s+website

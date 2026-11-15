@@ -7,9 +7,11 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"html"
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -136,6 +138,51 @@ const fakeWagoKey = "wago-key"
 // wagoKeyEnv sets the fake Wago's key in the environment.
 var wagoKeyEnv = map[string]string{"KNAPSACK_WAGO_API_KEY": fakeWagoKey}
 
+// useWagoAPI is a setup step that reads Wago through its official API, as
+// the fake API wants wagoKeyEnv.
+var useWagoAPI = []string{"sources", "set-api", "wago", "official"}
+
+// changedWagoAddon is an addon whose page on the fake Wago website isn't
+// as Knapsack knows it, as if Wago had changed it.
+const changedWagoAddon = "changed"
+
+// serveFakeWagoSite answers /wagosite/addons/<id> with the addon's page, its
+// stable release for each game version in Inertia's data-page attribute as
+// Wago's website has it, and serves its zip at /wagosite/download/<id>.zip.
+// Neither wants a key.
+func (s *sandbox) serveFakeWagoSite(w http.ResponseWriter, r *http.Request) {
+	if id, ok := strings.CutPrefix(r.URL.Path, "/wagosite/download/"); ok {
+		id = strings.TrimSuffix(id, ".zip")
+		folders, ok := fakeWagoAddons[id]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write(fakeZip(folders, s.version(id)))
+		return
+	}
+	id := strings.TrimPrefix(r.URL.Path, "/wagosite/addons/")
+	if id == changedWagoAddon {
+		_, _ = w.Write([]byte("<html><body>Wago, redesigned</body></html>"))
+		return
+	}
+	if _, ok := fakeWagoAddons[id]; !ok {
+		http.NotFound(w, r)
+		return
+	}
+	rel := map[string]string{"label": s.version(id), "download_link": "http://" + r.Host + "/wagosite/download/" + id + ".zip"}
+	data, err := json.Marshal(map[string]any{
+		"component": "Addon/AddonDetails",
+		"props": map[string]any{"metadata": map[string]any{"recent_releases": map[string]any{
+			"retail": rel, "mop": rel, "classic": rel, "bc": rel, "forever": rel,
+		}}},
+	})
+	if err != nil {
+		panic(err)
+	}
+	_, _ = fmt.Fprintf(w, `<html><body><div id="app" data-page="%s"></div></body></html>`, html.EscapeString(string(data)))
+}
+
 // serveFakeWago answers /wago/addons/<id> with the addon's stable release
 // for the game version asked for, and serves its zip at
 // /wago/download/<id>.zip. Both want the key, as Wago does.
@@ -170,14 +217,18 @@ func (s *sandbox) serveFakeWago(w http.ResponseWriter, r *http.Request) {
 
 // serveFakeGitHub answers /repos/<repo>/releases/latest with a release of
 // one zip, and serves the zip at /download/<repo>.zip. No digest is
-// published, so update and check download to compare. Under /wago, it's
-// the fake Wago instead.
+// published, so update and check download to compare. Under /wago and
+// /wagosite, it's the fake Wago's API and website instead.
 func (s *sandbox) serveFakeGitHub(w http.ResponseWriter, r *http.Request) {
 	if s.serveFakeKnapsack(w, r) {
 		return
 	}
 	if strings.HasPrefix(r.URL.Path, "/wago/") {
 		s.serveFakeWago(w, r)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/wagosite/") {
+		s.serveFakeWagoSite(w, r)
 		return
 	}
 	if repo, ok := strings.CutPrefix(r.URL.Path, "/download/"); ok {
@@ -242,6 +293,8 @@ func (s *sandbox) run(args ...string) result {
 		interactive: s.interactive,
 		githubURL:   s.github.URL,
 		wagoURL:     s.github.URL + "/wago",
+		wagoSiteURL: s.github.URL + "/wagosite",
+		platform:    "testos/testarch",
 		ghAuthToken: func(context.Context) string { s.ghCalls.Add(1); return s.ghToken },
 
 		stdin:         strings.NewReader(s.stdin),
@@ -287,6 +340,7 @@ var timestamp = regexp.MustCompile(`\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ`)
 // run.
 func (s *sandbox) normalize(out string) string {
 	out = strings.ReplaceAll(out, s.github.URL, "<github>")
+	out = strings.ReplaceAll(out, url.QueryEscape(s.github.URL), "<github>") // in an issue link
 	out = strings.ReplaceAll(out, runtime.GOOS+"/"+runtime.GOARCH, "<platform>")
 	// Hints and help show where the game usually is on this OS.
 	out = strings.ReplaceAll(out, filepath.Dir(filepath.Dir(app.ExampleClientFolder())), "<games>")

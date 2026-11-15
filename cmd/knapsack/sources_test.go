@@ -30,9 +30,29 @@ func TestSourcesCommands(t *testing.T) {
 		{name: "sources/list_gh", after: func(s *sandbox) { s.ghToken = "from-gh" }, args: []string{"sources", "list"}},
 		{name: "sources/list_json", after: setCurseForgeKey, env: map[string]string{"GH_TOKEN": "gh-env"}, args: []string{"sources", "list", "-o", "json"}},
 		{name: "sources/unknown_subcommand", args: []string{"sources", "bogus"}},
+		{name: "sources/list_official", setup: [][]string{useWagoAPI}, args: []string{"sources", "list"}},
+		{name: "sources/list_official_json", setup: [][]string{useWagoAPI}, args: []string{"sources", "list", "-o", "json"}},
+
+		// set-api
+		{name: "sources/set_api_help", args: []string{"sources", "set-api", "--help"}},
+		{name: "sources/set_api_official", args: []string{"sources", "set-api", "wago", "official"}},
+		{name: "sources/set_api_official_with_key", env: wagoKeyEnv, args: []string{"sources", "set-api", "wago", "official"}},
+		{name: "sources/set_api_unchanged", setup: [][]string{useWagoAPI}, args: []string{"sources", "set-api", "wago", "official"}},
+		{name: "sources/set_api_website", setup: [][]string{useWagoAPI}, args: []string{"sources", "set-api", "wago", "website"}},
+		{name: "sources/set_api_website_default", args: []string{"sources", "set-api", "wago", "website"}},
+		{name: "sources/set_api_not_yet", args: []string{"sources", "set-api", "curseforge", "official"}},
+		{name: "sources/set_api_bad", args: []string{"sources", "set-api", "wago", "browser"}},
+		{name: "sources/set_api_github", args: []string{"sources", "set-api", "github", "website"}},
+		{name: "sources/set_api_unknown", args: []string{"sources", "set-api", "nope", "website"}},
+		{name: "sources/set_api_no_args", args: []string{"sources", "set-api", "wago"}},
+		{name: "sources/view_api", setup: [][]string{useWagoAPI}, args: []string{"config", "view"}},
+		{name: "sources/view_api_json", setup: [][]string{useWagoAPI}, args: []string{"config", "view", "-o", "json"}},
 
 		// set-key
 		{name: "sources/set_key_piped", stdin: "cf-secret\n", args: []string{"sources", "set-key", "curseforge"}},
+		// Wago is read from its website, so the key goes unused until
+		// set-api official.
+		{name: "sources/set_key_website", stdin: "wago-secret\n", args: []string{"sources", "set-key", "wago"}},
 		{name: "sources/set_key_typed", stdin: "cf-secret", terminal: true, args: []string{"sources", "set-key", "curseforge"}},
 		{name: "sources/set_key_unchanged", after: setCurseForgeKey, stdin: "cf-secret", args: []string{"sources", "set-key", "curseforge"}},
 		{name: "sources/set_key_overridden", stdin: "cf-secret", env: map[string]string{"KNAPSACK_CURSEFORGE_API_KEY": "env"},
@@ -80,5 +100,21 @@ func TestSetKeyFile(t *testing.T) {
 	s.mustRun("sources", "unset-key", "curseforge")
 	if data, _ := os.ReadFile(path); strings.Contains(string(data), "cf-secret") {
 		t.Errorf("config still has the key after unset-key:\n%s", data)
+	}
+}
+
+// Choosing the official API writes it to config, and choosing the website,
+// the default, leaves config without the setting.
+func TestSetAPIFile(t *testing.T) {
+	t.Parallel()
+	s := newSandbox(t)
+	path := filepath.Join(s.home, "config", "config.toml")
+	s.mustRun(useWagoAPI...)
+	if data, err := os.ReadFile(path); err != nil || !strings.Contains(string(data), "[sources.wago]\napi = \"official\"\n") {
+		t.Fatalf("config = %q, %v; want api = official", data, err)
+	}
+	s.mustRun("sources", "set-api", "wago", "website")
+	if data, _ := os.ReadFile(path); strings.Contains(string(data), "sources.wago") {
+		t.Errorf("config still has a wago table:\n%s", data)
 	}
 }

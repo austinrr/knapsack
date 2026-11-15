@@ -16,7 +16,7 @@ func Marshal(c *Config) []byte {
 }
 
 // encode writes c as TOML in a fixed layout: top-level keys, then one table
-// per profile in name order, then source tables that have a key. Each addon
+// per profile in name order, then source tables that have settings. Each addon
 // is on its own line, so adding or removing one is a one-line diff.
 //
 // It's hand-written because the TOML library indents nested tables, adds an
@@ -52,12 +52,17 @@ func encode(buf *bytes.Buffer, c *Config) {
 	}
 
 	for _, ks := range keyedSources {
-		key := ks.field(&c.Sources).APIKey
-		if key == "" {
+		f := ks.field(&c.Sources)
+		if f.APIKey == "" && f.API == "" {
 			continue
 		}
 		section()
 		fmt.Fprintf(buf, "[sources.%s]\n", ks.name)
-		fmt.Fprintf(buf, "api_key = %s\n", tomlenc.Quote(key))
+		if f.API != "" {
+			fmt.Fprintf(buf, "api = %s\n", tomlenc.Quote(string(f.API)))
+		}
+		if f.APIKey != "" {
+			fmt.Fprintf(buf, "api_key = %s\n", tomlenc.Quote(f.APIKey))
+		}
 	}
 }

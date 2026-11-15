@@ -10,24 +10,28 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/austinrr/knapsack/internal/app"
+	"github.com/austinrr/knapsack/internal/config"
 )
 
 // sourceJSON is one source in `sources list -o json`.
 type sourceJSON struct {
 	Name   string `json:"name"`
 	Status string `json:"status"`
+	// API is how it's read: "official" or "website".
+	API string `json:"api"`
 	// KeyFrom is where its key or token comes from: "config", or the
 	// environment variable, or "gh" for the GitHub CLI. Omitted when none.
 	KeyFrom string `json:"key_from,omitempty"`
 }
 
-// sourceStatus is how ready a source is: "ready", "needs key", or "not
-// yet" for one Knapsack can't install from yet.
+// sourceStatus is how ready a source is: "ready", "needs key" for one read
+// through its official API without a key, or "not yet" for one Knapsack
+// can't install from yet.
 func sourceStatus(s app.SourceInfo) string {
 	switch {
 	case !s.Available:
 		return "not yet"
-	case s.NeedsKey && s.Key == app.KeyNone:
+	case !s.Ready():
 		return "needs key"
 	}
 	return "ready"
@@ -66,9 +70,15 @@ func describeKey(s app.SourceInfo, from string) string {
 func newSourcesCmd(c *cli) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "sources",
-		Short: "List addon sources and manage their API keys",
-		Long: `List the sources Knapsack installs addons from, and manage their API
-keys.
+		Short: "List addon sources and set how each is read",
+		Long: `List the sources Knapsack installs addons from, choose how each is read,
+and manage their API keys.
+
+CurseForge and Wago are read from their websites by default, as a browser
+reads them, which needs no key. Their official APIs give keys out only to
+some; with one, ` + "`knapsack sources set-api <source> official`" + ` reads the API
+instead. The website isn't an API, so it can change under Knapsack: when
+it does, the error has a link to report it.
 
 Keys are shared by every profile. They're stored in config.toml, which is
 then readable only by you, and an environment variable overrides each one
@@ -77,7 +87,7 @@ dotfiles repo can leave them out. GitHub needs no key: Knapsack uses a token
 from GITHUB_TOKEN, GH_TOKEN or the GitHub CLI when there is one, for a
 higher rate limit, and never stores it.`,
 	}
-	return c.groupCmd(cmd, newSourcesListCmd(c), newSetKeyCmd(c), newUnsetKeyCmd(c))
+	return c.groupCmd(cmd, newSourcesListCmd(c), newSetAPICmd(c), newSetKeyCmd(c), newUnsetKeyCmd(c))
 }
 
 func newSourcesListCmd(c *cli) *cobra.Command {
@@ -85,12 +95,14 @@ func newSourcesListCmd(c *cli) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
-		Short:   "List sources, whether each is ready, and where its key comes from",
+		Short:   "List sources, how each is read, and whether it's ready",
 		Long: `List the sources Knapsack installs addons from.
 
-STATUS is ready, needs key (set one with ` + "`knapsack sources set-key`" + `), or
-not yet for a source Knapsack can't install from yet. KEY says where the
-key comes from: config, or the environment variable that overrides it.
+STATUS is ready; needs key, for a source read through its official API
+without one (set one with ` + "`knapsack sources set-key`" + `); or not yet, for a
+source Knapsack can't install from yet. API is how it's read: website or
+official (` + "`knapsack sources set-api`" + `). KEY says where the key comes
+from: config, or the environment variable that overrides it.
 GitHub needs none, but uses a token from GITHUB_TOKEN, GH_TOKEN or the
 GitHub CLI when there is one, for a higher rate limit.`,
 		Example: `  knapsack sources list
@@ -105,15 +117,15 @@ GitHub CLI when there is one, for a higher rate limit.`,
 			if output == "json" {
 				out := make([]sourceJSON, len(sources))
 				for i, s := range sources {
-					out[i] = sourceJSON{Name: s.Name, Status: sourceStatus(s), KeyFrom: keyFrom(cmd.Context(), c.env, s)}
+					out[i] = sourceJSON{Name: s.Name, Status: sourceStatus(s), API: string(s.API), KeyFrom: keyFrom(cmd.Context(), c.env, s)}
 				}
 				return writeJSON(w, out)
 			}
 			tw := newTable(w)
 			out := &printer{w: tw}
-			out.printf("NAME\tSTATUS\tKEY\n")
+			out.printf("NAME\tSTATUS\tAPI\tKEY\n")
 			for _, s := range sources {
-				out.printf("%s\t%s\t%s\n", s.Name, sourceStatus(s), describeKey(s, keyFrom(cmd.Context(), c.env, s)))
+				out.printf("%s\t%s\t%s\t%s\n", s.Name, sourceStatus(s), s.API, describeKey(s, keyFrom(cmd.Context(), c.env, s)))
 			}
 			if out.err != nil {
 				return out.err
@@ -123,6 +135,57 @@ GitHub CLI when there is one, for a higher rate limit.`,
 	}
 	addOutputFlag(cmd, &output, "json")
 	return cmd
+}
+
+func newSetAPICmd(c *cli) *cobra.Command {
+	return &cobra.Command{
+		Use:   "set-api <source> <website|official>",
+		Short: "Choose whether a source is read from its website or its official API",
+		Long: `Choose how a source is read, for every profile.
+
+website, the default, reads the source's website as a browser does, and
+needs no key. official reads its official API, which needs an API key
+(` + "`knapsack sources set-key`" + `); without one, commands fail until it's set.`,
+		Example: `  knapsack sources set-api wago official
+  knapsack sources set-api wago website`,
+		Args:      twoArgs("source", "api"),
+		ValidArgs: []string{"curseforge", "wago"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			api, err := config.ParseAPI(args[1])
+			if err != nil {
+				return &app.UserError{Msg: err.Error(), Hint: "for example, `knapsack sources set-api " + args[0] + " official`"}
+			}
+			res, err := c.app.SetSourceAPI(cmd.Context(), args[0], api)
+			if err != nil {
+				return err
+			}
+			out := &printer{w: cmd.OutOrStdout()}
+			now := "now"
+			if !res.Changed {
+				now = "already"
+			}
+			out.printf("%s is %s read from its %s.\n", args[0], now, apiNoun(api))
+			if out.err != nil {
+				return out.err
+			}
+			w := cmd.ErrOrStderr()
+			switch {
+			case !res.Available:
+				_, err = fmt.Fprintf(w, "Knapsack can't install from %s yet; it will use this once it can.\n", args[0])
+			case res.NeedsKey:
+				_, err = fmt.Fprintf(w, "The official API needs a key: set one with `knapsack sources set-key %s`.\n", args[0])
+			}
+			return err
+		},
+	}
+}
+
+// apiNoun names api in a sentence: "website", or "official API".
+func apiNoun(api config.API) string {
+	if api == config.APIOfficial {
+		return "official API"
+	}
+	return "website"
 }
 
 // maxKey bounds what set-key reads from stdin; API keys are short.
@@ -213,11 +276,14 @@ func noteKey(cmd *cobra.Command, name string, res app.SetSourceKeyResult, set bo
 			return err
 		}
 	}
-	if set && !res.Available {
-		_, err := fmt.Fprintf(w, "Knapsack can't install from %s yet; it will use the key once it can.\n", name)
-		return err
+	var err error
+	switch {
+	case set && !res.Available:
+		_, err = fmt.Fprintf(w, "Knapsack can't install from %s yet; it will use the key once it can.\n", name)
+	case set && res.Website:
+		_, err = fmt.Fprintf(w, "%s is read from its website, which needs no key; `knapsack sources set-api %s official` uses the key.\n", name, name)
 	}
-	return nil
+	return err
 }
 
 // readKey gets the key for source: typed at a prompt that doesn't echo it

@@ -1,0 +1,7 @@
+# exit: 0
+# stdout:
+ADDON      STATUS      VERSION  SOURCE
+Baganator  up to date  v1       github
+Plumber    up to date  v1       wago
+# stderr:
+Profile forever:

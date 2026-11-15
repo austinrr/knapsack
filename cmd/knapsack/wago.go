@@ -14,27 +14,34 @@ import (
 	"github.com/austinrr/knapsack/internal/source/wago"
 )
 
-// lazyWago is the Wago source, built on first use with the API key from
+// lazyWago is the Wago source, built on first use as config says: reading
+// Wago's website, or its official API with the key from
 // KNAPSACK_WAGO_API_KEY or config, so a command with no Wago addons never
-// reads it. Without a key, resolving fails with ErrSourceNotConfigured.
-// Config is read again for it, rather than passed from the App's session:
-// sources are built before any command loads config.
+// reads them. Through the API without a key, resolving fails with
+// ErrSourceNotConfigured. Config is read again for it, rather than passed
+// from the App's session: sources are built before any command loads
+// config.
 type lazyWago struct {
 	client  *http.Client
-	baseURL string
+	baseURL string // the API's
+	siteURL string // the website's
 	config  *config.Store
 	getenv  func(string) string
 
 	once sync.Once
-	src  *wago.Source
+	src  source.Source
 	err  error
 }
 
-func (l *lazyWago) source() (*wago.Source, error) {
+func (l *lazyWago) source() (source.Source, error) {
 	l.once.Do(func() {
 		c, err := l.config.Load()
 		if err != nil {
-			l.err = fmt.Errorf("read the Wago API key: %w", err)
+			l.err = fmt.Errorf("read Wago's settings: %w", err)
+			return
+		}
+		if c.API(ref.Wago) == config.APIWebsite {
+			l.src = wago.NewWebsite(l.client, l.siteURL)
 			return
 		}
 		// Trimmed as GitHub's token is: a key from a file ends in a newline.

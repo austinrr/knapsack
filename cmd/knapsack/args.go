@@ -54,6 +54,20 @@ func exactArgs(what string) cobra.PositionalArgs {
 	}
 }
 
+// twoArgs is the Args validator for leaf commands that take exactly two
+// positional arguments, described by first and second.
+func twoArgs(first, second string) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		switch {
+		case len(args) < 2:
+			return missingArgs(cmd, fmt.Sprintf("%s needs %s %s and %s %s", cmd.CommandPath(), article(first), first, article(second), second))
+		case len(args) > 2:
+			return fmt.Errorf("%s takes %s %s and %s %s, got %d arguments", cmd.CommandPath(), article(first), first, article(second), second, len(args))
+		}
+		return nil
+	}
+}
+
 // maxArgs is the Args validator for leaf commands that take at most one
 // positional argument, described by what.
 func maxArgs(what string) cobra.PositionalArgs {

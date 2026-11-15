@@ -1,7 +1,13 @@
 # exit: 0
 # stdout:
-List the sources Knapsack installs addons from, and manage their API
-keys.
+List the sources Knapsack installs addons from, choose how each is read,
+and manage their API keys.
+
+CurseForge and Wago are read from their websites by default, as a browser
+reads them, which needs no key. Their official APIs give keys out only to
+some; with one, `knapsack sources set-api <source> official` reads the API
+instead. The website isn't an API, so it can change under Knapsack: when
+it does, the error has a link to report it.
 
 Keys are shared by every profile. They're stored in config.toml, which is
 then readable only by you, and an environment variable overrides each one
@@ -15,7 +21,8 @@ Usage:
   knapsack sources [command]
 
 Available Commands:
-  list        List sources, whether each is ready, and where its key comes from
+  list        List sources, how each is read, and whether it's ready
+  set-api     Choose whether a source is read from its website or its official API
   set-key     Store a source's API key
   unset-key   Remove a source's API key from config
 

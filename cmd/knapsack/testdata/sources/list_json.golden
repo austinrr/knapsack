@@ -4,16 +4,19 @@
   {
     "name": "github",
     "status": "ready",
+    "api": "official",
     "key_from": "GH_TOKEN"
   },
   {
     "name": "curseforge",
     "status": "not yet",
+    "api": "website",
     "key_from": "config"
   },
   {
     "name": "wago",
-    "status": "needs key"
+    "status": "ready",
+    "api": "website"
   }
 ]
 # stderr:

@@ -41,6 +41,16 @@ type SourceInfo struct {
 	// config, for a source that takes one.
 	Key KeyOrigin
 	Env string
+	// API is how it's read: through its official API, which needs the
+	// key, or from its website. GitHub is always read through its API.
+	API config.API
+}
+
+// Ready reports whether the source can resolve addons as it's set up:
+// it's built, and has a key if it's read through an API that needs one.
+func (s SourceInfo) Ready() bool {
+	needsKey := s.NeedsKey && s.API == config.APIOfficial
+	return s.Available && (!needsKey || s.Key != KeyNone)
 }
 
 // Sources lists every source Knapsack knows, GitHub first, then those
@@ -54,11 +64,11 @@ func (a *App) Sources(ctx context.Context) ([]SourceInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := []SourceInfo{{Name: ref.GitHub, Available: builtSources[ref.GitHub]}}
+	out := []SourceInfo{{Name: ref.GitHub, Available: builtSources[ref.GitHub], API: c.API(ref.GitHub)}}
 	for _, ks := range config.KeyedSources() {
 		out = append(out, SourceInfo{
 			Name: ks.Name, Available: builtSources[ks.Name], NeedsKey: true,
-			Key: KeyOrigin(c.KeyOrigin(ks.Name, a.getenv)), Env: ks.Env,
+			Key: KeyOrigin(c.KeyOrigin(ks.Name, a.getenv)), Env: ks.Env, API: c.API(ks.Name),
 		})
 	}
 	return out, nil
@@ -75,6 +85,9 @@ type SetSourceKeyResult struct {
 	Env        string
 	// Available is whether Knapsack can install from the source yet.
 	Available bool
+	// Website is true when the source is read from its website, which
+	// doesn't use the key.
+	Website bool
 }
 
 // SetSourceKey stores the API key for a source in config, shared by every
@@ -99,9 +112,50 @@ func (a *App) SetSourceKey(ctx context.Context, name, key string) (SetSourceKeyR
 			return fmt.Errorf("config has no key for %s", ks.Name) // KeyedSource found it, so never
 		}
 		origin = c.KeyOrigin(ks.Name, a.getenv)
+		res.Website = c.API(ks.Name) == config.APIWebsite
 		return nil
 	})
 	res.Overridden = origin == config.FromEnv
+	return res, err
+}
+
+// SetSourceAPIResult says what SetSourceAPI did.
+type SetSourceAPIResult struct {
+	// Changed is false when config already said so.
+	Changed bool
+	// NeedsKey is true when the source is now read through its official
+	// API but has no key for it.
+	NeedsKey bool
+	// Available is whether Knapsack can install from the source yet.
+	Available bool
+}
+
+// SetSourceAPI stores how a source is read: through its official API,
+// which needs a key, or from its website (DESIGN.md §7). Choosing the
+// default, the website, removes the setting.
+func (a *App) SetSourceAPI(ctx context.Context, name string, api config.API) (SetSourceAPIResult, error) {
+	if err := ctx.Err(); err != nil {
+		return SetSourceAPIResult{}, err
+	}
+	if name == ref.GitHub {
+		return SetSourceAPIResult{}, &UserError{Msg: "GitHub is always read through its API, which needs no key"}
+	}
+	ks, err := KeyedSource(name)
+	if err != nil {
+		return SetSourceAPIResult{}, err
+	}
+	stored := api
+	if api == config.APIWebsite {
+		stored = "" // the default, so config can stay empty
+	}
+	res := SetSourceAPIResult{Available: builtSources[ks.Name]}
+	res.Changed, err = a.changeConfig(func(c *config.Config) error {
+		if !c.SetAPI(ks.Name, stored) {
+			return fmt.Errorf("config has no api for %s", ks.Name) // KeyedSource found it, so never
+		}
+		res.NeedsKey = api == config.APIOfficial && c.KeyOrigin(ks.Name, a.getenv) == config.FromNowhere
+		return nil
+	})
 	return res, err
 }
 

@@ -1,0 +1,12 @@
+# exit: 0
+# stdout:
+{
+  "current_profile": "",
+  "profiles": {},
+  "sources": {
+    "wago": {
+      "api": "official"
+    }
+  }
+}
+# stderr:

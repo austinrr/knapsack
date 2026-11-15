@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/austinrr/knapsack/internal/app"
 	"github.com/austinrr/knapsack/internal/selfupdate"
+	"github.com/austinrr/knapsack/internal/source"
 	"github.com/austinrr/knapsack/internal/source/github"
 	"github.com/austinrr/knapsack/internal/source/wago"
 )
@@ -36,6 +38,9 @@ type env struct {
 	// released is true when version was set at build time, as in a
 	// release archive (version.go).
 	released bool
+	// platform is the OS and architecture, as "linux/amd64", for an issue
+	// report.
+	platform string
 	// home is the user's home directory, or "" if there's none.
 	home string
 	// executable is the running binary's path, symlinks resolved, or ""
@@ -54,8 +59,10 @@ type env struct {
 	// token. Tests replace both, so they never reach the real GitHub.
 	githubURL   string
 	ghAuthToken func(context.Context) string
-	// wagoURL is Wago Addons' API, which tests replace too.
-	wagoURL string
+	// wagoURL is Wago Addons' API and wagoSiteURL its website, which
+	// tests replace too.
+	wagoURL     string
+	wagoSiteURL string
 }
 
 func main() {
@@ -81,6 +88,7 @@ func main() {
 		getenv:      os.Getenv,
 		version:     resolveVersion(buildVersion, debug.ReadBuildInfo),
 		released:    buildVersion != "",
+		platform:    runtime.GOOS + "/" + runtime.GOARCH,
 		executable:  exe,
 		home:        userHome(),
 		interactive: isTerminal(os.Stderr),
@@ -94,6 +102,7 @@ func main() {
 		githubURL:   github.DefaultBaseURL,
 		ghAuthToken: ghAuthToken,
 		wagoURL:     wago.DefaultBaseURL,
+		wagoSiteURL: wago.DefaultSiteURL,
 	})
 	stop()
 	os.Exit(code)
@@ -180,7 +189,7 @@ func exitCode(c *cli, err error) int {
 			errs = addonErrors{err}
 		}
 		for _, err := range errs {
-			renderError(e.stderr, err, c.verbose)
+			renderError(e.stderr, err, c.verbose, e)
 		}
 		return exitError
 	}
@@ -196,7 +205,9 @@ func (e addonErrors) Error() string { return errors.Join(e...).Error() }
 
 // renderError writes err to w: an "error:" line, then for an app.UserError
 // a "hint:" line, and with --verbose the underlying cause (DESIGN.md §8.6).
-func renderError(w io.Writer, err error, verbose bool) {
+// A source's website answering unexpectedly also gets a "report:" line, a
+// link to open an issue about it, filled in with the error.
+func renderError(w io.Writer, err error, verbose bool, e env) {
 	msg := "error: " + err.Error() + "\n"
 	var ue *app.UserError
 	if errors.As(err, &ue) {
@@ -209,7 +220,23 @@ func renderError(w io.Writer, err error, verbose bool) {
 			msg += "cause: " + ue.Err.Error() + "\n"
 		}
 	}
+	if errors.Is(err, source.ErrUnexpectedWebsite) {
+		msg += "report: " + issueURL(err, e) + "\n"
+	}
 	// A failed write to stderr leaves nowhere else to report, so the error
 	// is deliberately ignored.
 	_, _ = io.WriteString(w, msg)
+}
+
+// issuesURL is where Knapsack's issues are opened.
+const issuesURL = "https://github.com/austinrr/knapsack/issues/new"
+
+// issueURL is a link that opens an issue about err, a source's website
+// answering unexpectedly, with the error and what's running filled in.
+// The error names the addon and the request, but nothing of the user's.
+func issueURL(err error, e env) string {
+	body := "Knapsack couldn't read a source's website:\n\n```\n" + err.Error() + "\n```\n\n" +
+		"Knapsack " + e.version + " on " + e.platform + "\n"
+	q := url.Values{"title": {"Unexpected answer from a source's website"}, "body": {body}}
+	return issuesURL + "?" + q.Encode()
 }

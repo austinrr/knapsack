@@ -1,0 +1,22 @@
+# exit: 0
+# stdout:
+Choose how a source is read, for every profile.
+
+website, the default, reads the source's website as a browser does, and
+needs no key. official reads its official API, which needs an API key
+(`knapsack sources set-key`); without one, commands fail until it's set.
+
+Usage:
+  knapsack sources set-api <source> <website|official> [flags]
+
+Examples:
+  knapsack sources set-api wago official
+  knapsack sources set-api wago website
+
+Flags:
+  -h, --help   help for set-api
+
+Global Flags:
+      --config string   use this config file instead of the default
+  -v, --verbose         show progress and the underlying cause of errors
+# stderr:
