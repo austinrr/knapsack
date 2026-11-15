@@ -299,6 +299,19 @@ func ExpandHome(path, home string) string {
 	return path
 }
 
+// ShortenHome shows a path under home as ~/…, which ExpandHome, and so
+// --path, reads back. Windows paths are left alone: ~ isn't how anyone
+// writes them there.
+func ShortenHome(path, home string) string {
+	if home == "" || runtime.GOOS == "windows" {
+		return path
+	}
+	if rest, ok := strings.CutPrefix(path, home); ok && (rest == "" || rest[0] == '/') {
+		return "~" + rest
+	}
+	return path
+}
+
 // addonsSubdir is where AddOns is below path: Interface/AddOns in a client
 // folder, AddOns in an Interface folder, or "" for any other folder.
 func addonsSubdir(path string) string {

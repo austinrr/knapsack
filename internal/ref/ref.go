@@ -38,6 +38,26 @@ func (r Ref) ShortName() string {
 	return r.ID
 }
 
+// URL is the addon's page on its source's website, which Parse reads back
+// as the same Ref: github.com/<owner>/<repo>, curseforge.com/wow/addons/
+// <slug>, or for a CurseForge project ID curseforge.com/projects/<id>,
+// which CurseForge redirects to the project's page, and
+// addons.wago.io/addons/<id>.
+func (r Ref) URL() string {
+	switch r.Source {
+	case GitHub:
+		return "https://github.com/" + r.ID
+	case CurseForge:
+		if strings.Trim(r.ID, "0123456789") == "" {
+			return "https://www.curseforge.com/projects/" + r.ID
+		}
+		return "https://www.curseforge.com/wow/addons/" + r.ID
+	case Wago:
+		return "https://addons.wago.io/addons/" + r.ID
+	}
+	return ""
+}
+
 // ErrEmpty is returned by Parse for an empty or all-whitespace string.
 var ErrEmpty = errors.New("empty addon ref")
 
