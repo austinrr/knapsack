@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -185,9 +186,14 @@ func TestProfilesEditPaths(t *testing.T) {
 	if r.Code != exitOK || len(s.shown) != 2 || !strings.Contains(s.shown[1], "doesn't match the path") {
 		t.Fatalf("result:\n%s\nopenings: %q", r, s.shown)
 	}
-	data, _ := os.ReadFile(filepath.Join(s.home, "config", "config.toml"))
-	if want := filepath.Join(s.home, "wow", "_retail_", "Interface", "AddOns"); !strings.Contains(string(data), want) {
-		t.Errorf("config:\n%s\nwant the path completed to %s", data, want)
+	// Output has the sandbox as <home>, with / on every OS.
+	var profiles []struct{ Path string }
+	list := s.run("profiles", "list", "-o", "json")
+	if err := json.Unmarshal([]byte(list.Stdout), &profiles); err != nil || len(profiles) != 1 {
+		t.Fatalf("profiles: %v, %v\n%s", profiles, err, list)
+	}
+	if want := "<home>/wow/_retail_/Interface/AddOns"; profiles[0].Path != want {
+		t.Errorf("path = %s, want it completed to %s", profiles[0].Path, want)
 	}
 }
 
