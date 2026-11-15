@@ -47,7 +47,7 @@ func TestClientInterface(t *testing.T) {
 		{"trailing separator", addons("_forever_") + string(filepath.Separator), flavor.Forever, 16001, true},
 		// The file has no row for wow_classic.
 		{"product not installed", addons("_classic_"), flavor.Classic, 0, false},
-		// Anniversary's product code isn't known yet (DESIGN.md §13).
+		// Anniversary's product code isn't known yet (DESIGN.md §14).
 		{"unknown product", addons("_anniversary_"), flavor.Anniversary, 0, false},
 		// Without the client folder in the path, the WoW folder can't be found.
 		{"no client folder", filepath.Join(root, "AddOns"), flavor.Forever, 0, false},

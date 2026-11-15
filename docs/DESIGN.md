@@ -1,6 +1,6 @@
 # Knapsack — Design
 
-Status: draft · Last updated: 2026-11-13
+Status: draft · Last updated: 2026-11-15
 
 Knapsack is a small, cross-platform command-line addon manager for World of
 Warcraft. It installs, updates and removes addons for one or more game clients
@@ -88,7 +88,7 @@ Kept deliberately short. Each one must earn its place.
 | Bounded concurrency | `golang.org/x/sync/errgroup` | Parallel resolve/download with a limit and error propagation |
 | File locking | `github.com/gofrs/flock` | Cross-platform advisory locks; the standard library has none |
 | Test diffs | `github.com/google/go-cmp` | Readable struct diffs in tests (test-only) |
-| TUI (later) | `charmbracelet/bubbletea`, `bubbles`, `lipgloss` | Best Go TUI stack; Elm-style model fits a core/frontend split |
+| TUI (§9) | `charmbracelet/bubbletea`, `bubbles`, `lipgloss` | Best Go TUI stack; Elm-style model fits a core/frontend split |
 
 Explicitly **not** used: assertion/mocking frameworks (testify, gomock),
 GitHub SDKs (go-github), git libraries, ORMs/SQLite.
@@ -98,7 +98,7 @@ GitHub SDKs (go-github), git libraries, ORMs/SQLite.
 | Tool | Use |
 |---|---|
 | `gofmt` / `goimports` | Formatting (enforced through golangci-lint formatters) |
-| `golangci-lint` v2 | Linting (config in §10). Installed as a binary, as its docs recommend |
+| `golangci-lint` v2 | Linting (config in §11). Installed as a binary, as its docs recommend |
 | `govulncheck` | Dependency vulnerability scan. Pinned as a `tool` dependency in `go.mod` |
 | `goreleaser` | Cross-platform release builds. Pinned as a `tool` in its own module, `tools/go.mod`, so its hundreds of dependencies and newer Go requirement stay out of Knapsack's `go.mod` (and off `go install` users). Run with `go -C tools tool -n goreleaser` |
 | `git-cliff` | Changelog and next-version calculation from conventional-commit PR titles. Runs in CI only |
@@ -190,7 +190,7 @@ knapsack/
     tomlenc/             TOML value formatting for the config and state encoders
     lock/                per-profile and config locks (wraps gofrs/flock)
     httpx/               shared HTTP client (timeouts, User-Agent) and Download
-    tui/                 later
+    tui/                 knapsack tui (§9)
   testdata/              shared fixtures (sample zips, TOCs, API responses)
   docs/
 ```
@@ -637,7 +637,7 @@ that knows about specific game versions:
 | `retail` | `_retail_`; tests `_ptr_`, `_xptr_`, `_beta_` | `standard` | `mainline` | 100000 and up | `wow`; `wowt`, `wowxptr`, `wow_beta` |
 | `classic` | `_classic_`; tests `_classic_ptr_`, `_classic_beta_` | `mists` | `classic` | 50000–59999 | `wow_classic`; `wow_classic_ptr`, `wow_classic_beta` |
 | `classic_era` | `_classic_era_`; test `_classic_era_ptr_` | `vanilla` | `classic` | 11000–11999 | `wow_classic_era`; `wow_classic_era_ptr` |
-| `anniversary` | `_anniversary_` | `tbc` | `classic` | 20000–29999 | see §13 |
+| `anniversary` | `_anniversary_` | `tbc` | `classic` | 20000–29999 | see §14 |
 | `forever` | `_forever_` | `forever` (`camelot`) | `mainline` | 16000–16999 | `wowf` |
 
 Each row also lists the **asset markers** that name release files built for
@@ -1355,7 +1355,283 @@ registration. Knapsack doesn't:
 
 ---
 
-## 9. Testing strategy
+## 9. TUI
+
+`knapsack tui` opens an interactive interface over the same `app` core as
+the CLI, laid out like k9s: one table at a time, a short header, and
+single-key actions. It starts minimal; anything it lacks, the CLI still
+does. Like the CLI, it never decides anything itself: every action is one
+`app` use case (§4, rule 1).
+
+### 9.1 Layout
+
+```
+ Profile: forever                                [1] addons  2 profiles  3 sources
+ Path:    C:\Program Files (x86)\World of Warcraft\_forever_\Interface\AddOns   ? help
+┌─────────────────────────────── addons[6] ───────────────────────────────────────┐
+│   NAME↑            VERSION   AVAILABLE   STATUS                 SOURCE          │
+│ ● Baganator        851       854         ↑ update available     github          │
+│   Details!         11.2.0    11.2.0      ✓ up to date           wago            │
+│   Plater           610       ⠹ downloading 1.2 / 4.5 MiB        wago            │
+│   Leatrix Maps     —         1.4.2       ○ not installed        github          │
+│   WeakAuras        5.17.1    —           ✗ unknown              github          │
+└─────────────────────────────────────────────────────────────────────────────────┘
+ a add  u update  U update all  enter describe  ctrl-d remove  / filter   2 updates
+```
+
+- **Header**: the current profile and its AddOns path, labeled, each on its
+  own line. A path too long for the line is cut in the middle, keeping the
+  client folder (`C:\Program Files…\_forever_\Interface\AddOns`), and
+  shortened with `~` as `profiles list` does. On the right, the views,
+  with the current one bracketed and highlighted, and `? help`.
+- **Footer**: the current view's most-used keys on the left; `?` lists
+  all of them. On the right, the status: counts after a check, the last
+  result, or an error with its hint, in red. A newer Knapsack release is
+  said here once, at startup, checked once a day as any command's is
+  (§8.4).
+- **Rows** are named, ordered and labeled as in `list` (§8.4). STATUS is
+  `app.Status`, with a glyph: `✓` up to date, `↑` update available, `○`
+  not installed, `!` not in config, `✗` unknown, and a spinner while
+  checking. A row being worked on shows its stage across AVAILABLE and
+  STATUS instead: resolving, downloading with bytes, installing.
+- **Unmanaged folders** aren't shown in v1. An empty profile says so and
+  counts them (`Listing.Hidden`), so a profile made over an existing
+  AddOns folder doesn't look broken: `No addons in forever. 23 folders
+  in AddOns weren't installed by Knapsack.`
+- **No profiles yet**: the TUI opens on the profiles view, which says
+  `A` finds the game and `n` adds one by path.
+- **Too small**: under 60×15, the screen says to make the window larger,
+  rather than drawing a broken table.
+
+### 9.2 Views and keys
+
+Three views, switched with `1`–`3` or `tab`/`shift-tab`. Describe opens
+over the addons view, so it has no number; `esc` closes it. Number keys
+can't clash with any view's action keys, which a letter would (`a` is
+add).
+
+**Global**
+
+| Key | Action |
+|---|---|
+| `1` `2` `3` | Addons, profiles, sources view |
+| `tab` / `shift-tab` | Next / previous view |
+| `/` | Filter the table by name, ref or source as you type; `enter` keeps it, `esc` clears it |
+| `?` | Help: every key in the current view; `esc` closes it |
+| `esc` | Close a modal, filter, help or describe |
+| `j` `k`, `↓` `↑` | Move |
+| `g` / `G` | Top / bottom |
+| `ctrl-f` / `ctrl-b` | Page down / up |
+| `q`, `ctrl-c` | Quit. While a job runs, asks first; quitting cancels it, and installs in progress roll back (§9.6) |
+
+**Addons**
+
+| Key | Action |
+|---|---|
+| `enter` | Describe the addon |
+| `a` | Add dialog (§9.5) |
+| `u` | Update the marked addons, or the cursor's when none are |
+| `U` | Update all: the plan modal (§9.5) first |
+| `ctrl-d` | Remove the marked addons, or the cursor's, after a confirm listing their folders |
+| `c` | Check again: forget what's known and ask every source (§9.4) |
+| `space` | Mark or unmark the row (`●`) |
+| `ctrl-\` | Clear marks |
+| `o` | Open the addon's page in the browser |
+| `e` | Edit the profile in the editor, as `profiles edit` does (§9.6) |
+
+**Describe** shows `app.Details`: title, ref, author, notes, status with
+`installed → available`, install time, Interface numbers, folders, and
+the source page; and, for a row whose last job or check failed, the
+error, its hint and its `report:` link (§8.6).
+
+| Key | Action |
+|---|---|
+| `u` | Update this addon |
+| `ctrl-d` | Remove it, after a confirm, then close describe |
+| `o` | Open its page |
+| `r` | Open the report link, when there is one |
+
+**Profiles**: NAME (`(*)` for the current one), FLAVOR, ADDONS (how many
+in config) and PATH, from `Profiles`. No update counts: they'd need the
+network for every profile.
+
+| Key | Action |
+|---|---|
+| `enter` | Use the profile (`UseProfile`) and show its addons |
+| `n` | New profile form: path, then optional name and flavor (`SetProfile`) |
+| `s` | The same form for the cursor's profile, filled in; only changed fields are sent, as `profiles set` takes them |
+| `A` | Find the game and make a profile per client (`AutoProfiles`); the result, made and skipped, shows in a modal |
+| `e` | Edit the profile in the editor |
+| `ctrl-d` | Delete the profile, after a confirm saying its addon files stay |
+
+**Sources**: NAME, STATUS (`ready` or `needs key`), READ VIA and KEY FROM,
+as `sources list` shows them.
+
+| Key | Action |
+|---|---|
+| `k` | Set the API key: masked input (§9.5) |
+| `K` | Remove the key, after a confirm (`SetSourceKey` with `""`) |
+| `w` | Switch between the official API and the website (`SetSourceAPI`) |
+
+On GitHub's row, `k`, `K` and `w` say why they don't apply, as the CLI's
+errors do: its token is never stored, and it has only its API.
+
+### 9.3 Package and wiring
+
+`internal/tui` is a frontend like `cmd/knapsack`, under the same import
+rule (§4). It's built on Bubble Tea, Bubbles (`key`, `help`, `textinput`,
+`textarea`, `viewport`) and Lip Gloss (§3). The table is drawn by `tui`
+itself rather than with `bubbles/table`, since rows need a mark column,
+per-cell styles and a progress span across two columns.
+
+`cmd/knapsack/tui.go` adds the `tui` command and builds what `tui` can't
+import from `main`:
+
+```go
+// package tui
+type Options struct {
+    // NewApp builds the App with the TUI's Reporter, which must exist
+    // before the App does (app.Options.Reporter).
+    NewApp func(app.Reporter) *app.App
+    Build  app.Build // for the update notice
+    Home   string    // for shortening paths
+    // GitHubKeyFrom says where GitHub's token comes from ("GITHUB_TOKEN",
+    // "GH_TOKEN", "gh" or ""), as sources list finds it.
+    GitHubKeyFrom func(context.Context) string
+    // Edit runs the CLI's edit loop (§8.4, profiles edit) on a profile,
+    // with the terminal handed over to the editor.
+    Edit func(ctx context.Context, profile string) (saved bool, err error)
+    // ReportURL is the report: link for an error that has one, else "".
+    ReportURL func(error) string
+}
+
+func Run(ctx context.Context, opts Options) error
+```
+
+`tui` uses the App through an interface of the methods it calls, defined
+in `tui` (§4, rule 5), so its tests can use a fake. `*app.App` satisfies
+it.
+
+The command refuses to start unless stdin and stdout are terminals, with
+a hint to use the CLI's commands in scripts. `-p` opens on that profile
+without changing the current one, as on any command; `-A` isn't taken.
+
+**Model.** One root model holds the header, the three views, describe,
+at most one modal, the status line, the job queue (§9.4) and what's
+known about each addon. Keys go to the modal when there is one, else to
+the filter when it's open, else to the view; global keys are tried
+last, so a dialog's text fields can type `q` and digits. Views are plain
+structs the root updates and draws, not separate `tea.Model`s, so state
+lives in one place.
+
+### 9.4 Jobs, progress and what's known
+
+**Jobs.** Every `app` call runs in a `tea.Cmd`, never in `Update`.
+They run **one at a time**, in the order started, because profile locks
+are file locks: a second lock on a profile from the same process fails
+as `in use by another knapsack process`, just as from another one
+(§5.5). Starting an action while a job runs queues it, and the footer
+says `1 queued`. Reads that take the lock (`List`, `Info`) queue too;
+they're quick, and describe shows the row's own fields at once and fills
+in the TOC details when `Info` returns. `Profiles` and `Sources` read
+only config and don't wait.
+
+**No polling.** The TUI never reads in the background, because each read
+takes the profile lock, so a scheduled or terminal `knapsack update`
+running at that moment would fail. It reloads, from config, state and
+AddOns, without the network, after each job, after the editor closes,
+on switching profile or view, and on `c`.
+
+**Reporter.** `tui`'s `app.Reporter` sends each event to the program
+(`Program.Send`, safe from any goroutine). `httpx` reports progress on
+every read, so `EventProgress` is coalesced: the reporter keeps the
+latest per addon and sends them on a 100 ms tick, as the CLI's bar
+redraws (§8.6). Other events are sent as they happen. A `Watcher` does
+the same for `List`'s check: `Listed` and `Finished` become messages.
+
+**What's known.** `List` without its check gives the rows instantly. What
+the network said, per profile and ref (status, available version,
+error), is kept separately and laid over them, so a reload never forgets
+a check, and nothing checks again without being asked:
+
+| Event | What's known afterwards |
+|---|---|
+| Opening a profile | A check runs once per profile per session, queued after the instant list |
+| `c` | All forgotten for the profile, then checked again |
+| Installed or upgraded | Up to date, at the version installed |
+| Removed | Forgotten |
+| Failed | Unchanged, plus the error for describe |
+| A row whose ref is gone after a reload (an edit, the CLI) | Forgotten |
+
+Checking only when asked matters: GitHub allows 60 requests an hour
+without a token, and Wago addons are downloaded just to compare (§7).
+There's no check on a timer.
+
+### 9.5 Modals and input
+
+- **Update plan** (`U`, and `u` when a marked row isn't simply outdated):
+  built from what's known, with no network. Update available is an
+  upgrade, not installed an install, not in config a prune candidate,
+  left unchecked so it stays installed, as `update` without `--prune`
+  leaves it. Unchecked or unknown rows are listed as `checked when
+  updating`. A Force box sets `UpdateOptions.Force`. `enter` runs
+  `Update`, which resolves everything again, so the plan never acts on
+  stale answers.
+- **Add**: a text area, one ref or URL per line, so a list can be pasted.
+  Each line is parsed with `ref.Parse` on `ctrl-s`; if any fails, the
+  dialog stays open with those lines marked and their errors, and nothing
+  runs, as a malformed ref is a usage error in the CLI (§8.6). A Force box
+  sets `Add`'s `force`.
+- **Set key**: `textinput` in password mode, so the key is never drawn.
+  `app` validates it as `set-key` does (§8.4). The key is cleared from the
+  model once the job is sent, and never appears in a message, the status
+  line or an error.
+- **Profile form**: path, name and flavor fields for `SetProfile`, which
+  expands `~` and completes a client folder to `Interface/AddOns`, as
+  `--path` does. Its errors and hints show in the form.
+- **Confirm**: one question, `y` or `enter` for yes, `n` or `esc` for no.
+  Removing lists the folders that will be deleted; deleting a profile
+  says its addon files stay.
+
+Every confirm is the TUI's own. The CLI's rule against prompts (§8.6) is
+about scripts, which the TUI isn't for; it's why the CLI needs `--force`
+and `--prune` flags, and the TUI asks instead.
+
+### 9.6 Terminal, editor and browser
+
+- **Editor.** `e` hands the terminal to the editor with `tea.Exec`, running
+  `Options.Edit`, the same loop as `profiles edit`, so reopening on an
+  invalid edit and keeping the copy behave the same. The TUI reloads when
+  it returns, and shows its result or error in the status line.
+- **Browser.** `o` and `r` open a URL with the OS's handler (`open`,
+  `xdg-open`, `rundll32 url.dll,FileProtocolHandler`), in a small file per
+  OS. A ref's page comes from `ref.Ref.URL`.
+- **Ctrl-C** arrives as a key, since the terminal is in raw mode. With no
+  job, it quits. With one, it asks; yes cancels the job's context, waits
+  for it to roll back as the CLI does, and quits. A second Ctrl-C while
+  waiting quits at once, as the CLI's second signal does (§8.6).
+- **Colors** adapt to light and dark terminals (Lip Gloss), and `NO_COLOR`
+  turns them off; marks and statuses have glyphs, so nothing depends on
+  color alone. The spinner uses `|/-\` in the Windows console, as the
+  CLI's does.
+- **Mouse**: not in v1.
+
+### 9.7 Testing
+
+- **Model tests**: send key and result messages to the root model, with a
+  fake App, and compare what it asks for (which use case, with which
+  arguments) and what it draws. Drawn screens are golden files at 80×24
+  with colors off, regenerated with `-update` as the CLI's are (§10).
+- **Reporter**: progress coalescing and concurrent `Event` calls, under
+  `-race`.
+- **Command**: `knapsack tui` refuses a non-terminal (a golden test in
+  `cmd/knapsack`).
+- No `teatest` or other harness: messages in, state and strings out, is
+  all Bubble Tea's design needs.
+
+---
+
+## 10. Testing strategy
 
 Aim for tests that are fast, deterministic, offline and use real code paths
 wherever that's cheap.
@@ -1384,7 +1660,7 @@ Conventions:
 
 ---
 
-## 10. Linting and code quality
+## 11. Linting and code quality
 
 `golangci-lint` v2 with a deliberate, not exhaustive, set of linters.
 
@@ -1441,7 +1717,7 @@ Code conventions:
 
 ---
 
-## 11. CI and releases
+## 12. CI and releases
 
 **CI** (GitHub Actions, on push and PR), on Linux, Windows and macOS:
 
@@ -1476,7 +1752,7 @@ Package-manager publishing (AUR, Homebrew, Scoop) comes later.
 
 ---
 
-## 12. Milestones and PR plan
+## 13. Milestones and PR plan
 
 | # | Scope | Done when |
 |---|---|---|
@@ -1487,9 +1763,9 @@ Package-manager publishing (AUR, Homebrew, Scoop) comes later.
 | **M4** | `update`, `check`, `-A` | Daily-driver replacement for the LemonUp fork |
 | **M5** | Release tooling, `v0.1.0` | Binaries downloadable for all three OSes |
 | **M6** | CurseForge, Wago, ETag cache | Planned in detail after v0.1.0 |
-| **M7** | `knapsack tui` | Planned in detail after v0.1.0 |
+| **M7** | `knapsack tui` | Addons, profiles and sources manageable from the TUI, as from the CLI |
 
-### 12.1 PR conventions
+### 13.1 PR conventions
 
 Each PR is sized so one Claude session can build, test and review it
 without losing track. That means one clear concern, usually one package or
@@ -1503,14 +1779,14 @@ one command group.
 - **Spec first**: each PR lists the sections of this doc it implements. The
   doc is the spec. If implementation shows the design is wrong, the PR
   updates the doc in the same change and says so in its description.
-- **Tests in the same PR** as the code, following §9. No "tests later" PRs.
+- **Tests in the same PR** as the code, following §10. No "tests later" PRs.
 - **Out of scope stays out**: each PR names what it must *not* do yet, to
   prevent scope creep.
 - **Branch per PR**, squash-merged to `main` in order. A PR depends only on
   PRs before it in this list. Branch names, PR titles and versioning follow
   `docs/CONTRIBUTING.md`. Each PR below suggests a title.
 
-### 12.2 PRs
+### 13.2 PRs
 
 #### M0 — Skeleton
 
@@ -1519,7 +1795,7 @@ one command group.
 - Implements: §3 (tooling), §8.7 (Cobra conventions), §8.6 (exit codes)
 - `go.mod` (`go 1.26`; `govulncheck` as a `tool` dependency), `cmd/knapsack` with `main.go` and `root.go`, `knapsack
   version` (version injected through `-ldflags`, `dev` otherwise), Makefile,
-  `.golangci.yml` from §10, `.gitignore`.
+  `.golangci.yml` from §11, `.gitignore`.
 - Test harness in `cmd/knapsack`: a helper that runs the root command with
   args and env, captures stdout, stderr and the exit code, and compares them
   with golden files (`-update` regenerates).
@@ -1529,7 +1805,7 @@ one command group.
 
 **PR 2 — CI**
 - Title: `chore(ci): add test matrix and PR title check`
-- Implements: §11 (CI only)
+- Implements: §12 (CI only)
 - GitHub Actions workflow: Linux, Windows and macOS matrix running the five
   CI steps. Cache Go modules and the build cache.
 - Also: the PR Title workflow from `docs/CONTRIBUTING.md`, and repository
@@ -1720,7 +1996,7 @@ one command group.
 
 **PR 19 — Release**
 - Title: `chore: add release cut and goreleaser`
-- Implements: §11 (releases)
+- Implements: §12 (releases)
 - `goreleaser` as a `tool` dependency (deferred from PR 1: it pulls in
   hundreds of modules and nothing needs it earlier), in `tools/go.mod`
   because adding it to `go.mod` raised the `go` directive to 1.27.4,
@@ -1730,9 +2006,64 @@ one command group.
 - Done when: a `v0.1.0` tag produces binaries for linux/windows/darwin ×
   amd64/arm64 with checksums.
 
+#### M7 — TUI
+
+**PR 20 — What the TUI shares with the CLI**
+- Title: `refactor(cli): share editing and path display with the tui`
+- Implements: §9.3, §9.6 (`ref.Ref.URL`)
+- `cli.edit` no longer takes a `*cobra.Command`, so `Options.Edit` can
+  run it; `shortPath` moves to `paths`, which `tui` may import; the
+  report link is built by a function `tui` can be given; `ref.Ref.URL`
+  gives each source's page for a ref.
+- Done when: the CLI's golden tests pass unchanged; `ref` tests for each
+  source's URL.
+- Not yet: `internal/tui`.
+
+**PR 21 — `knapsack tui`, read-only**
+- Title: `feat(tui): add knapsack tui with the addons view`
+- Implements: §3 (Bubble Tea, Bubbles, Lip Gloss), §9.1, §9.2 (global
+  keys, addons view without actions, describe), §9.3, §9.4 (the job
+  queue, `Watcher`, what's known), §9.6 (Ctrl-C, colors), §9.7
+- The command, layout, instant list then the check, describe, filter,
+  help, `c`, quitting, and the update notice.
+- Done when: golden screens for a checked profile, a check in progress,
+  an empty profile, no profiles and a too-small window; the command
+  refuses a non-terminal.
+- Not yet: any action that changes anything; the profiles and sources
+  views, so `1`–`3` and `tab` come with them.
+
+**PR 22 — Updating and removing**
+- Title: `feat(tui): update and remove addons`
+- Implements: §9.2 (`u`, `U`, `ctrl-d`, marks), §9.4 (the Reporter,
+  progress, what's known after a job), §9.5 (plan, confirm)
+- Done when: model tests for queued jobs, progress coalescing under
+  `-race`, the plan built from what's known, remove's confirm, and a
+  failed addon's error in describe.
+- Not yet: adding.
+
+**PR 23 — Adding, and opening pages**
+- Title: `feat(tui): add addons and open their pages`
+- Implements: §9.2 (`a`, `o`, `r`), §9.5 (add), §9.6 (browser)
+- Done when: the add dialog keeps unparsable lines with their errors and
+  runs nothing; `o` asks for the ref's URL.
+
+**PR 24 — Profiles view**
+- Title: `feat(tui): manage profiles`
+- Implements: §9.2 (profiles, view switching), §9.5 (profile form),
+  §9.6 (editor)
+- Done when: model tests for use, create, set, auto, delete and edit,
+  with the editor faked; the no-profiles screen leads here.
+
+**PR 25 — Sources view**
+- Title: `feat(tui): manage sources`
+- Implements: §9.2 (sources), §9.5 (set key)
+- Done when: the key never appears in a drawn screen or a message;
+  GitHub's row explains why its keys don't apply.
+- Followed by `docs: describe knapsack tui in the readme`.
+
 ---
 
-## 13. Open questions
+## 14. Open questions
 
 1. **`.build.info` product codes**: `wowf` (Forever) is confirmed from a
    real install, which is the fixture in `internal/flavor/testdata`. The

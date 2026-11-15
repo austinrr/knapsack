@@ -110,7 +110,7 @@ var table = []struct {
 		Interface: Range{Min: 100000, Max: NoMax},
 		Product:   "wow",
 		// The test clients' product codes come from WowUp, unconfirmed
-		// (DESIGN.md §13), as are the folders of the two below.
+		// (DESIGN.md §14), as are the folders of the two below.
 		Tests: []TestClient{{"ptr", "_ptr_", "wowt"}, {"xptr", "_xptr_", "wowxptr"}, {"beta", "_beta_", "wow_beta"}},
 	}, []string{"mainline", "retail"}},
 	{Classic, Client{
@@ -136,7 +136,7 @@ var table = []struct {
 		GameType:  "tbc",
 		Family:    FamilyClassic,
 		Interface: Range{Min: 20000, Max: 29999},
-		Product:   "", // unconfirmed, see DESIGN.md §13
+		Product:   "", // unconfirmed, see DESIGN.md §14
 	}, []string{"tbc", "bcc"}},
 	{Forever, Client{
 		Folder:    "_forever_",
