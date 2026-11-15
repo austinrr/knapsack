@@ -29,6 +29,38 @@ func newReporter(w io.Writer, verbose bool, getenv func(string) string) reporter
 	return &lineReporter{w: w, verbose: verbose}
 }
 
+// warning is how a Warned event is printed.
+func warning(e app.Event) string {
+	return "warning: " + e.Ref.String() + ": " + e.Message
+}
+
+// relay is the App's Reporter. It passes each event on to another
+// reporter, which a command can swap while it runs, as list does for its
+// live table.
+type relay struct {
+	mu sync.Mutex
+	to reporter
+}
+
+func (r *relay) Event(e app.Event) { r.current().Event(e) }
+
+func (r *relay) stop() { r.current().stop() }
+
+func (r *relay) current() reporter {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.to
+}
+
+// swap makes to the reporter events go to, and returns the one before.
+func (r *relay) swap(to reporter) reporter {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	prev := r.to
+	r.to = to
+	return prev
+}
+
 // isTerminal reports whether w is a terminal (a character device). That's
 // also true of /dev/null and NUL, where the bar is harmlessly discarded.
 func isTerminal(w io.Writer) bool {
@@ -54,7 +86,7 @@ func (r *lineReporter) Event(e app.Event) {
 	var line string
 	switch {
 	case e.Kind == app.EventWarned:
-		line = "warning: " + e.Ref.String() + ": " + e.Message
+		line = warning(e)
 	case !r.verbose:
 		return
 	case e.Kind == app.EventResolving:
@@ -132,7 +164,7 @@ func (r *barReporter) Event(e app.Event) {
 		}
 	case app.EventWarned:
 		r.erase()
-		_, _ = fmt.Fprintln(r.w, "warning: "+e.Ref.String()+": "+e.Message)
+		_, _ = fmt.Fprintln(r.w, warning(e))
 	case app.EventInstalled, app.EventRemoved, app.EventSkipped, app.EventChecked, app.EventFailed:
 		a.stage = stageDone
 	}

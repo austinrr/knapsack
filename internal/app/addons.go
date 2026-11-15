@@ -160,14 +160,19 @@ const (
 )
 
 // fetchAll runs fetch for each ref in parallel (DESIGN.md §6.5). The
-// caller must discard the result.
-func (a *App) fetchAll(ctx context.Context, s *session, refs []ref.Ref, mode fetchMode) []fetched {
+// caller must discard the result. done, if not nil, is called with each
+// ref's index and result as soon as it's fetched, from several goroutines
+// at once.
+func (a *App) fetchAll(ctx context.Context, s *session, refs []ref.Ref, mode fetchMode, done func(i int, f fetched)) []fetched {
 	got := make([]fetched, len(refs))
 	var g errgroup.Group
 	g.SetLimit(parallelism)
 	for i, r := range refs {
 		g.Go(func() error {
 			got[i] = a.fetch(ctx, s, r, mode)
+			if done != nil {
+				done(i, got[i])
+			}
 			return nil // failures are per addon, in got[i].err
 		})
 	}
@@ -225,7 +230,7 @@ func (a *App) fetch(ctx context.Context, s *session, r ref.Ref, mode fetchMode) 
 // installed is left alone. Each installed addon is saved to state at once,
 // so files on disk are never left unrecorded for longer than one install.
 func (a *App) installAll(ctx context.Context, s *session, refs []ref.Ref, force bool) []Result {
-	got := a.fetchAll(ctx, s, refs, fetchArchive)
+	got := a.fetchAll(ctx, s, refs, fetchArchive, nil)
 	defer discard(got)
 
 	clientInterface, _ := flavor.ClientInterface(s.addonsDir, s.profile.Flavor)
