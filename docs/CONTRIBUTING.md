@@ -12,7 +12,7 @@
 WIP commits on a branch (`fix lint`, `address review`) are fine. They're
 squashed away.
 
-PRs follow the plan and conventions in [DESIGN.md §12](DESIGN.md#12-milestones-and-pr-plan).
+PRs follow the plan and conventions in [DESIGN.md §13](DESIGN.md#13-milestones-and-pr-plan).
 
 ## PR title format
 
