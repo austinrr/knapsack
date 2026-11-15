@@ -3,4 +3,4 @@
 Profile "ptr" created (forever, <home>/wow/_ptr_/Interface/AddOns).
 Switched to profile "ptr".
 # stderr:
-Next, add addons: knapsack add github:owner/repo, or a GitHub or Wago link.
+Next, add addons: knapsack add github:owner/repo, or a GitHub, CurseForge or Wago link.

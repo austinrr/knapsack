@@ -764,7 +764,7 @@ write user-facing text.
 | Source | Access | v1 status |
 |---|---|---|
 | **GitHub** | Public REST API. 60 req/h anonymous, 5000 with a token. Asset metadata includes a `sha256:` digest | **v1** |
-| **CurseForge** | Official API needs an API key (console.curseforge.com). Authors can opt out of third-party distribution. The website's own JSON API needs none | Later |
+| **CurseForge** | Official API needs an API key (console.curseforge.com). Authors can opt out of third-party distribution. The website's own JSON API needs none, by project ID | **v1** |
 | **Wago** | Official addons API needs a per-user API key. The website needs none | **v1** |
 
 **Official API or website.** CurseForge and Wago both give API keys out
@@ -864,9 +864,58 @@ instawow use, which agree.
    names `knapsack sources set-key wago` and Wago's API keys page, and
    `knapsack sources set-api wago website`.
 
-CurseForge projects that block third-party access are covered by the existing
-`wow-addon-mirror-action`, which mirrors them to GitHub releases, so GitHub
-support alone already covers most of the author's addons.
+### CurseForge resolution
+
+Refs are `curseforge:<id>` or `curseforge:<slug>`, and `add` takes a
+`curseforge.com/wow/addons/<slug>` link. CurseForge's files are tagged
+with game version types: 517 for Retail, 79434 for Classic (Mists), 67408
+for Classic Era, 73246 for Anniversary (TBC) and 88568 for Forever. Only
+release files (`releaseType` 1) are installed, never betas or alphas, as
+on the other sources.
+
+**The project ID is what's kept.** `add` stores `curseforge:<id>` whatever
+it's given (`source.Identifier`), so a pasted link or slug is looked up
+once, and either way of reading CurseForge can use the ref later. A slug
+written into config by hand still works, looked up on each resolve. The
+lookup is the official API's search, or for the website, CFWidget
+(below).
+
+#### Website
+
+1. A slug's ID comes from `GET https://api.cfwidget.com/wow/addons/{slug}`,
+   whose `id` is the project's. CFWidget is a community service that
+   mirrors CurseForge's project details. CurseForge's own pages and
+   search, which would say, sit behind a Cloudflare challenge that only a
+   browser passes: Go's client is refused every time, and Knapsack won't
+   pretend to be a browser. 404 is `ErrNotFound`. 202 means CFWidget
+   hasn't seen the project yet and is fetching it: retry shortly.
+2. `GET https://www.curseforge.com/api/v1/mods/{id}/files?pageIndex={n}&pageSize=50&sort=dateCreated&sortDescending=true`,
+   the JSON API the website lists files with, newest first. The first
+   file with `releaseType` 1 and the flavor's type in `gameVersionTypeIds`
+   is the release, looking through at most 4 pages. No files at all is
+   `ErrNotFound`: the API answers an unknown project with an empty list.
+3. The download is `…/mods/{id}/files/{fileId}/download`, which redirects
+   to CurseForge's CDN. `displayName` is `Release.Version`. No checksum is
+   published, so `check` downloads to compare, as for Wago.
+4. Statuses are as for Wago's website (§7).
+
+This is what `wow-addon-mirror-action` uses, which mirrors CurseForge
+projects to GitHub releases.
+
+#### Official API
+
+1. `x-api-key: <key>` on every request to `https://api.curseforge.com`.
+2. A slug's ID: `GET /v1/mods/search?gameId=1&slug={slug}`, the result with
+   that exact slug. None is `ErrNotFound`.
+3. `GET /v1/mods/{id}/files?gameVersionTypeId={type}&pageSize=50`. The
+   docs don't promise an order, so the newest available release file by
+   `fileDate` is chosen.
+4. A file without a `downloadUrl` is one whose author allows only
+   CurseForge's own app to download it: `ErrNotDistributed`, whose hint
+   suggests looking for it on GitHub or Wago. The CDN needs no key, so
+   none is sent with the download.
+5. 404 is `ErrNotFound`; 401 and 403 are `ErrUnauthorized` (the docs don't
+   say which a bad key gets); 429 is `ErrRateLimited`.
 
 ---
 
@@ -904,7 +953,8 @@ knapsack config delete-profile <name>
 knapsack config view
 
 # Sources (shared by every profile)
-knapsack sources list              each source, whether it's ready, and where its key comes from
+knapsack sources list              each source, how it's read, whether it's ready, and where its key comes from
+knapsack sources set-api <source> <official|website>
 knapsack sources set-key <source>  store an API key (prompted, or from stdin)
 knapsack sources unset-key <source>
 
@@ -1076,9 +1126,8 @@ forever: 1 upgrade · retail: 1 install
 - **`config view`** prints config with API keys shown as `REDACTED`, like
   `kubectl config view`.
 - **`sources`** alone prints its help, like `config`. **`sources list`**
-  (`ls`) lists every source with a status (`ready`; `needs key` for one
-  read through its official API without a key; or `not yet` for one
-  Knapsack can't install from yet), how it's read (`official` or
+  (`ls`) lists every source with a status (`ready`, or `needs key` for
+  one read through its official API without a key), how it's read (`official` or
   `website`; GitHub is always `official`), and where its key comes from: config, the environment variable that overrides it, or for
   GitHub, `GITHUB_TOKEN`, `GH_TOKEN` or `gh` (which listing may run).
   Until v0.1.4, bare `sources` was the list; it became a group so its
@@ -1089,17 +1138,16 @@ forever: 1 upgrade · retail: 1 install
   never as an argument, which would land in shell history and `ps`, as `gh
   secret set` and `docker login --password-stdin` avoid. Ctrl-C at the
   prompt restores the terminal's echo. A key with spaces, control
-  characters or invalid UTF-8 is refused before it's saved. Whether a
-  source is ready is fixed by the build, not by how the App was made, so
-  these commands don't build network clients. The source is checked before the key is asked
+  characters or invalid UTF-8 is refused before it's saved. These commands
+  don't build network clients. The source is checked before the key is asked
   for; GitHub is refused, since its token is never stored. Both `set-key`
   and `unset-key` note on stderr when the environment variable overrides
-  config, and `set-key` when the source isn't built yet or is read from its
-  website, which doesn't use the key.
+  config, and `set-key` when the source is read from its website, which
+  doesn't use the key.
   `sources set-api <source> <official|website>` chooses how a source is
   read (§7); choosing `official`, the default, removes the setting. It
-  notes on stderr when the official API has no key yet, or the source
-  isn't built yet. GitHub is refused: it has only its API.
+  notes on stderr when the official API has no key yet. GitHub is
+  refused: it has only its API.
 
 ### 8.5 Naming addons
 

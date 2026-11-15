@@ -569,8 +569,8 @@ func TestAddResultOrder(t *testing.T) {
 	}
 }
 
-// A source Knapsack can't install from yet says so, and where to see
-// which it can: no keyed source is built yet, so a key wouldn't help.
+// A source that isn't registered, as one read through its official API
+// without a key isn't, gets a hint to set a key or read the website.
 func TestAddSourceNotConfigured(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
@@ -579,8 +579,8 @@ func TestAddSourceNotConfigured(t *testing.T) {
 		t.Fatal(err)
 	}
 	var ue *app.UserError
-	if !errors.As(results[0].Err, &ue) || !strings.Contains(ue.Hint, "can't install from curseforge yet") || !strings.Contains(ue.Hint, "`knapsack sources list`") {
-		t.Errorf("error = %v, want a hint that curseforge isn't available yet", results[0].Err)
+	if !errors.As(results[0].Err, &ue) || !strings.Contains(ue.Hint, "`knapsack sources set-key curseforge`") || !strings.Contains(ue.Hint, "set-api curseforge website") {
+		t.Errorf("error = %v, want a hint to set a key or read the website", results[0].Err)
 	}
 }
 
@@ -732,9 +732,9 @@ func TestSourcesWithoutNetwork(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []app.SourceInfo{
-		{Name: "github", Available: true, API: config.APIOfficial},
+		{Name: "github", API: config.APIOfficial},
 		{Name: "curseforge", NeedsKey: true, Env: config.CurseForgeKeyEnv, API: config.APIOfficial},
-		{Name: "wago", Available: true, NeedsKey: true, Key: app.KeyEnv, Env: config.WagoKeyEnv, API: config.APIOfficial},
+		{Name: "wago", NeedsKey: true, Key: app.KeyEnv, Env: config.WagoKeyEnv, API: config.APIOfficial},
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("Sources (-want +got):\n%s", diff)

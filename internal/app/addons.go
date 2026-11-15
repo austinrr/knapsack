@@ -98,7 +98,19 @@ func (a *App) Add(ctx context.Context, profile string, refs []ref.Ref, force boo
 		var toInstall []ref.Ref
 		var at []int // index in results of each ref in toInstall
 		for i, r := range refs {
+			// Config keeps the source's ID for the addon, such as a
+			// CurseForge project's for its slug.
+			kept, err := a.sources.ID(ctx, r)
+			if err != nil {
+				results[i] = Result{Profile: s.name, Ref: r, Action: ActionFailed, Err: explain(err, r)}
+				a.report(Event{Kind: EventFailed, Profile: s.name, Ref: r, Err: results[i].Err})
+				continue
+			}
+			r = kept
 			switch {
+			case slices.Contains(toInstall, r):
+				// The same addon given twice, as a slug and an ID.
+				results[i] = Result{Profile: s.name, Ref: r, Action: ActionUnchanged}
 			case slices.Contains(s.profile.Addons, r):
 				a.report(Event{Kind: EventSkipped, Profile: s.name, Ref: r, Message: "already added"})
 				results[i] = Result{Profile: s.name, Ref: r, Action: ActionUnchanged, Version: s.state.Addons[r].Version}

@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: curseforge syndicator: the API key was rejected: unauthorized
+hint: check the key at https://console.curseforge.com, and set it again with `knapsack sources set-key curseforge` (or fix KNAPSACK_CURSEFORGE_API_KEY, which overrides it, if that's set)

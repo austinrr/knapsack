@@ -1,0 +1,7 @@
+# exit: 2
+# stdout:
+# stderr:
+error: curseforge nope: no such addon: not found
+hint: check the ref: use the project's ID or slug, or its curseforge.com link
+error: curseforge 999: no such project, or it has no files: not found
+hint: check the ref: use the project's ID or slug, or its curseforge.com link

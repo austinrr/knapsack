@@ -31,7 +31,29 @@ var (
 	// than an official API, answered in a way Knapsack doesn't understand:
 	// the website has likely changed since this release of Knapsack.
 	ErrUnexpectedWebsite = errors.New("unexpected answer from the website")
+	// ErrNotDistributed means the addon's author allows it to be
+	// downloaded only through the source's own app.
+	ErrNotDistributed = errors.New("the author doesn't allow other apps to download it")
 )
+
+// WebsiteStatus turns a website's unsuccessful response to a GET of url
+// into an error, for a source read from its website rather than an API:
+// 404 is ErrNotFound and 429 ErrRateLimited, as from an API; a 5xx is an
+// outage, a plain error, since retrying later fixes it; anything else, a
+// bot challenge's 403 included, is ErrUnexpectedWebsite.
+func WebsiteStatus(resp *http.Response, url string) error {
+	switch code := resp.StatusCode; {
+	case code == http.StatusOK:
+		return nil
+	case code == http.StatusNotFound:
+		return fmt.Errorf("no such addon: %w", ErrNotFound)
+	case code == http.StatusTooManyRequests:
+		return fmt.Errorf("the website's rate limit reached: %w", ErrRateLimited)
+	case code >= 500:
+		return fmt.Errorf("GET %s answered %s", url, resp.Status)
+	}
+	return fmt.Errorf("%w: GET %s answered %s", ErrUnexpectedWebsite, url, resp.Status)
+}
 
 // Source resolves an addon ID to the newest release compatible with a
 // flavor.
@@ -40,6 +62,14 @@ type Source interface {
 	Name() string
 	// Resolve finds the newest release of the addon id for f.
 	Resolve(ctx context.Context, id string, f flavor.Flavor) (Release, error)
+}
+
+// Identifier is a Source with a better ID to keep in config for an addon
+// than the one given, such as CurseForge's project ID for a slug, which
+// its website can't look up (DESIGN.md §7).
+type Identifier interface {
+	// ID returns the ID to keep for the addon id.
+	ID(ctx context.Context, id string) (string, error)
 }
 
 // Release is one downloadable release of an addon.
@@ -81,6 +111,24 @@ func NewRegistry(sources ...Source) *Registry {
 		r.sources[s.Name()] = s
 	}
 	return r
+}
+
+// ID returns the ref to keep in config for r: r, unless its source is an
+// Identifier with a better ID for it.
+func (reg *Registry) ID(ctx context.Context, r ref.Ref) (ref.Ref, error) {
+	s, ok := reg.sources[r.Source].(Identifier)
+	if !ok {
+		return r, nil
+	}
+	id, err := s.ID(ctx, r.ID)
+	if err != nil {
+		return ref.Ref{}, err
+	}
+	kept, err := ref.Parse(r.Source + ":" + id)
+	if err != nil {
+		return ref.Ref{}, fmt.Errorf("%s %s: the source's ID for it, %q: %w", r.Source, r.ID, id, err)
+	}
+	return kept, nil
 }
 
 // Resolve finds the newest release of the addon r for f, through the

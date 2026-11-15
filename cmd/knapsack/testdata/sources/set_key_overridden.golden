@@ -3,4 +3,3 @@
 Saved the curseforge API key to config.
 # stderr:
 KNAPSACK_CURSEFORGE_API_KEY is set, so Knapsack uses it instead of config.
-Knapsack can't install from curseforge yet; it will use the key once it can.

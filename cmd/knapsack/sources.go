@@ -24,14 +24,10 @@ type sourceJSON struct {
 	KeyFrom string `json:"key_from,omitempty"`
 }
 
-// sourceStatus is how ready a source is: "ready", "needs key" for one read
-// through its official API without a key, or "not yet" for one Knapsack
-// can't install from yet.
+// sourceStatus is how ready a source is: "ready", or "needs key" for one
+// read through its official API without a key.
 func sourceStatus(s app.SourceInfo) string {
-	switch {
-	case !s.Available:
-		return "not yet"
-	case !s.Ready():
+	if !s.Ready() {
 		return "needs key"
 	}
 	return "ready"
@@ -99,10 +95,10 @@ func newSourcesListCmd(c *cli) *cobra.Command {
 		Short:   "List sources, how each is read, and whether it's ready",
 		Long: `List the sources Knapsack installs addons from.
 
-STATUS is ready; needs key, for a source read through its official API
-without one (set one with ` + "`knapsack sources set-key`" + `); or not yet, for a
-source Knapsack can't install from yet. API is how it's read: official or
-website (` + "`knapsack sources set-api`" + `). KEY says where the key comes
+STATUS is ready, or needs key for a source read through its official API
+without one (set one with ` + "`knapsack sources set-key`" + `, or read its website
+instead). API is how it's read: official or website
+(` + "`knapsack sources set-api`" + `). KEY says where the key comes
 from: config, or the environment variable that overrides it.
 GitHub needs none, but uses a token from GITHUB_TOKEN, GH_TOKEN or the
 GitHub CLI when there is one, for a higher rate limit.`,
@@ -167,12 +163,8 @@ key.`,
 			if out.err != nil {
 				return out.err
 			}
-			w := cmd.ErrOrStderr()
-			switch {
-			case !res.Available:
-				_, err = fmt.Fprintf(w, "Knapsack can't install from %s yet; it will use this once it can.\n", args[0])
-			case res.NeedsKey:
-				_, err = fmt.Fprintf(w, "The official API needs a key: set one with `knapsack sources set-key %s`.\n", args[0])
+			if res.NeedsKey {
+				_, err = fmt.Fprintf(cmd.ErrOrStderr(), "The official API needs a key: set one with `knapsack sources set-key %s`.\n", args[0])
 			}
 			return err
 		},
@@ -280,7 +272,7 @@ func newUnsetKeyCmd(c *cli) *cobra.Command {
 
 // noteKey adds what affects the key just set or removed, on stderr: an
 // environment variable that overrides config, and for a key just set, a
-// source Knapsack can't install from yet.
+// source read from its website, which doesn't use it.
 func noteKey(cmd *cobra.Command, name string, res app.SetSourceKeyResult, set bool) error {
 	w := cmd.ErrOrStderr()
 	if res.Overridden {
@@ -292,14 +284,11 @@ func noteKey(cmd *cobra.Command, name string, res app.SetSourceKeyResult, set bo
 			return err
 		}
 	}
-	var err error
-	switch {
-	case set && !res.Available:
-		_, err = fmt.Fprintf(w, "Knapsack can't install from %s yet; it will use the key once it can.\n", name)
-	case set && res.Website:
-		_, err = fmt.Fprintf(w, "%s is read from its website, which needs no key; `knapsack sources set-api %s official` uses the key.\n", name, name)
+	if set && res.Website {
+		_, err := fmt.Fprintf(w, "%s is read from its website, which needs no key; `knapsack sources set-api %s official` uses the key.\n", name, name)
+		return err
 	}
-	return err
+	return nil
 }
 
 // readKey gets the key for source: typed at a prompt that doesn't echo it

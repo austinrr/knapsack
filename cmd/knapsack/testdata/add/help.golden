@@ -2,10 +2,11 @@
 # stdout:
 Add addons to the profile's config and install them.
 
-Each addon is a ref (github:owner/repo, wago:<id>) or its GitHub or
-addons.wago.io link. Wago is read through its official API, which needs an
-API key (knapsack sources set-key), or from its website, which needs none
-(knapsack sources set-api wago website).
+Each addon is a ref (github:owner/repo, curseforge:<id>, wago:<id>) or its
+GitHub, curseforge.com or addons.wago.io link; a CurseForge link or slug is
+kept as the project's ID. CurseForge and Wago are read through their
+official APIs, which need an API key (knapsack sources set-key), or from
+their websites, which need none (knapsack sources set-api).
 An addon already in config is left alone. Folders already in AddOns that
 no addon owns are refused unless --force is given; folders another addon
 owns are never replaced.
