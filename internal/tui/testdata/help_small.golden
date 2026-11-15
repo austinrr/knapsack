@@ -1,4 +1,4 @@
- Profile: forever                                [1] addons
+ Profile: forever                    [1] addons  2 profiles
  Path:    C:\Program Fi…\_forever_\Interface\AddOns  ? help
 ┌────────────────────────── help ──────────────────────────┐
 │ Addons                                                   │
@@ -10,6 +10,6 @@
 │   space           mark or unmark the addon               │
 │   ctrl+\          clear marks                            │
 │   o               open the addon's page in the browser   │
-│ ↓ 19 more · j k to scroll                                │
+│ ↓ 21 more · j k to scroll                                │
 └──────────────────────────────────────────────────────────┘
  esc close  j k scroll       5 addons · 1 update · 1 failed

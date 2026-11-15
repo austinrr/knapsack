@@ -1404,7 +1404,8 @@ does. Like the CLI, it never decides anything itself: every action is one
   AddOns folder doesn't look broken: `No addons in forever. 23 folders
   in AddOns weren't installed by Knapsack.`
 - **No profiles yet**: the TUI opens on the profiles view, which says
-  `A` finds the game and `n` adds one by path.
+  `A` finds the game and `n` adds one by path. The profile made current
+  is then shown, as is one used with `enter`.
 - **Too small**: under 60×15, the screen says to make the window larger,
   rather than drawing a broken table.
 
@@ -1461,15 +1462,18 @@ they don't fit, with a last line saying how many more there are.
 
 **Profiles**: NAME (`(*)` for the current one), FLAVOR, ADDONS (how many
 in config) and PATH, from `Profiles`. No update counts: they'd need the
-network for every profile.
+network for every profile. `Profiles` reads only config, so the view
+is read when it's opened, without waiting for a job; the changes are
+jobs. Deleting the profile shown leaves none current, and the addons
+view says so, with the command that picks one.
 
 | Key | Action |
 |---|---|
 | `enter` | Use the profile (`UseProfile`) and show its addons |
 | `n` | New profile form: path, then optional name and flavor (`SetProfile`) |
-| `s` | The same form for the cursor's profile, filled in; only changed fields are sent, as `profiles set` takes them |
-| `A` | Find the game and make a profile per client (`AutoProfiles`); the result, made and skipped, shows in a modal |
-| `e` | Edit the profile in the editor |
+| `s` | The same form for the cursor's profile, filled in; only changed fields are sent, as `profiles set` takes them, and a field can't be emptied. A new path forgets what was checked in the old folder |
+| `A` | Find the game and make a profile per client (`AutoProfiles`); the result, made and skipped, shows in a modal, as `profiles create --auto` reports it |
+| `e` | Edit the profile in the editor; while a job runs or waits, it says to wait, since saving takes the lock the job may hold |
 | `ctrl-d` | Delete the profile, after a confirm saying its addon files stay |
 
 **Sources**: NAME, STATUS (`ready` or `needs key`), READ VIA and KEY FROM,
@@ -1508,8 +1512,8 @@ type Options struct {
     // "GH_TOKEN", "gh" or ""), as sources list finds it. (PR 25)
     GitHubKeyFrom func(context.Context) string
     // Edit runs the CLI's edit loop (§8.4, profiles edit) on a profile,
-    // with the terminal handed over to the editor. (PR 24)
-    Edit func(ctx context.Context, profile string) (saved bool, err error)
+    // with the terminal handed over to the editor.
+    Edit func(ctx context.Context, profile string) (saved bool, res app.ProfileEditResult, err error)
 }
 
 func Run(ctx context.Context, opts Options) error
@@ -1628,9 +1632,20 @@ and `--prune` flags, and the TUI asks instead.
 ### 9.6 Terminal, editor and browser
 
 - **Editor.** `e` hands the terminal to the editor with `tea.Exec`, running
-  `Options.Edit`, the same loop as `profiles edit`, so reopening on an
-  invalid edit and keeping the copy behave the same. The TUI reloads when
-  it returns, and shows its result or error in the status line.
+  `Options.Edit`, the same loop as `profiles edit` (`cli.editProfile`,
+  on the TUI's App), so reopening on an invalid edit and keeping the
+  copy behave the same. The TUI reloads when it returns, and shows its
+  result in the status line, with what installs or uninstalls the
+  addons the edit added or took out (`U`), or its error.
+- **Signals.** `main` cancels its context on SIGINT, which a Ctrl-C typed
+  in the editor sends. So `tui.Run` keeps the context's values but not
+  its cancellation: in raw mode Ctrl-C is a key, and Bubble Tea gets
+  SIGINT and SIGTERM from outside itself, ignoring them while the editor
+  has the terminal, as the edit loop does. Bubble Tea would quit on
+  them at once, so a filter (`tea.WithFilter`) turns that quit into
+  the TUI's own, as Ctrl-C answered yes: a job that writes is cancelled
+  and rolled back first, and a second signal quits at once. Knapsack
+  then exits 2, as the CLI does when interrupted.
 - **Browser.** `o` and `r` open a URL with the OS's handler (`open`,
   `xdg-open`, `rundll32 url.dll,FileProtocolHandler`), in a small file per
   OS, without waiting for it or letting it write on the terminal, and

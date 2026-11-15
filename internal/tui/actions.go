@@ -286,7 +286,12 @@ func resultSummary(profile string, counts map[app.Action]int, verb string) strin
 // confirmModal is a yes-or-no question, asked in the box (DESIGN.md
 // §9.5).
 type confirmModal struct {
+	// info is a notice rather than a question: any of enter, esc, y or n
+	// closes it, and onYes is nil.
+	info            bool
 	title, question string
+	// note is prose under the question, wrapped as a paragraph.
+	note string
 	// lines are paragraphs, wrapped to the window when drawn, so a list
 	// of folders to be deleted is never cut short.
 	lines []string
@@ -295,6 +300,17 @@ type confirmModal struct {
 }
 
 func (m *model) confirmKey(s string) tea.Cmd {
+	if m.confirm.info {
+		switch s {
+		case "enter", "esc", "y", "n", "q":
+			m.confirm = nil
+		case "ctrl+c":
+			return m.globalKey(s)
+		default:
+			m.scrollBody(s)
+		}
+		return nil
+	}
 	switch s {
 	case "y", "Y", "enter":
 		c := m.confirm

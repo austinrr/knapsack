@@ -72,7 +72,15 @@ func (m *model) header() []string {
 	if m.profile != "" {
 		profile = boldStyle.Render(m.profile)
 	}
-	views := accentStyle.Render("[1] addons")
+	var tabs []string
+	for i, name := range viewNames {
+		if i == m.view {
+			tabs = append(tabs, accentStyle.Render(fmt.Sprintf("[%d] %s", i+1, name)))
+		} else {
+			tabs = append(tabs, faintStyle.Render(fmt.Sprintf("%d %s", i+1, name)))
+		}
+	}
+	views := strings.Join(tabs, "  ")
 	help := faintStyle.Render("? help")
 	left := "Path:    "
 	path := app.ShortenHome(m.path, m.opts.Home)
@@ -132,7 +140,7 @@ func (m *model) box(height int) []string {
 // cursor instead.
 func (m *model) scrollable() bool {
 	return m.help || m.plan != nil || m.confirm != nil ||
-		m.describing && m.loaded && !m.noProfiles && m.loadErr == nil
+		m.view == viewAddons && m.describing && m.loaded && !m.noProfiles && m.loadErr == nil
 }
 
 // bodyHeight is how many lines the box holds inside its borders.
@@ -172,15 +180,22 @@ func (m *model) content(width, height int) (string, []string) {
 		return accentStyle.Render("update") + "(" + m.profile + ")", lines
 	case m.confirm != nil:
 		return m.confirmContent(width)
+	case m.form != nil:
+		title := "new profile"
+		if m.form.existing != nil {
+			title = "profile(" + m.form.existing.Name + ")"
+		}
+		return accentStyle.Render(title), m.formLines(width)
+	case m.view == viewProfiles:
+		return m.profilesTable(width)
 	case !m.loaded:
 		return accentStyle.Render("addons"), []string{faintStyle.Render(m.spinner() + " loading")}
 	case m.noProfiles:
 		return accentStyle.Render("addons"), wrap(width,
 			"No profiles yet.",
 			"",
-			"Make one for each game client with "+boldStyle.Render("knapsack profiles create --auto")+
-				", or by path with "+boldStyle.Render("knapsack profiles create --path <AddOns>")+
-				", then open knapsack tui again.")
+			"Press "+boldStyle.Render("2")+" for profiles, where "+boldStyle.Render("A")+
+				" finds World of Warcraft and makes one for each game client.")
 	case m.loadErr != nil:
 		return accentStyle.Render("addons"), errorLines(width, m.loadErr, m.opts.Running)
 	case m.describing:
@@ -193,6 +208,11 @@ func (m *model) content(width, height int) (string, []string) {
 // paragraphs, wrapped.
 func (m *model) confirmContent(width int) (string, []string) {
 	lines := wrap(width, warnStyle.Render(m.confirm.question), "")
+	if m.confirm.note != "" {
+		for _, l := range wrap(width-2, faintStyle.Render(m.confirm.note)) {
+			lines = append(lines, "  "+l)
+		}
+	}
 	for _, p := range m.confirm.lines {
 		for i, l := range wrap(width-4, p) {
 			indent := "  "
@@ -415,7 +435,7 @@ func errorLines(width int, err error, running string) []string {
 
 // helpLines is every key, for the view open under help.
 func (m *model) helpLines(width int) []string {
-	type key struct{ keys, what string }
+	type key = struct{ keys, what string }
 	section := func(name string, keys ...key) []string {
 		lines := []string{boldStyle.Render(name)}
 		for _, k := range keys {
@@ -423,7 +443,19 @@ func (m *model) helpLines(width int) []string {
 		}
 		return append(lines, "")
 	}
-	lines := section("Addons",
+	var lines []string
+	if m.view == viewProfiles {
+		lines = section("Profiles",
+			key{"enter", "use the profile: make it current, and show its addons"},
+			key{"n", "new profile, by path"},
+			key{"s", "set its path or flavor"},
+			key{"A", "find World of Warcraft; make a profile per client"},
+			key{"e", "edit it in your editor"},
+			key{"ctrl+d", "delete it; its addon files stay"},
+		)
+		return append(lines, m.helpEverywhere(section)...)
+	}
+	lines = section("Addons",
 		key{"enter", "describe the addon"},
 		key{"a", "add addons, by ref or link"},
 		key{"u", "update the marked addons, or this one"},
@@ -432,6 +464,7 @@ func (m *model) helpLines(width int) []string {
 		key{"space", "mark or unmark the addon"},
 		key{"ctrl+\\", "clear marks"},
 		key{"o", "open the addon's page in the browser"},
+		key{"e", "edit the profile in your editor"},
 		key{"c", "check every addon again"},
 		key{"/", "filter by name, ref or source"},
 		key{"esc", "clear the filter"},
@@ -444,13 +477,20 @@ func (m *model) helpLines(width int) []string {
 		key{"esc", "back to addons"},
 		key{"j k", "scroll, when it doesn't fit"},
 	)...)
-	return append(lines, section("Everywhere",
+	return append(lines, m.helpEverywhere(section)...)
+}
+
+// helpEverywhere is the keys every view has.
+func (m *model) helpEverywhere(section func(string, ...struct{ keys, what string }) []string) []string {
+	type key = struct{ keys, what string }
+	return section("Everywhere",
+		key{"1 2  tab", "addons, profiles view"},
 		key{"j k  ↓ ↑", "move"},
 		key{"g G", "top, bottom"},
 		key{"ctrl+f ctrl+b", "page down, up"},
 		key{"?", "this help; esc closes it"},
 		key{"q  ctrl+c", "quit"},
-	)...)
+	)
 }
 
 // footer is the view's main keys on the left and the status on the
@@ -470,9 +510,20 @@ func (m *model) footer() string {
 		keys = []string{"ctrl+s", "add", "tab", "force box", "esc", "cancel"}
 	case m.plan != nil:
 		keys = []string{"enter", "update", "space", "check box", "j k", "move", "esc", "cancel"}
+	case m.confirm != nil && m.confirm.info:
+		keys = []string{"enter", "close", "j k", "scroll"}
 	case m.confirm != nil:
 		keys = []string{"y", m.confirm.yes, "n", "cancel"}
-	case !m.loaded || m.noProfiles:
+	case m.form != nil:
+		keys = []string{"enter", "save", "tab", "next field", "esc", "cancel"}
+	case m.view == viewProfiles && len(m.profiles) == 0:
+		keys = []string{"A", "find the game", "n", "new", "?", "help", "q", "quit"}
+	case m.view == viewProfiles:
+		keys = []string{"enter", "use", "n", "new", "s", "set", "A", "find the game", "e", "edit",
+			"ctrl+d", "delete", "tab", "addons", "?", "help"}
+	case m.noProfiles:
+		keys = []string{"2", "profiles", "q", "quit"}
+	case !m.loaded:
 		keys = []string{"q", "quit"}
 	case m.loadErr != nil:
 		keys = []string{"c", "try again", "q", "quit"}

@@ -48,6 +48,7 @@ const (
 	jobUpdate
 	jobRemove
 	jobAdd
+	jobProfile // a change to config's profiles
 )
 
 // jobDoneMsg is a job's result, delivered when it finishes.
@@ -134,11 +135,25 @@ type model struct {
 	plan     *planModal
 	confirm  *confirmModal
 	add      *addModal
+	form     *profileForm
+
+	// view is the one shown, viewAddons or viewProfiles; profiles and
+	// pcursor are the profiles view's.
+	view     int
+	profiles []app.ProfileInfo
+	pcursor  int
+	poffset  int
+	// preads counts reads of the profiles, so only the latest's answer
+	// is used.
+	preads int
 
 	// openURL opens a page in the browser; blink is whether text cursors
 	// blink. Tests replace the one and turn off the other.
 	openURL func(context.Context, string) error
 	blink   bool
+	// exec hands the terminal to a command, tea.Exec, which only a
+	// running program can do; tests run the command at once.
+	exec func(tea.ExecCommand, tea.ExecCallback) tea.Cmd
 
 	cursor, offset int
 	filter         textinput.Model
@@ -154,6 +169,9 @@ type model struct {
 	help        bool
 	confirmQuit bool
 	quitting    bool
+	// quitOK is set when the TUI itself quits; signaled when a signal
+	// asked it to (quitFilter).
+	quitOK, signaled bool
 
 	queue   []job
 	running *job
@@ -173,6 +191,7 @@ func newModel(ctx context.Context, a backend, opts Options, b *bus, rep *reporte
 		stages:    map[ref.Ref]stage{},
 		warnings:  map[ref.Ref][]string{},
 		openURL:   openBrowser,
+		exec:      tea.Exec,
 		blink:     true,
 		now:       time.Now,
 		spin:      spin,
@@ -231,6 +250,14 @@ func (m *model) dropQueued(kind jobKind) {
 		}
 	}
 	m.queue = kept
+}
+
+// busyName is what's running, or queued first, for a message.
+func (m *model) busyName() string {
+	if m.running != nil {
+		return m.running.name
+	}
+	return m.queue[0].name
 }
 
 // busy is whether anything is in progress, which the spinner shows.
@@ -301,6 +328,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.filter.SetWidth(max(1, m.width-3))
+		m.pscroll()
+		if m.form != nil {
+			for i := range m.form.fields {
+				m.form.fields[i].SetWidth(m.formWidth())
+			}
+		}
 		if m.add != nil {
 			m.add.text.SetWidth(m.addWidth())
 		}
@@ -310,6 +343,24 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.key(msg)
 	case tea.PasteMsg:
 		return m, m.paste(msg)
+	case signalMsg:
+		m.signaled = true
+		if m.quitting {
+			return m, m.quitNow() // a second one doesn't wait
+		}
+		return m, m.quit() // as ctrl+c answered yes
+	case profilesMsg:
+		if msg.read != m.preads {
+			return m, nil // a later read is on its way
+		}
+		m.profiles = msg.profiles
+		if msg.err != nil {
+			m.err = msg.err
+		}
+		m.pscroll()
+		return m, nil
+	case editedMsg:
+		return m, m.profileResult(msg)
 	case openedMsg:
 		// Opening a page is an action: it replaces the last error, as
 		// any does (DESIGN.md §9.1).
@@ -335,7 +386,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.confirmQuit = false
 		cmd := m.result(msg.msg)
 		if m.quitting {
-			return m, tea.Quit
+			return m, m.quitNow()
 		}
 		return m, tea.Batch(cmd, m.next())
 	case eventMsg:
@@ -373,7 +424,13 @@ func (m *model) result(msg tea.Msg) tea.Cmd {
 	case loadedMsg:
 		m.loaded = true
 		m.noProfiles, m.loadErr = msg.noProfiles, msg.err
-		if msg.noProfiles || msg.err != nil {
+		if msg.noProfiles {
+			// The profiles view is where one is made (DESIGN.md §9.1).
+			m.rows, m.hidden = nil, 0
+			m.view = viewProfiles
+			return m.profilesCmd()
+		}
+		if msg.err != nil {
 			m.rows, m.hidden = nil, 0
 			return nil
 		}
@@ -399,6 +456,8 @@ func (m *model) result(msg tea.Msg) tea.Cmd {
 			}
 			m.scroll()
 		}
+	case usedMsg, profileSetMsg, autoMsg, deletedMsg:
+		return m.profileResult(msg)
 	case doneMsg:
 		if msg.kind == jobRemove && msg.profile == m.profile {
 			// Describing an addon just removed goes back to the table.
@@ -481,7 +540,7 @@ func (m *model) key(k tea.KeyPressMsg) tea.Cmd {
 		// Waiting for a cancelled job to roll back; another Ctrl-C quits
 		// at once, as the CLI's second one does (DESIGN.md §9.6).
 		if s == "ctrl+c" {
-			return tea.Quit
+			return m.quitNow()
 		}
 		return nil
 	case m.confirmQuit:
@@ -498,6 +557,8 @@ func (m *model) key(k tea.KeyPressMsg) tea.Cmd {
 		return m.confirmKey(s)
 	case m.add != nil:
 		return m.addKey(k)
+	case m.form != nil:
+		return m.formKey(k)
 	case m.filtering:
 		switch s {
 		case "ctrl+c":
@@ -522,6 +583,10 @@ func (m *model) key(k tea.KeyPressMsg) tea.Cmd {
 		}
 		if m.scrollBody(s) {
 			return nil
+		}
+	case m.view == viewProfiles:
+		if cmd, ok := m.profilesKey(s); ok {
+			return cmd
 		}
 	case m.describing:
 		switch s {
@@ -572,6 +637,8 @@ func (m *model) paste(msg tea.PasteMsg) tea.Cmd {
 		return nil
 	case m.add != nil:
 		return m.addInput(msg)
+	case m.form != nil:
+		return m.formInput(msg)
 	case m.filtering:
 		return m.editFilter(msg)
 	}
@@ -621,6 +688,11 @@ func (m *model) addonsKey(s string) (tea.Cmd, bool) {
 			return nil, true
 		}
 		return m.openAdd(), true
+	case "e":
+		if m.profile == "" || m.loadErr != nil {
+			return nil, true
+		}
+		return m.edit(m.profile), true
 	case "o":
 		if len(rows) > 0 {
 			r := rows[m.cursor]
@@ -660,6 +732,12 @@ func (m *model) addonsKey(s string) (tea.Cmd, bool) {
 
 func (m *model) globalKey(s string) tea.Cmd {
 	switch s {
+	case "1", "2":
+		return m.switchView(int(s[0] - '1'))
+	case "tab":
+		return m.switchView(m.view + 1)
+	case "shift+tab":
+		return m.switchView(m.view - 1)
 	case "?":
 		m.help, m.bodyOffset = true, 0
 	case "q", "ctrl+c":
@@ -672,13 +750,38 @@ func (m *model) globalKey(s string) tea.Cmd {
 	return nil
 }
 
+// quitNow quits: the TUI's own quit, which quitFilter lets through.
+func (m *model) quitNow() tea.Cmd {
+	m.quitOK = true
+	return tea.Quit
+}
+
+// signalMsg is a SIGINT or SIGTERM from outside, which Bubble Tea would
+// quit on at once.
+type signalMsg struct{}
+
+// quitFilter turns Bubble Tea's quit on a signal into a signalMsg, so a
+// job that writes is cancelled and rolled back first, as quitting with
+// ctrl+c and y does (DESIGN.md §9.6). The TUI's own quit passes.
+func quitFilter(tm tea.Model, msg tea.Msg) tea.Msg {
+	m, ok := tm.(*model)
+	if !ok || m.quitOK {
+		return msg
+	}
+	switch msg.(type) {
+	case tea.QuitMsg, tea.InterruptMsg:
+		return signalMsg{}
+	}
+	return msg
+}
+
 // quit cancels whatever is running and quits once it has stopped, so an
 // install in progress rolls back first.
 func (m *model) quit() tea.Cmd {
 	m.confirmQuit = false
 	if m.running == nil || !m.running.writes {
 		m.cancel() // a read is just abandoned
-		return tea.Quit
+		return m.quitNow()
 	}
 	m.quitting = true
 	m.queue = nil

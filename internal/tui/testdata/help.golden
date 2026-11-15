@@ -1,4 +1,4 @@
- Profile: forever                                                    [1] addons
+ Profile: forever                                        [1] addons  2 profiles
  Path:    C:\Program Files (x86)\World of W…\_forever_\Interface\AddOns  ? help
 ┌──────────────────────────────────── help ────────────────────────────────────┐
 │ Addons                                                                       │
@@ -10,6 +10,7 @@
 │   space           mark or unmark the addon                                   │
 │   ctrl+\          clear marks                                                │
 │   o               open the addon's page in the browser                       │
+│   e               edit the profile in your editor                            │
 │   c               check every addon again                                    │
 │   /               filter by name, ref or source                              │
 │   esc             clear the filter                                           │
@@ -18,7 +19,6 @@
 │   u               update this addon                                          │
 │   ctrl+d          remove it                                                  │
 │   o               open its page                                              │
-│   r               open the error's report link, when it has one              │
-│ ↓ 10 more · j k to scroll                                                    │
+│ ↓ 12 more · j k to scroll                                                    │
 └──────────────────────────────────────────────────────────────────────────────┘
  esc close  j k scroll                           5 addons · 1 update · 1 failed

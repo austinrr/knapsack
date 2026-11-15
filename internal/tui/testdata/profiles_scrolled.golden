@@ -1,0 +1,15 @@
+ Profile: forever                    1 addons  [2] profiles
+ Path:    C:\Program Fi…\_forever_\Interface\AddOns  ? help
+┌────────────────────── profiles[22] ──────────────────────┐
+│   NAME          FLAVOR    ADDONS   PATH                  │
+│   test-11       retail    0        …il_/Interface/AddOns │
+│   test-12       retail    0        …il_/Interface/AddOns │
+│   test-13       retail    0        …il_/Interface/AddOns │
+│   test-14       retail    0        …il_/Interface/AddOns │
+│   test-15       retail    0        …il_/Interface/AddOns │
+│   test-16       retail    0        …il_/Interface/AddOns │
+│   test-17       retail    0        …il_/Interface/AddOns │
+│   test-18       retail    0        …il_/Interface/AddOns │
+│   test-19       retail    0        …il_/Interface/AddOns │
+└──────────────────────────────────────────────────────────┘
+ enter use  n new  s set     5 addons · 1 update · 1 failed
