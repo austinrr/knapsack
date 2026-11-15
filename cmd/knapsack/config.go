@@ -113,7 +113,7 @@ profile you make becomes the current one.`,
 			}
 			if res.MadeCurrent {
 				// The first profile: say what to do next.
-				_, err := fmt.Fprintln(cmd.ErrOrStderr(), "Next, add addons: knapsack add github:owner/repo, or a GitHub or Wago link.")
+				_, err := fmt.Fprintln(cmd.ErrOrStderr(), "Next, add addons: knapsack add github:owner/repo, or a GitHub, CurseForge or Wago link.")
 				return err
 			}
 			return nil
@@ -150,7 +150,7 @@ func autoProfiles(cmd *cobra.Command, c *cli, game string) error {
 		return out.err
 	}
 	if slices.ContainsFunc(res.Profiles, func(p app.AutoProfile) bool { return p.Result.MadeCurrent }) {
-		_, err := fmt.Fprintln(cmd.ErrOrStderr(), "Next, add addons: knapsack add github:owner/repo, or a GitHub or Wago link.")
+		_, err := fmt.Fprintln(cmd.ErrOrStderr(), "Next, add addons: knapsack add github:owner/repo, or a GitHub, CurseForge or Wago link.")
 		return err
 	}
 	return nil

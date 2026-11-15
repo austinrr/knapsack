@@ -28,6 +28,9 @@ type session struct {
 	profile   config.Profile
 	state     *state.State
 	addonsDir string
+	// addedAs is what Add was given for each addon whose source keeps
+	// another ID for it, recorded in state as it's installed.
+	addedAs map[ref.Ref]ref.Ref
 }
 
 // known returns every addon in the profile: config's, in config order, then
@@ -93,12 +96,15 @@ func (a *App) withProfile(ctx context.Context, name string, write bool, fn func(
 func (a *App) Add(ctx context.Context, profile string, refs []ref.Ref, force bool) ([]Result, error) {
 	var results []Result
 	err := a.withProfile(ctx, profile, writes, func(s *session) error {
-		refs := dedupe(refs)
+		refs, failed := a.keptRefs(ctx, s, refs)
 		results = make([]Result, len(refs))
 		var toInstall []ref.Ref
 		var at []int // index in results of each ref in toInstall
 		for i, r := range refs {
 			switch {
+			case failed[i] != nil:
+				results[i] = Result{Profile: s.name, Ref: r, Action: ActionFailed, Err: failed[i]}
+				a.report(Event{Kind: EventFailed, Profile: s.name, Ref: r, Err: failed[i]})
 			case slices.Contains(s.profile.Addons, r):
 				a.report(Event{Kind: EventSkipped, Profile: s.name, Ref: r, Message: "already added"})
 				results[i] = Result{Profile: s.name, Ref: r, Action: ActionUnchanged, Version: s.state.Addons[r].Version}
@@ -134,6 +140,38 @@ func (a *App) Add(ctx context.Context, profile string, refs []ref.Ref, force boo
 		return err
 	})
 	return results, err
+}
+
+// keptRefs turns each ref given to Add into the one config keeps: the
+// source's own ID for it, such as a CurseForge project's for its slug, or
+// the ref itself. It then drops duplicates, two spellings of one addon
+// included. A ref already in config as given, as a slug written there by
+// hand, stays as it is. failed has the error, by index, for a ref whose
+// ID couldn't be found, which is returned as given.
+func (a *App) keptRefs(ctx context.Context, s *session, refs []ref.Ref) ([]ref.Ref, map[int]error) {
+	var out []ref.Ref
+	failed := map[int]error{}
+	s.addedAs = map[ref.Ref]ref.Ref{}
+	for _, r := range dedupe(refs) {
+		kept := r
+		if !slices.Contains(s.profile.Addons, r) {
+			id, err := a.sources.ID(ctx, r)
+			if err != nil {
+				failed[len(out)] = explain(err, r)
+				out = append(out, r)
+				continue
+			}
+			kept = id
+		}
+		if slices.Contains(out, kept) {
+			continue
+		}
+		if kept != r {
+			s.addedAs[kept] = r
+		}
+		out = append(out, kept)
+	}
+	return out, failed
 }
 
 // fetched is a release resolved, and downloaded when needed.
@@ -281,11 +319,16 @@ func (a *App) installOne(ctx context.Context, s *session, r ref.Ref, f fetched, 
 		return nil, nil, err
 	}
 	previous, had := s.state.Addons[r]
+	addedAs := previous.AddedAs // kept through an upgrade
+	if as, ok := s.addedAs[r]; ok {
+		addedAs = as.String()
+	}
 	s.state.Addons[r] = state.Addon{
 		Version:     f.release.Version,
 		SHA256:      f.sum,
 		InstalledAt: time.Now(),
 		Folders:     folders,
+		AddedAs:     addedAs,
 	}
 	if err := a.state.Save(s.name, s.state); err != nil {
 		// Undo the change in memory too, so a bad entry can't make every
@@ -378,11 +421,18 @@ func findAddon(s *session, known []ref.Ref, name string) (ref.Ref, error) {
 		if slices.Contains(known, r) {
 			return r, nil
 		}
+		// Or the ref or link it was added as, before its source's ID was
+		// kept instead.
+		for _, k := range known {
+			if as := s.state.Addons[k].AddedAs; as != "" && as == r.String() {
+				return k, nil
+			}
+		}
 		return ref.Ref{}, notInProfile(name, s.name)
 	}
 	var matches []ref.Ref
 	for _, r := range known {
-		if strings.EqualFold(r.ShortName(), name) {
+		if strings.EqualFold(r.ShortName(), name) || strings.EqualFold(addedAsShortName(s, r), name) {
 			matches = append(matches, r)
 		}
 	}
@@ -408,6 +458,16 @@ func findAddon(s *session, known []ref.Ref, name string) (ref.Ref, error) {
 		Msg:  fmt.Sprintf("%q matches several addons: %s", name, strings.Join(listed, ", ")),
 		Hint: "use the full ref",
 	}
+}
+
+// addedAsShortName is the short name of the ref r was added as, such as a
+// CurseForge slug, or "" when it was added as itself.
+func addedAsShortName(s *session, r ref.Ref) string {
+	as, err := ref.Parse(s.state.Addons[r].AddedAs)
+	if err != nil {
+		return ""
+	}
+	return as.ShortName()
 }
 
 func notInProfile(name, profile string) error {

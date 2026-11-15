@@ -24,6 +24,9 @@ func Marshal(st *State) []byte {
 		fmt.Fprintf(&buf, "sha256 = %s\n", tomlenc.Quote(a.SHA256))
 		fmt.Fprintf(&buf, "installed_at = %s\n", tomlenc.Time(a.InstalledAt))
 		fmt.Fprintf(&buf, "folders = %s\n", tomlenc.Strings(a.Folders))
+		if a.AddedAs != "" {
+			fmt.Fprintf(&buf, "added_as = %s\n", tomlenc.Quote(a.AddedAs))
+		}
 	}
 	return buf.Bytes()
 }

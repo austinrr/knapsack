@@ -22,18 +22,9 @@ const (
 	KeyEnv    KeyOrigin = config.FromEnv
 )
 
-// builtSources are the sources this build of Knapsack can install from.
-// It's a fixed property of the build, not of how an App was set up, so
-// Sources answers the same with or without network sources registered.
-// CurseForge joins it when it's built (DESIGN.md §7).
-var builtSources = map[string]bool{ref.GitHub: true, ref.Wago: true}
-
 // SourceInfo describes one source, as Sources reports it.
 type SourceInfo struct {
 	Name string
-	// Available is whether Knapsack can install from it yet; CurseForge
-	// is planned (DESIGN.md §7).
-	Available bool
 	// NeedsKey is whether it takes an API key. GitHub doesn't: its token
 	// is optional and never stored, so frontends find it themselves.
 	NeedsKey bool
@@ -46,11 +37,10 @@ type SourceInfo struct {
 	API config.API
 }
 
-// Ready reports whether the source can resolve addons as it's set up:
-// it's built, and has a key if it's read through an API that needs one.
+// Ready reports whether the source can resolve addons as it's set up: it
+// has a key, if it's read through an API that needs one.
 func (s SourceInfo) Ready() bool {
-	needsKey := s.NeedsKey && s.API == config.APIOfficial
-	return s.Available && (!needsKey || s.Key != KeyNone)
+	return !s.NeedsKey || s.API == config.APIWebsite || s.Key != KeyNone
 }
 
 // Sources lists every source Knapsack knows, GitHub first, then those
@@ -64,10 +54,10 @@ func (a *App) Sources(ctx context.Context) ([]SourceInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := []SourceInfo{{Name: ref.GitHub, Available: builtSources[ref.GitHub], API: c.API(ref.GitHub)}}
+	out := []SourceInfo{{Name: ref.GitHub, API: c.API(ref.GitHub)}}
 	for _, ks := range config.KeyedSources() {
 		out = append(out, SourceInfo{
-			Name: ks.Name, Available: builtSources[ks.Name], NeedsKey: true,
+			Name: ks.Name, NeedsKey: true,
 			Key: KeyOrigin(c.KeyOrigin(ks.Name, a.getenv)), Env: ks.Env, API: c.API(ks.Name),
 		})
 	}
@@ -83,8 +73,6 @@ type SetSourceKeyResult struct {
 	// so it, not config, is what's used.
 	Overridden bool
 	Env        string
-	// Available is whether Knapsack can install from the source yet.
-	Available bool
 	// Website is true when the source is read from its website, which
 	// doesn't use the key.
 	Website bool
@@ -105,7 +93,7 @@ func (a *App) SetSourceKey(ctx context.Context, name, key string) (SetSourceKeyR
 	if err := checkKey(key); err != nil {
 		return SetSourceKeyResult{}, err
 	}
-	res := SetSourceKeyResult{Env: ks.Env, Available: builtSources[ks.Name]}
+	res := SetSourceKeyResult{Env: ks.Env}
 	var origin string
 	res.Changed, err = a.changeConfig(func(c *config.Config) error {
 		if !c.SetAPIKey(ks.Name, key) {
@@ -126,8 +114,6 @@ type SetSourceAPIResult struct {
 	// NeedsKey is true when the source is now read through its official
 	// API but has no key for it.
 	NeedsKey bool
-	// Available is whether Knapsack can install from the source yet.
-	Available bool
 	// API is how the source is now read.
 	API config.API
 }
@@ -155,7 +141,7 @@ func (a *App) SetSourceAPI(ctx context.Context, name, apiName string) (SetSource
 	if api == config.APIOfficial {
 		stored = "" // the default, so config can stay empty
 	}
-	res := SetSourceAPIResult{Available: builtSources[ks.Name], API: api}
+	res := SetSourceAPIResult{API: api}
 	res.Changed, err = a.changeConfig(func(c *config.Config) error {
 		if !c.SetAPI(ks.Name, stored) {
 			return fmt.Errorf("config has no api for %s", ks.Name) // KeyedSource found it, so never

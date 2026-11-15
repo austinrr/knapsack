@@ -17,6 +17,7 @@ import (
 	"github.com/austinrr/knapsack/internal/app"
 	"github.com/austinrr/knapsack/internal/selfupdate"
 	"github.com/austinrr/knapsack/internal/source"
+	"github.com/austinrr/knapsack/internal/source/curseforge"
 	"github.com/austinrr/knapsack/internal/source/github"
 	"github.com/austinrr/knapsack/internal/source/wago"
 )
@@ -59,10 +60,15 @@ type env struct {
 	// token. Tests replace both, so they never reach the real GitHub.
 	githubURL   string
 	ghAuthToken func(context.Context) string
-	// wagoURL is Wago Addons' API and wagoSiteURL its website, which
-	// tests replace too.
-	wagoURL     string
-	wagoSiteURL string
+	// wagoURL and curseforgeURL are Wago Addons' and CurseForge's APIs,
+	// and wagoSiteURL and curseforgeSiteURL their websites, which tests
+	// replace too.
+	wagoURL           string
+	wagoSiteURL       string
+	curseforgeURL     string
+	curseforgeSiteURL string
+	// cfwidgetURL is CFWidget, where a CurseForge slug's ID is looked up.
+	cfwidgetURL string
 }
 
 func main() {
@@ -103,6 +109,10 @@ func main() {
 		ghAuthToken: ghAuthToken,
 		wagoURL:     wago.DefaultBaseURL,
 		wagoSiteURL: wago.DefaultSiteURL,
+
+		curseforgeURL:     curseforge.DefaultBaseURL,
+		curseforgeSiteURL: curseforge.DefaultSiteURL,
+		cfwidgetURL:       curseforge.DefaultWidgetURL,
 	})
 	stop()
 	os.Exit(code)

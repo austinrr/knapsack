@@ -183,6 +183,111 @@ func (s *sandbox) serveFakeWagoSite(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprintf(w, `<html><body><div id="app" data-page="%s"></div></body></html>`, html.EscapeString(string(data)))
 }
 
+// fakeCurseForgeAddons are the projects the fake CurseForge has, by slug:
+// their ID, and their folders as fakeReleases. Its API is at <github>/cf
+// and wants fakeCurseForgeKey; its website is at <github>/cfsite.
+var fakeCurseForgeAddons = map[string]struct {
+	id      string
+	folders map[string]string
+}{
+	"syndicator": {"988370", map[string]string{"Syndicator": "16001, 120105"}},
+	// The author allows only CurseForge's app to download it.
+	"app-only": {"424242", map[string]string{"AppOnly": "16001"}},
+}
+
+const fakeCurseForgeKey = "cf-key"
+
+// cfKeyEnv sets the fake CurseForge's key in the environment.
+var cfKeyEnv = map[string]string{"KNAPSACK_CURSEFORGE_API_KEY": fakeCurseForgeKey}
+
+// useCurseForgeSite is a setup step that reads CurseForge from its website.
+var useCurseForgeSite = []string{"sources", "set-api", "curseforge", "website"}
+
+// cfProject finds a fake CurseForge project by ID, returning its slug.
+func cfProject(id string) (string, bool) {
+	for slug, p := range fakeCurseForgeAddons {
+		if p.id == id {
+			return slug, true
+		}
+	}
+	return "", false
+}
+
+// cfFileID is the project's file for its version, v1 or v2, so a bump is
+// a new file, as on CurseForge.
+func (s *sandbox) cfFileID(slug string) string {
+	return fakeCurseForgeAddons[slug].id + strings.TrimPrefix(s.version(slug), "v")
+}
+
+// serveFakeCurseForge answers the fake CurseForge's API under /cf: a slug
+// search at /cf/v1/mods/search, a project's files for a game version type
+// at /cf/v1/mods/<id>/files, and their zips at /cf/download/<slug>.zip.
+func (s *sandbox) serveFakeCurseForge(w http.ResponseWriter, r *http.Request) {
+	if slug, ok := strings.CutPrefix(r.URL.Path, "/cf/download/"); ok {
+		s.serveCurseForgeZip(w, r, strings.TrimSuffix(slug, ".zip"))
+		return
+	}
+	if r.Header.Get("x-api-key") != fakeCurseForgeKey {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	if r.URL.Path == "/cf/v1/mods/search" {
+		var found []map[string]any
+		if p, ok := fakeCurseForgeAddons[r.URL.Query().Get("slug")]; ok {
+			found = append(found, map[string]any{"id": json.Number(p.id), "slug": r.URL.Query().Get("slug")})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": found})
+		return
+	}
+	id, ok := strings.CutSuffix(strings.TrimPrefix(r.URL.Path, "/cf/v1/mods/"), "/files")
+	slug, known := cfProject(id)
+	if !ok || !known {
+		http.NotFound(w, r)
+		return
+	}
+	file := map[string]any{
+		"id": json.Number(s.cfFileID(slug)), "displayName": s.version(slug), "releaseType": 1, "isAvailable": true,
+		"fileDate": "2026-11-01T00:00:00Z", "downloadUrl": "http://" + r.Host + "/cf/download/" + slug + ".zip",
+	}
+	if slug == "app-only" {
+		file["downloadUrl"] = nil
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{file}})
+}
+
+// serveFakeCurseForgeSite answers the fake CurseForge website's JSON API
+// under /cfsite/api/v1, which lists a project's files and downloads them,
+// without a key. A slug's ID is on the fake CFWidget, at
+// /cfwidget/wow/addons/<slug>.
+func (s *sandbox) serveFakeCurseForgeSite(w http.ResponseWriter, r *http.Request) {
+	rest, ok := strings.CutPrefix(r.URL.Path, "/cfsite/api/v1/mods/")
+	id, files, _ := strings.Cut(rest, "/")
+	slug, known := cfProject(id)
+	switch {
+	case !ok || !known:
+		// The website answers an unknown project with no files.
+		_, _ = w.Write([]byte(`{"data":[],"pagination":{}}`))
+	case files == "files":
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{map[string]any{
+			"id": json.Number(s.cfFileID(slug)), "displayName": s.version(slug), "releaseType": 1,
+			"gameVersionTypeIds": []int{517, 88568},
+		}}})
+	case files == "files/"+s.cfFileID(slug)+"/download":
+		s.serveCurseForgeZip(w, r, slug)
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func (s *sandbox) serveCurseForgeZip(w http.ResponseWriter, r *http.Request, slug string) {
+	p, ok := fakeCurseForgeAddons[slug]
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	_, _ = w.Write(fakeZip(p.folders, s.version(slug)))
+}
+
 // serveFakeWago answers /wago/addons/<id> with the addon's stable release
 // for the game version asked for, and serves its zip at
 // /wago/download/<id>.zip. Both want the key, as Wago does.
@@ -229,6 +334,23 @@ func (s *sandbox) serveFakeGitHub(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.HasPrefix(r.URL.Path, "/wagosite/") {
 		s.serveFakeWagoSite(w, r)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/cf/") {
+		s.serveFakeCurseForge(w, r)
+		return
+	}
+	if slug, ok := strings.CutPrefix(r.URL.Path, "/cfwidget/wow/addons/"); ok {
+		p, known := fakeCurseForgeAddons[slug]
+		if !known {
+			http.Error(w, "", http.StatusNotFound)
+			return
+		}
+		_, _ = fmt.Fprintf(w, `{"id":%s,"title":"%s"}`, p.id, slug)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/cfsite/") {
+		s.serveFakeCurseForgeSite(w, r)
 		return
 	}
 	if repo, ok := strings.CutPrefix(r.URL.Path, "/download/"); ok {
@@ -287,15 +409,18 @@ func (s *sandbox) run(args ...string) result {
 	var stdout, stderr bytes.Buffer
 	code := run(context.Background(), expanded, env{
 		stdout: &stdout, stderr: &stderr, getenv: getenv, version: testVersion,
-		released:    !s.notReleased,
-		executable:  s.exe,
-		home:        s.home,
-		interactive: s.interactive,
-		githubURL:   s.github.URL,
-		wagoURL:     s.github.URL + "/wago",
-		wagoSiteURL: s.github.URL + "/wagosite",
-		platform:    "testos/testarch",
-		ghAuthToken: func(context.Context) string { s.ghCalls.Add(1); return s.ghToken },
+		released:          !s.notReleased,
+		executable:        s.exe,
+		home:              s.home,
+		interactive:       s.interactive,
+		githubURL:         s.github.URL,
+		wagoURL:           s.github.URL + "/wago",
+		wagoSiteURL:       s.github.URL + "/wagosite",
+		curseforgeURL:     s.github.URL + "/cf",
+		curseforgeSiteURL: s.github.URL + "/cfsite",
+		cfwidgetURL:       s.github.URL + "/cfwidget",
+		platform:          "testos/testarch",
+		ghAuthToken:       func(context.Context) string { s.ghCalls.Add(1); return s.ghToken },
 
 		stdin:         strings.NewReader(s.stdin),
 		stdinTerminal: s.terminal,

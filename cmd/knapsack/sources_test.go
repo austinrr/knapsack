@@ -40,7 +40,7 @@ func TestSourcesCommands(t *testing.T) {
 		{name: "sources/set_api_official", setup: [][]string{useWagoSite}, args: []string{"sources", "set-api", "wago", "official"}},
 		{name: "sources/set_api_official_with_key", setup: [][]string{useWagoSite}, env: wagoKeyEnv, args: []string{"sources", "set-api", "wago", "official"}},
 		{name: "sources/set_api_official_default", args: []string{"sources", "set-api", "wago", "official"}},
-		{name: "sources/set_api_not_yet", args: []string{"sources", "set-api", "curseforge", "website"}},
+		{name: "sources/set_api_curseforge_website", args: []string{"sources", "set-api", "curseforge", "website"}},
 		{name: "sources/set_api_bad", args: []string{"sources", "set-api", "wago", "browser"}},
 		{name: "sources/set_api_github", args: []string{"sources", "set-api", "github", "website"}},
 		// The source is checked first, so no hint names one that fails.

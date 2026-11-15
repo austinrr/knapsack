@@ -3,9 +3,9 @@ package wago
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
-	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -98,26 +98,15 @@ func (w *Website) page(ctx context.Context, id string) (page, error) {
 		return page{}, err
 	}
 	defer func() { _ = resp.Body.Close() }() // read-only; nothing to flush
-	switch code := resp.StatusCode; {
-	case code == http.StatusOK:
-	case code == http.StatusNotFound:
-		return page{}, fmt.Errorf("no such addon: %w", source.ErrNotFound)
-	case code == http.StatusTooManyRequests:
-		return page{}, fmt.Errorf("the website's rate limit reached: %w", source.ErrRateLimited)
-	case code >= 500:
-		// An outage, not a change: the fix is to retry later, not a report.
-		return page{}, fmt.Errorf("GET %s answered %s", endpoint, resp.Status)
-	default:
-		// Anything else, such as a bot challenge's 403, means the website
-		// doesn't answer Knapsack as it did.
-		return page{}, fmt.Errorf("%w: GET %s answered %s", source.ErrUnexpectedWebsite, endpoint, resp.Status)
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse+1))
-	if err != nil {
+	if err := source.WebsiteStatus(resp, endpoint); err != nil {
 		return page{}, err
 	}
-	if len(body) > maxResponse {
-		return page{}, fmt.Errorf("%w: the page is over %d MiB", source.ErrUnexpectedWebsite, maxResponse>>20)
+	body, err := source.ReadBody(resp.Body, maxResponse)
+	if errors.Is(err, source.ErrTooLarge) {
+		return page{}, fmt.Errorf("%w: the page %w", source.ErrUnexpectedWebsite, err)
+	}
+	if err != nil {
+		return page{}, err
 	}
 	m := dataPage.FindSubmatch(body)
 	if m == nil {

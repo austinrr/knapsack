@@ -9,7 +9,7 @@
   },
   {
     "name": "curseforge",
-    "status": "not yet",
+    "status": "ready",
     "api": "official",
     "key_from": "config"
   },

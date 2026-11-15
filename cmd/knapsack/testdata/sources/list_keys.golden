@@ -1,7 +1,7 @@
 # exit: 0
 # stdout:
-NAME        STATUS   API       KEY
-github      ready    official  from $GITHUB_TOKEN
-curseforge  not yet  official  set in config
-wago        ready    official  from $KNAPSACK_WAGO_API_KEY
+NAME        STATUS  API       KEY
+github      ready   official  from $GITHUB_TOKEN
+curseforge  ready   official  set in config
+wago        ready   official  from $KNAPSACK_WAGO_API_KEY
 # stderr:

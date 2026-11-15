@@ -44,6 +44,12 @@ func TestBulkCommands(t *testing.T) {
 			args: []string{"update"}},
 		{name: "update/wago_website", setup: [][]string{addForever, useWagoSite, addBaganator, addPlumber}, after: bumpPlumber,
 			args: []string{"update"}},
+		{name: "update/curseforge", env: cfKeyEnv, setup: [][]string{addForever, {"add", "curseforge:syndicator"}},
+			after: func(s *sandbox) { s.bump("syndicator") }, args: []string{"update"}},
+		{name: "update/curseforge_named_by_slug", env: cfKeyEnv, setup: [][]string{addForever, {"add", "curseforge:syndicator"}},
+			after: func(s *sandbox) { s.bump("syndicator") }, args: []string{"update", "curseforge:syndicator"}},
+		{name: "update/curseforge_website", setup: [][]string{addForever, useCurseForgeSite, {"add", "curseforge:syndicator"}},
+			after: func(s *sandbox) { s.bump("syndicator") }, args: []string{"update"}},
 		{name: "update/upgrade", setup: [][]string{addForever, addBaganator, addDetails}, after: bumpBaganator,
 			args: []string{"update"}},
 		// One addon, so the progress lines come in a fixed order.

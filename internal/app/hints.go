@@ -28,6 +28,10 @@ func explain(err error, r ref.Ref) error {
 		hint = "close World of Warcraft and retry"
 	case errors.Is(err, source.ErrNotFound) && r.Source == ref.Wago:
 		hint = "check the ref: use the addon's Wago ID, or its addons.wago.io link"
+	case errors.Is(err, source.ErrNotFound) && r.Source == ref.CurseForge:
+		hint = "check the ref: use the project's ID or slug, or its curseforge.com link"
+	case errors.Is(err, source.ErrNotDistributed):
+		hint = "only the source's own app can install it; check whether the author publishes it on GitHub or Wago too"
 	case errors.Is(err, source.ErrNotFound):
 		hint = "check the ref; a repository with no releases yet also counts as not found"
 	case errors.Is(err, source.ErrRateLimited) && r.Source == ref.GitHub:
@@ -39,20 +43,20 @@ func explain(err error, r ref.Ref) error {
 	case errors.Is(err, source.ErrUnauthorized):
 		hint = fmt.Sprintf("check the key%s, and set it again with `knapsack sources set-key %s`%s",
 			keyPage(r.Source, " at "), r.Source, envOverride(r.Source))
-	case errors.Is(err, source.ErrSourceNotConfigured) && builtSources[r.Source]:
-		// A built source that isn't configured is one read through its
-		// official API without a key.
+	case errors.Is(err, source.ErrSourceNotConfigured):
+		// A source that isn't configured is one read through its official
+		// API without a key.
 		hint = fmt.Sprintf("%s's official API needs a key: get one%s, then run `knapsack sources set-key %s`; or read its website instead, with `knapsack sources set-api %s website`",
 			r.Source, keyPage(r.Source, " from "), r.Source, r.Source)
 	case errors.Is(err, source.ErrUnexpectedWebsite):
 		hint = fmt.Sprintf("Knapsack reads %s's website, which may have changed since this release. `knapsack self-update` may fix it; if not, please report it at %s, or use %s's official API, with a key: `knapsack sources set-api %s official`",
 			r.Source, IssuesURL, r.Source, r.Source)
-	case errors.Is(err, source.ErrSourceNotConfigured):
-		hint = fmt.Sprintf("Knapsack can't install from %s yet; `knapsack sources list` shows which sources it can", r.Source)
 	case errors.Is(err, install.ErrWrongGame):
 		hint = "the release isn't built for this profile's flavor"
 	case errors.Is(err, source.ErrNoCompatibleRelease) && r.Source == ref.Wago:
 		hint = "Knapsack installs only stable releases; check the addon's page on Wago for one for this flavor"
+	case errors.Is(err, source.ErrNoCompatibleRelease) && r.Source == ref.CurseForge:
+		hint = "Knapsack installs only release files, not betas or alphas; check the project's files on CurseForge for one for this flavor"
 	case errors.Is(err, source.ErrNoCompatibleRelease):
 		hint = "the release needs exactly one file Knapsack can tell is for this flavor; check its files on the source"
 	default:
@@ -66,7 +70,8 @@ const IssuesURL = "https://github.com/austinrr/knapsack/issues"
 
 // keyPages are where each keyed source's users manage their API keys.
 var keyPages = map[string]string{
-	ref.Wago: "https://addons.wago.io/account/apikeys",
+	ref.CurseForge: "https://console.curseforge.com",
+	ref.Wago:       "https://addons.wago.io/account/apikeys",
 }
 
 // envOverride notes the variable that overrides the source's stored key,

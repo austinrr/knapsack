@@ -2,6 +2,6 @@
 # stdout:
 NAME        STATUS     API       KEY
 github      ready      official  from gh auth token
-curseforge  not yet    official  -
+curseforge  needs key  official  -
 wago        needs key  official  -
 # stderr:

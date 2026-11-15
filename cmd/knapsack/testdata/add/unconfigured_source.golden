@@ -1,5 +1,0 @@
-# exit: 2
-# stdout:
-# stderr:
-error: curseforge 12345: source not configured
-hint: Knapsack can't install from curseforge yet; `knapsack sources list` shows which sources it can

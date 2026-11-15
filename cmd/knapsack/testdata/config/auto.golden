@@ -15,4 +15,4 @@ Switched to profile "retail".
 Start a never-started client once, or make its Interface/AddOns folder,
 then run this again.
 # stderr:
-Next, add addons: knapsack add github:owner/repo, or a GitHub or Wago link.
+Next, add addons: knapsack add github:owner/repo, or a GitHub, CurseForge or Wago link.

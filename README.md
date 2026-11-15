@@ -3,8 +3,8 @@
 A small, cross-platform command-line addon manager for World of Warcraft.
 
 Knapsack installs, updates and removes addons for each of your game clients
-(Retail, Classic, Classic Era, Anniversary, Forever) from GitHub releases
-and Wago Addons, with CurseForge planned. It aims for simplicity and refinement over
+(Retail, Classic, Classic Era, Anniversary, Forever) from GitHub releases,
+CurseForge and Wago Addons. It aims for simplicity and refinement over
 features: it checks that a release is really built for your client before
 installing it, only ever deletes folders it installed, and rolls back an
 install that fails halfway.
@@ -104,12 +104,13 @@ compared by checksum, not version number.
 | `info <addon>` | Show one addon's version, folders, install time and TOC details |
 | `config set-profile [name] --path <AddOns>` | Create or change a profile, named after its flavor unless you name it |
 | `config get-profiles`, `use-profile`, `current-profile`, `delete-profile`, `view` | Manage profiles, like kubectl contexts |
-| `sources list`, `set-key`, `unset-key` | List addon sources and where their API keys come from, and manage keys for every profile |
+| `sources list`, `set-api`, `set-key`, `unset-key` | List addon sources, choose whether each is read from its official API or website, and manage API keys, for every profile |
 | `version` | Print Knapsack's version, and say if there's a newer one |
 | `self-update` | Update Knapsack to the newest release |
 
 An addon can be named by its ref (`github:austinrr/baganator-mirror`,
-`wago:<id>`), its GitHub or addons.wago.io link, or its short name (`baganator-mirror`) when only one addon matches.
+`curseforge:<id>`, `wago:<id>`), its GitHub, curseforge.com or
+addons.wago.io link, or its short name (`baganator-mirror`) when only one addon matches.
 `knapsack <command> --help` shows every flag.
 
 ### Common flags
@@ -134,14 +135,16 @@ from `GITHUB_TOKEN`, `GH_TOKEN` or the [GitHub CLI](https://cli.github.com/)
 (`gh auth login`) when there is one, which raises that to 5,000. It never
 stores the token.
 
-Wago Addons, and CurseForge once it's supported, are read through their
-official APIs, which need an API key, shared by every profile. Wago's is on
-your [account's API keys page](https://addons.wago.io/account/apikeys):
+CurseForge and Wago Addons are read through their official APIs, which
+need an API key, shared by every profile. CurseForge's is on its
+[developer console](https://console.curseforge.com), and Wago's on your
+[account's API keys page](https://addons.wago.io/account/apikeys):
 
 ```sh
 knapsack sources set-key wago                   # asks for it
 pass show wago | knapsack sources set-key wago  # or pipe it in
 knapsack add https://addons.wago.io/addons/plater
+knapsack add https://www.curseforge.com/wow/addons/syndicator
 ```
 
 Without a key, Knapsack can read the source's website instead, as a
@@ -149,7 +152,12 @@ browser does:
 
 ```sh
 knapsack sources set-api wago website
+knapsack sources set-api curseforge website
 ```
+
+A CurseForge link or slug is looked up once, when it's added, on
+[CFWidget](https://www.cfwidget.com), since CurseForge's own pages only
+answer browsers; config then keeps the project's ID.
 
 A website isn't an API, so it can change under Knapsack. When one answers
 in a way Knapsack doesn't understand, the error ends with a `report:` link

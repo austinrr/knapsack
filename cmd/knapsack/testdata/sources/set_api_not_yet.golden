@@ -1,5 +1,0 @@
-# exit: 0
-# stdout:
-curseforge is now read from its website.
-# stderr:
-Knapsack can't install from curseforge yet; it will use this once it can.

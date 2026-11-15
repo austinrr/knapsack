@@ -26,6 +26,16 @@ flavor = "forever"
 api_key = "` + fakeWagoKey + `"
 `
 
+// cfSlugInConfig is a Forever profile with a CurseForge slug written into
+// config by hand, rather than the ID add keeps.
+const cfSlugInConfig = `current_profile = "forever"
+
+[profiles.forever]
+path = "{home}/wow/_forever_/Interface/AddOns"
+flavor = "forever"
+addons = ["curseforge:syndicator"]
+`
+
 // handInstall puts folders in AddOns as installing by hand would:
 // WeakAuras, with a TOC, and LibStub, without one, in Forever, and Plater
 // in Retail.
@@ -63,7 +73,7 @@ func TestAddonCommands(t *testing.T) {
 		{name: "add/already_added", setup: [][]string{addForever, addBaganator}, args: addBaganator},
 		{name: "add/partial_failure", setup: [][]string{addForever},
 			args: []string{"add", "github:austinrr/baganator-mirror", "github:austinrr/missing", "github:austinrr/retail-only"}},
-		{name: "add/unconfigured_source", setup: [][]string{addForever}, args: []string{"add", "curseforge:12345"}},
+		{name: "add/curseforge_no_key", setup: [][]string{addForever}, args: []string{"add", "curseforge:12345"}},
 		{name: "add/verbose", setup: [][]string{addForever}, args: []string{"add", "-v", "github:austinrr/details-mirror"}},
 		{name: "add/profile_flag", setup: [][]string{addForever, addRetail},
 			args: []string{"add", "-p", "retail", "github:austinrr/retail-only"}},
@@ -86,10 +96,40 @@ func TestAddonCommands(t *testing.T) {
 		{name: "add/wago_no_key", setup: [][]string{addForever}, args: addPlumber},
 		{name: "add/wago_bad_key", env: map[string]string{"KNAPSACK_WAGO_API_KEY": "wrong"}, setup: [][]string{addForever}, args: addPlumber},
 		{name: "add/wago_unknown", env: wagoKeyEnv, setup: [][]string{addForever}, args: []string{"add", "wago:nope"}},
+		// CurseForge's official API, the default, by slug, ID or link.
+		{name: "add/curseforge", env: cfKeyEnv, setup: [][]string{addForever}, args: []string{"add", "curseforge:syndicator"}},
+		{name: "add/curseforge_id", env: cfKeyEnv, setup: [][]string{addForever}, args: []string{"add", "curseforge:988370"}},
+		{name: "add/curseforge_url", env: cfKeyEnv, setup: [][]string{addForever},
+			args: []string{"add", "https://www.curseforge.com/wow/addons/syndicator"}},
+		{name: "add/curseforge_bad_key", env: map[string]string{"KNAPSACK_CURSEFORGE_API_KEY": "wrong"}, setup: [][]string{addForever},
+			args: []string{"add", "curseforge:syndicator"}},
+		{name: "add/curseforge_unknown", env: cfKeyEnv, setup: [][]string{addForever}, args: []string{"add", "curseforge:nope"}},
+		{name: "add/curseforge_not_distributed", env: cfKeyEnv, setup: [][]string{addForever}, args: []string{"add", "curseforge:app-only"}},
+		// CurseForge's website: a pasted link or slug is looked up on the
+		// project's page.
+		{name: "add/curseforge_website_url", setup: [][]string{addForever, useCurseForgeSite},
+			args: []string{"add", "https://www.curseforge.com/wow/addons/syndicator"}},
+		{name: "add/curseforge_website_id", setup: [][]string{addForever, useCurseForgeSite}, args: []string{"add", "curseforge:988370"}},
+		// A slug written into config by hand is already added.
+		{name: "add/curseforge_hand_written_slug", env: cfKeyEnv, config: cfSlugInConfig, args: []string{"add", "curseforge:syndicator"}},
+		// Given as a slug and an ID, it's one addon, even when it fails.
+		{name: "add/curseforge_slug_and_id_failed", env: cfKeyEnv, setup: [][]string{addForever},
+			args: []string{"add", "curseforge:app-only", "curseforge:424242"}},
+		// Given as a slug and an ID, it's one addon.
+		{name: "add/curseforge_slug_and_id", env: cfKeyEnv, setup: [][]string{addForever}, args: []string{"add", "curseforge:syndicator", "curseforge:988370"}},
+		{name: "add/curseforge_already_added", env: cfKeyEnv, setup: [][]string{addForever, {"add", "curseforge:988370"}},
+			args: []string{"add", "https://www.curseforge.com/wow/addons/syndicator"}},
+		{name: "add/curseforge_website_unknown", setup: [][]string{addForever, useCurseForgeSite}, args: []string{"add", "curseforge:nope", "curseforge:999"}},
 		{name: "add/unknown_profile", setup: [][]string{addForever}, args: []string{"add", "-p", "nope", "github:austinrr/baganator-mirror"}},
 
 		// remove
 		{name: "remove/help", args: []string{"remove", "--help"}},
+		// An addon kept as its CurseForge ID is found by the link or slug
+		// it was added as, too, without asking CurseForge.
+		{name: "remove/curseforge_link", env: cfKeyEnv, setup: [][]string{addForever, {"add", "https://www.curseforge.com/wow/addons/syndicator"}},
+			args: []string{"remove", "https://www.curseforge.com/wow/addons/syndicator"}},
+		{name: "remove/curseforge_slug", env: cfKeyEnv, setup: [][]string{addForever, {"add", "curseforge:syndicator"}},
+			args: []string{"remove", "syndicator"}},
 		{name: "remove/no_args", setup: [][]string{addForever}, args: []string{"remove"}},
 		{name: "remove/short_name", setup: [][]string{addForever, addBaganator, addDetails}, args: []string{"remove", "baganator-mirror"}},
 		{name: "remove/alias", setup: [][]string{addForever, addBaganator}, args: []string{"rm", "github:austinrr/baganator-mirror"}},

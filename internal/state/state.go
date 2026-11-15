@@ -36,6 +36,11 @@ type Addon struct {
 	// Folders are the AddOns folders the addon owns, as plain names
 	// relative to the profile's AddOns path.
 	Folders []string
+	// AddedAs is the ref the addon was added as, in normal form, when its
+	// source keeps another ID for it, as CurseForge keeps a slug's project
+	// ID; "" otherwise. Commands then find the addon by the ref or link it
+	// was added as, without asking the source.
+	AddedAs string
 }
 
 // New returns an empty State.
@@ -90,6 +95,11 @@ func (s *State) Validate() error {
 		}
 		if len(a.Folders) == 0 {
 			errs = append(errs, fmt.Errorf("addon %s: owns no folders", r))
+		}
+		if a.AddedAs != "" {
+			if as, err := ref.Parse(a.AddedAs); err != nil || as.String() != a.AddedAs || as.Source != r.Source {
+				errs = append(errs, fmt.Errorf("addon %s: added_as %q isn't a normalized %s ref", r, a.AddedAs, r.Source))
+			}
 		}
 		for _, f := range a.Folders {
 			if err := validateFolder(f); err != nil {
