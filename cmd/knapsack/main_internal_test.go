@@ -28,7 +28,7 @@ func TestRenderErrorWrapped(t *testing.T) {
 	}
 	for _, tt := range tests {
 		var buf bytes.Buffer
-		renderError(&buf, err, tt.verbose, env{})
+		renderError(&buf, err, tt.verbose, "")
 		if got := buf.String(); got != tt.want {
 			t.Errorf("verbose=%v:\ngot  %q\nwant %q", tt.verbose, got, tt.want)
 		}
@@ -41,7 +41,7 @@ func TestRenderErrorReport(t *testing.T) {
 	t.Parallel()
 	err := fmt.Errorf("wago plater: %w: no data-page", source.ErrUnexpectedWebsite)
 	var buf bytes.Buffer
-	renderError(&buf, err, false, env{version: "v1.2.3", platform: "linux/amd64"})
+	renderError(&buf, err, false, "v1.2.3 on linux/amd64")
 	report, ok := strings.CutPrefix(strings.Split(buf.String(), "\n")[1], "report: ")
 	if !ok {
 		t.Fatalf("rendered %q, want a report line", buf.String())

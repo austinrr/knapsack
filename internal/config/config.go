@@ -153,38 +153,42 @@ func KeyedSources() []KeyedSource {
 	return out
 }
 
+// keyed finds source among keyedSources, and its settings in c.
+func (c *Config) keyed(source string) (keyedSource, *Source, bool) {
+	for _, ks := range keyedSources {
+		if ks.name == source {
+			return ks, ks.field(&c.Sources), true
+		}
+	}
+	return keyedSource{}, nil, false
+}
+
 // SetAPIKey stores key in config for source, or removes it when key is "".
 // It reports false for a source that takes no key.
 func (c *Config) SetAPIKey(source, key string) bool {
-	for _, ks := range keyedSources {
-		if ks.name == source {
-			ks.field(&c.Sources).APIKey = key
-			return true
-		}
+	_, s, ok := c.keyed(source)
+	if ok {
+		s.APIKey = key
 	}
-	return false
+	return ok
 }
 
 // SetAPI stores how source is read, or removes the setting, for the
 // default, when api is "". It reports false for a source that has no
 // setting for it.
 func (c *Config) SetAPI(source string, api API) bool {
-	for _, ks := range keyedSources {
-		if ks.name == source {
-			ks.field(&c.Sources).API = api
-			return true
-		}
+	_, s, ok := c.keyed(source)
+	if ok {
+		s.API = api
 	}
-	return false
+	return ok
 }
 
 // API returns how source is read: as set in config, or APIOfficial, the
 // default, when it isn't. GitHub, with no setting, is always APIOfficial.
 func (c *Config) API(source string) API {
-	for _, ks := range keyedSources {
-		if a := ks.field(&c.Sources).API; ks.name == source && a != "" {
-			return a
-		}
+	if _, s, ok := c.keyed(source); ok && s.API != "" {
+		return s.API
 	}
 	return APIOfficial
 }
@@ -212,16 +216,13 @@ func (c *Config) KeyOrigin(source string, getenv func(string) string) string {
 
 // apiKey is the one place the environment-over-config rule lives.
 func (c *Config) apiKey(source string, getenv func(string) string) (string, string) {
-	for _, ks := range keyedSources {
-		if ks.name != source {
-			continue
-		}
-		if v := getenv(ks.env); v != "" {
-			return v, FromEnv
-		}
-		if k := ks.field(&c.Sources).APIKey; k != "" {
-			return k, FromConfig
-		}
+	ks, s, ok := c.keyed(source)
+	switch {
+	case !ok:
+	case getenv(ks.env) != "":
+		return getenv(ks.env), FromEnv
+	case s.APIKey != "":
+		return s.APIKey, FromConfig
 	}
 	return "", FromNowhere
 }

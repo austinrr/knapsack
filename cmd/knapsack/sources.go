@@ -150,17 +150,14 @@ set. website reads the source's website as a browser does, which needs no
 key.`,
 		Example: `  knapsack sources set-api wago website
   knapsack sources set-api wago official`,
-		Args:      twoArgs("source", "api"),
-		ValidArgs: []string{"curseforge", "wago"},
+		Args:              twoArgs("source", "api"),
+		ValidArgsFunction: completeSetAPI,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			api, err := config.ParseAPI(args[1])
-			if err != nil {
-				return &app.UserError{Msg: err.Error(), Hint: "for example, `knapsack sources set-api " + args[0] + " website`"}
-			}
-			res, err := c.app.SetSourceAPI(cmd.Context(), args[0], api)
+			res, err := c.app.SetSourceAPI(cmd.Context(), args[0], args[1])
 			if err != nil {
 				return err
 			}
+			api := res.API
 			out := &printer{w: cmd.OutOrStdout()}
 			now := "now"
 			if !res.Changed {
@@ -180,6 +177,23 @@ key.`,
 			return err
 		},
 	}
+}
+
+// completeSetAPI completes set-api's arguments: a source with settings,
+// then how to read it.
+func completeSetAPI(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
+	var out []string
+	switch len(args) {
+	case 0:
+		for _, ks := range config.KeyedSources() {
+			out = append(out, ks.Name)
+		}
+	case 1:
+		for _, a := range config.APIs {
+			out = append(out, string(a))
+		}
+	}
+	return out, cobra.ShellCompDirectiveNoFileComp
 }
 
 // apiNoun names api in a sentence: "website", or "official API".

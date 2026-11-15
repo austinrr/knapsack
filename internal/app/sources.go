@@ -128,12 +128,15 @@ type SetSourceAPIResult struct {
 	NeedsKey bool
 	// Available is whether Knapsack can install from the source yet.
 	Available bool
+	// API is how the source is now read.
+	API config.API
 }
 
-// SetSourceAPI stores how a source is read: through its official API,
-// which needs a key, or from its website (DESIGN.md §7). Choosing the
-// default, the official API, removes the setting.
-func (a *App) SetSourceAPI(ctx context.Context, name string, api config.API) (SetSourceAPIResult, error) {
+// SetSourceAPI stores how a source is read: api is "official", for its
+// official API, which needs a key, or "website" (DESIGN.md §7). Choosing
+// the default, the official API, removes the setting. The source is
+// checked before api, so a hint about api names a real source.
+func (a *App) SetSourceAPI(ctx context.Context, name, apiName string) (SetSourceAPIResult, error) {
 	if err := ctx.Err(); err != nil {
 		return SetSourceAPIResult{}, err
 	}
@@ -144,11 +147,15 @@ func (a *App) SetSourceAPI(ctx context.Context, name string, api config.API) (Se
 	if err != nil {
 		return SetSourceAPIResult{}, err
 	}
+	api, err := config.ParseAPI(apiName)
+	if err != nil {
+		return SetSourceAPIResult{}, &UserError{Msg: err.Error(), Hint: fmt.Sprintf("for example, `knapsack sources set-api %s website`", ks.Name)}
+	}
 	stored := api
 	if api == config.APIOfficial {
 		stored = "" // the default, so config can stay empty
 	}
-	res := SetSourceAPIResult{Available: builtSources[ks.Name]}
+	res := SetSourceAPIResult{Available: builtSources[ks.Name], API: api}
 	res.Changed, err = a.changeConfig(func(c *config.Config) error {
 		if !c.SetAPI(ks.Name, stored) {
 			return fmt.Errorf("config has no api for %s", ks.Name) // KeyedSource found it, so never
@@ -194,6 +201,6 @@ func KeyedSource(name string) (config.KeyedSource, error) {
 	}
 	return config.KeyedSource{}, &UserError{
 		Msg:  fmt.Sprintf("unknown source %q", name),
-		Hint: "sources that take an API key: " + strings.Join(names, ", "),
+		Hint: "sources with settings: " + strings.Join(names, ", "),
 	}
 }

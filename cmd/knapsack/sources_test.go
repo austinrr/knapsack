@@ -43,6 +43,12 @@ func TestSourcesCommands(t *testing.T) {
 		{name: "sources/set_api_not_yet", args: []string{"sources", "set-api", "curseforge", "website"}},
 		{name: "sources/set_api_bad", args: []string{"sources", "set-api", "wago", "browser"}},
 		{name: "sources/set_api_github", args: []string{"sources", "set-api", "github", "website"}},
+		// The source is checked first, so no hint names one that fails.
+		{name: "sources/set_api_github_bad", args: []string{"sources", "set-api", "github", "browser"}},
+		{name: "sources/set_api_unknown_bad", args: []string{"sources", "set-api", "nope", "browser"}},
+		// Completion offers the sources, then how to read them.
+		{name: "sources/set_api_complete_source", args: []string{"__complete", "sources", "set-api", ""}},
+		{name: "sources/set_api_complete_api", args: []string{"__complete", "sources", "set-api", "wago", ""}},
 		{name: "sources/set_api_unknown", args: []string{"sources", "set-api", "nope", "website"}},
 		{name: "sources/set_api_no_args", args: []string{"sources", "set-api", "wago"}},
 		{name: "sources/view_api", setup: [][]string{useWagoSite}, args: []string{"config", "view"}},

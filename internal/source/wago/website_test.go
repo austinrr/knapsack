@@ -102,7 +102,7 @@ func TestWebsiteResolveErrors(t *testing.T) {
 		{name: "not found", status: http.StatusNotFound, want: source.ErrNotFound, msg: "no such addon"},
 		{name: "rate limited", status: http.StatusTooManyRequests, want: source.ErrRateLimited},
 		{name: "blocked", status: http.StatusForbidden, want: source.ErrUnexpectedWebsite, msg: "answered 403 Forbidden"},
-		{name: "server error", status: http.StatusBadGateway, want: source.ErrUnexpectedWebsite, msg: "502"},
+		{name: "outage", status: http.StatusBadGateway, msg: "answered 502 Bad Gateway"},
 		{name: "no data", body: "<html><body>Just a moment...</body></html>", want: source.ErrUnexpectedWebsite, msg: "no data-page attribute"},
 		{name: "bad JSON", body: addonHTML(`{"component": `), want: source.ErrUnexpectedWebsite, msg: "decode"},
 		{name: "another page", body: addonHTML(`{"component": "Auth/Login", "props": {}}`), want: source.ErrUnexpectedWebsite,
@@ -124,8 +124,13 @@ func TestWebsiteResolveErrors(t *testing.T) {
 			t.Parallel()
 			w, _ := newWebsite(t, tt.status, tt.body)
 			_, err := w.Resolve(context.Background(), "plater", flavor.Retail)
-			if !errors.Is(err, tt.want) {
+			switch {
+			case err == nil:
+				t.Fatal("no error")
+			case tt.want != nil && !errors.Is(err, tt.want):
 				t.Fatalf("err = %v, want %v", err, tt.want)
+			case tt.want == nil && errors.Is(err, source.ErrUnexpectedWebsite):
+				t.Errorf("err = %v, want it not to ask for a report", err)
 			}
 			if !strings.Contains(err.Error(), tt.msg) || !strings.HasPrefix(err.Error(), "wago plater: ") {
 				t.Errorf("err = %v, want it to name the addon and say %q", err, tt.msg)

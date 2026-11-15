@@ -189,7 +189,7 @@ func exitCode(c *cli, err error) int {
 			errs = addonErrors{err}
 		}
 		for _, err := range errs {
-			renderError(e.stderr, err, c.verbose, e)
+			renderError(e.stderr, err, c.verbose, e.version+" on "+e.platform)
 		}
 		return exitError
 	}
@@ -206,8 +206,9 @@ func (e addonErrors) Error() string { return errors.Join(e...).Error() }
 // renderError writes err to w: an "error:" line, then for an app.UserError
 // a "hint:" line, and with --verbose the underlying cause (DESIGN.md §8.6).
 // A source's website answering unexpectedly also gets a "report:" line, a
-// link to open an issue about it, filled in with the error.
-func renderError(w io.Writer, err error, verbose bool, e env) {
+// link to open an issue about it, filled in with the error and running,
+// the version and platform ("v0.2.0 on linux/amd64").
+func renderError(w io.Writer, err error, verbose bool, running string) {
 	msg := "error: " + err.Error() + "\n"
 	var ue *app.UserError
 	if errors.As(err, &ue) {
@@ -221,22 +222,20 @@ func renderError(w io.Writer, err error, verbose bool, e env) {
 		}
 	}
 	if errors.Is(err, source.ErrUnexpectedWebsite) {
-		msg += "report: " + issueURL(err, e) + "\n"
+		msg += "report: " + issueURL(err, running) + "\n"
 	}
 	// A failed write to stderr leaves nowhere else to report, so the error
 	// is deliberately ignored.
 	_, _ = io.WriteString(w, msg)
 }
 
-// issuesURL is where Knapsack's issues are opened.
-const issuesURL = "https://github.com/austinrr/knapsack/issues/new"
-
 // issueURL is a link that opens an issue about err, a source's website
-// answering unexpectedly, with the error and what's running filled in.
-// The error names the addon and the request, but nothing of the user's.
-func issueURL(err error, e env) string {
+// answering unexpectedly, with the error and the Knapsack running filled
+// in. The error names the addon and the request, but nothing of the
+// user's.
+func issueURL(err error, running string) string {
 	body := "Knapsack couldn't read a source's website:\n\n```\n" + err.Error() + "\n```\n\n" +
-		"Knapsack " + e.version + " on " + e.platform + "\n"
+		"Knapsack " + running + "\n"
 	q := url.Values{"title": {"Unexpected answer from a source's website"}, "body": {body}}
-	return issuesURL + "?" + q.Encode()
+	return app.IssuesURL + "/new?" + q.Encode()
 }

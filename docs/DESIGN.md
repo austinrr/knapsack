@@ -780,7 +780,9 @@ only to some, so each can be read two ways, chosen per source in config
   the official API, and the CLI adds a `report:` line: a link that opens a
   GitHub issue with the error, the version and the platform filled in
   (§8.6). Not found and rate limits are still `ErrNotFound` and
-  `ErrRateLimited`.
+  `ErrRateLimited`, and a 5xx is a plain error: an outage, fixed by
+  retrying later, not by a report. A 403, such as a bot challenge, is
+  unexpected, since it means the website no longer answers Knapsack.
 - **`official`**, the default: the documented API, with the key. Without
   one, resolving is `ErrSourceNotConfigured`, whose hint says how to get
   and set a key, or to switch to the website. The official API is the
@@ -831,8 +833,8 @@ command carries on.
 3. The download link is signed and expires; it needs no key, so none is
    sent. It's resolved just before it's downloaded, so it doesn't expire
    first.
-4. 404 is `ErrNotFound`, 429 `ErrRateLimited`, and anything else
-   unexpected `ErrUnexpectedWebsite` (§7).
+4. 404 is `ErrNotFound`, 429 `ErrRateLimited`, 5xx a plain error, and
+   anything else unexpected `ErrUnexpectedWebsite` (§7).
 
 #### Official API
 
@@ -1131,7 +1133,7 @@ forever: 1 upgrade · retail: 1 install
   names the addon and URL, nothing of the user's, such as paths:
   ```
   error: wago plater: unexpected answer from the website: GET https://addons.wago.io/addons/plater has no data-page attribute
-  hint: Knapsack reads wago's website, which may have changed since this release. …
+  hint: Knapsack reads wago's website, which may have changed since this release. `knapsack self-update` may fix it; if not, please report it at https://github.com/austinrr/knapsack/issues, …
   report: https://github.com/austinrr/knapsack/issues/new?body=…&title=…
   ```
 - When several addons are processed, one failure doesn't stop the rest. Each
