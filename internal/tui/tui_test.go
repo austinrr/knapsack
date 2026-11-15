@@ -18,6 +18,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/austinrr/knapsack/internal/app"
+	"github.com/austinrr/knapsack/internal/config"
 	"github.com/austinrr/knapsack/internal/flavor"
 	"github.com/austinrr/knapsack/internal/ref"
 	"github.com/austinrr/knapsack/internal/source"
@@ -46,6 +47,9 @@ type fake struct {
 	updateErr error // Update fails as a whole
 	setErr    error // SetProfile fails
 	auto      app.AutoProfilesResult
+	sources   []app.SourceInfo
+	keys      []string // what SetSourceKey was given
+	envSet    bool
 }
 
 // Update installs each named addon at the version its check found,
@@ -176,6 +180,49 @@ func (f *fake) DeleteProfile(_ context.Context, name string) (app.DeleteProfileR
 	res := app.DeleteProfileResult{WasCurrent: f.current == name}
 	if res.WasCurrent {
 		f.current = ""
+	}
+	return res, nil
+}
+
+// Sources lists GitHub, CurseForge and Wago as sources says.
+func (f *fake) Sources(context.Context) ([]app.SourceInfo, error) {
+	if f.sources == nil {
+		f.sources = []app.SourceInfo{
+			{Name: ref.GitHub, API: config.APIOfficial},
+			{Name: ref.CurseForge, NeedsKey: true, Key: app.KeyNone, Env: "KNAPSACK_CURSEFORGE_API_KEY", API: config.APIOfficial},
+			{Name: ref.Wago, NeedsKey: true, Key: app.KeyNone, Env: "KNAPSACK_WAGO_API_KEY", API: config.APIWebsite},
+		}
+	}
+	return f.sources, nil
+}
+
+// SetSourceKey stores or removes a key; keys records each, for tests to
+// check, and envSet says its variable overrides config.
+func (f *fake) SetSourceKey(_ context.Context, name, key string) (app.SetSourceKeyResult, error) {
+	f.calls = append(f.calls, fmt.Sprintf("set-key %s (%d chars)", name, len(key)))
+	f.keys = append(f.keys, key)
+	res := app.SetSourceKeyResult{Changed: true, Overridden: f.envSet, Env: "KNAPSACK_" + strings.ToUpper(name) + "_API_KEY"}
+	for i, s := range f.sources {
+		if s.Name == name {
+			f.sources[i].Key = app.KeyConfig
+			if key == "" {
+				f.sources[i].Key = app.KeyNone
+			}
+			res.Website = s.API == config.APIWebsite
+		}
+	}
+	return res, nil
+}
+
+// SetSourceAPI changes how a source is read.
+func (f *fake) SetSourceAPI(_ context.Context, name, api string) (app.SetSourceAPIResult, error) {
+	f.calls = append(f.calls, "set-api "+name+" "+api)
+	res := app.SetSourceAPIResult{Changed: true, API: config.API(api)}
+	for i, s := range f.sources {
+		if s.Name == name {
+			f.sources[i].API = config.API(api)
+			res.NeedsKey = api == string(config.APIOfficial) && s.Key == app.KeyNone
+		}
 	}
 	return res, nil
 }
@@ -1771,5 +1818,124 @@ func TestFormResizes(t *testing.T) {
 	h.send(tea.WindowSizeMsg{Width: 120, Height: 30})
 	if got, want := h.m.form.fields[0].Width(), h.m.formWidth(); got != want {
 		t.Errorf("field width %d after resizing, want %d", got, want)
+	}
+}
+
+// ghFromCLI is a GitHubKeyFrom that finds gh's token.
+func ghFromCLI(context.Context) string { return "gh" }
+
+// The sources view lists each source as sources list does: ready or
+// needing a key, read through its API or website, and where its key is.
+func TestSourcesView(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, sample(), Options{GitHubKeyFrom: ghFromCLI})
+	h.keys("3")
+	h.golden("sources")
+	h.keys("?")
+	h.golden("sources_help")
+}
+
+// enter on a source asks for its key, masked; enter saves it. The key
+// is never drawn, nor kept once the job has it, and what was checked for
+// the source's addons is forgotten, since the key changes the answer.
+func TestSetKey(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	h := newHarness(t, f, Options{})
+	f.calls = nil
+	const key = "cf-SECRET-0123456789"
+	h.keys("3", "j", "enter")
+	h.send(tea.PasteMsg{Content: key})
+	screen := ansi.Strip(h.m.render())
+	if strings.Contains(screen, key) || strings.Contains(screen, "SECRET") {
+		t.Fatalf("the key was drawn:\n%s", screen)
+	}
+	h.golden("key_form")
+	h.keys("enter")
+	if diff := cmp.Diff([]string{fmt.Sprintf("set-key curseforge (%d chars)", len(key))}, f.calls); diff != "" {
+		t.Errorf("calls (-want +got):\n%s", diff)
+	}
+	if f.keys[0] != key {
+		t.Errorf("SetSourceKey got %q, want the pasted key", f.keys[0])
+	}
+	if h.m.keyForm != nil {
+		t.Error("the key form, with the key, is still in the model")
+	}
+	for _, s := range []string{h.m.flash, ansi.Strip(h.m.render()), fmt.Sprint(h.sent)} {
+		if strings.Contains(s, "SECRET") {
+			t.Errorf("the key appears in %q", s)
+		}
+	}
+	if want := "Saved curseforge's API key. c checks its addons again."; h.m.flash != want {
+		t.Errorf("flash = %q, want %q", h.m.flash, want)
+	}
+	if _, ok := h.m.known["forever"][weak]; ok {
+		t.Error("WeakAuras, from CurseForge, is still known as checked")
+	}
+}
+
+// An empty key isn't sent; one the environment overrides says so.
+func TestSetKeyNotes(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	f.envSet = true
+	h := newHarness(t, f, Options{})
+	f.calls = nil
+	h.keys("3", "j", "enter", "enter")
+	if len(f.calls) != 0 || h.m.keyForm == nil || h.m.keyForm.err == nil {
+		t.Fatalf("an empty key: calls %v; want none, and the form's error", f.calls)
+	}
+	h.m.keyForm.input.SetValue("abc")
+	h.keys("enter")
+	if !strings.Contains(h.m.flash, "$KNAPSACK_CURSEFORGE_API_KEY is set, and is used instead.") {
+		t.Errorf("flash = %q, want the override noted", h.m.flash)
+	}
+}
+
+// ctrl+d removes a key, after a confirm.
+func TestUnsetKey(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	h := newHarness(t, f, Options{})
+	f.calls = nil
+	h.keys("3", "j", "ctrl+d")
+	h.golden("key_remove")
+	h.keys("y")
+	if diff := cmp.Diff([]string{"set-key curseforge (0 chars)"}, f.calls); diff != "" {
+		t.Errorf("calls (-want +got):\n%s", diff)
+	}
+}
+
+// w switches between the official API and the website, saying when the
+// API needs a key.
+func TestToggleAPI(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	h := newHarness(t, f, Options{})
+	f.calls = nil
+	h.keys("3", "j", "j", "w")
+	// Then that Wago's addons are checked again with c, as it forgot them.
+	if want := "wago is read through its official API now, which needs a key: press enter."; !strings.HasPrefix(h.m.flash, want) {
+		t.Errorf("flash = %q, want it to start %q", h.m.flash, want)
+	}
+	h.keys("w")
+	if diff := cmp.Diff([]string{"set-api wago official", "set-api wago website"}, f.calls); diff != "" {
+		t.Errorf("calls (-want +got):\n%s", diff)
+	}
+}
+
+// GitHub's row says why keys and the website don't apply to it.
+func TestGitHubSource(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	h := newHarness(t, f, Options{})
+	f.calls = nil
+	h.keys("3", "enter")
+	if h.m.keyForm != nil || !strings.Contains(h.m.flash, "never stored") {
+		t.Errorf("enter on GitHub: form open %v, flash %q", h.m.keyForm != nil, h.m.flash)
+	}
+	h.keys("w")
+	if len(f.calls) != 0 || !strings.Contains(h.m.flash, "only through its API") {
+		t.Errorf("w on GitHub: calls %v, flash %q", f.calls, h.m.flash)
 	}
 }

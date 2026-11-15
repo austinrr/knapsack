@@ -18,10 +18,11 @@ import (
 const (
 	viewAddons = iota
 	viewProfiles
+	viewSources
 	viewCount
 )
 
-var viewNames = [viewCount]string{"addons", "profiles"}
+var viewNames = [viewCount]string{"addons", "profiles", "sources"}
 
 // profilesMsg is every profile, from config alone.
 type profilesMsg struct {
@@ -48,8 +49,11 @@ func (m *model) profilesCmd() tea.Cmd {
 func (m *model) switchView(v int) tea.Cmd {
 	m.view = (v + viewCount) % viewCount
 	m.bodyOffset = 0
-	if m.view == viewProfiles {
+	switch m.view {
+	case viewProfiles:
 		return m.profilesCmd()
+	case viewSources:
+		return m.sourcesCmd()
 	}
 	return nil
 }

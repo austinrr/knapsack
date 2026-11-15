@@ -1,10 +1,10 @@
- Profile: forever                    [1] addons  2 profiles
+ Profile: forever         [1] addons  2 profiles  3 sources
  Path:    C:\Program Fi…\_forever_\Interface\AddOns  ? help
 ┌────────────────────────── help ──────────────────────────┐
 │   j k             scroll, when it doesn't fit            │
 │                                                          │
 │ Everywhere                                               │
-│   1 2  tab        addons, profiles view                  │
+│   1 2 3  tab      addons, profiles, sources view         │
 │   j k  ↓ ↑        move                                   │
 │   g G             top, bottom                            │
 │   ctrl+f ctrl+b   page down, up                          │

@@ -28,6 +28,9 @@ type Options struct {
 	// §8.4), on the terminal, which the TUI has given up meanwhile.
 	// saved is false when the edit was cancelled.
 	Edit func(ctx context.Context, profile string) (saved bool, res app.ProfileEditResult, err error)
+	// GitHubKeyFrom says where GitHub's token comes from: "GITHUB_TOKEN",
+	// "GH_TOKEN", "gh" or "", as sources list finds it, which may run gh.
+	GitHubKeyFrom func(context.Context) string
 }
 
 // backend is what the TUI calls on the App, so tests can use a fake.
@@ -44,6 +47,9 @@ type backend interface {
 	SetProfile(ctx context.Context, req app.SetProfileRequest) (app.SetProfileResult, error)
 	AutoProfiles(ctx context.Context, game string) (app.AutoProfilesResult, error)
 	DeleteProfile(ctx context.Context, name string) (app.DeleteProfileResult, error)
+	Sources(ctx context.Context) ([]app.SourceInfo, error)
+	SetSourceKey(ctx context.Context, name, key string) (app.SetSourceKeyResult, error)
+	SetSourceAPI(ctx context.Context, name, api string) (app.SetSourceAPIResult, error)
 }
 
 // Run runs the TUI until the user quits. ctx's values are used, but not

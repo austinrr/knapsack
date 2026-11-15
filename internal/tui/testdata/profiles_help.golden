@@ -1,4 +1,4 @@
- Profile: forever                                        1 addons  [2] profiles
+ Profile: forever                             1 addons  [2] profiles  3 sources
  Path:    C:\Program Files (x86)\World of W…\_forever_\Interface\AddOns  ? help
 ┌──────────────────────────────────── help ────────────────────────────────────┐
 │ Profiles                                                                     │
@@ -10,7 +10,7 @@
 │   ctrl+d          delete it; its addon files stay                            │
 │                                                                              │
 │ Everywhere                                                                   │
-│   1 2  tab        addons, profiles view                                      │
+│   1 2 3  tab      addons, profiles, sources view                             │
 │   j k  ↓ ↑        move                                                       │
 │   g G             top, bottom                                                │
 │   ctrl+f ctrl+b   page down, up                                              │

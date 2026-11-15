@@ -1,0 +1,24 @@
+ Profile: forever                             1 addons  2 profiles  [3] sources
+ Path:    C:\Program Files (x86)\World of W…\_forever_\Interface\AddOns  ? help
+┌───────────────────────────────── sources[3] ─────────────────────────────────┐
+│   NAME         STATUS      READ VIA       KEY                                │
+│   github       ready       official API   from gh auth token                 │
+│   curseforge   needs key   official API   —                                  │
+│   wago         ready       website        —                                  │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ enter set key  ctrl+d remove key  w website     5 addons · 1 update · 1 failed
