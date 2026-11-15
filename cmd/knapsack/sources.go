@@ -12,7 +12,7 @@ import (
 	"github.com/austinrr/knapsack/internal/app"
 )
 
-// sourceJSON is one source in `sources -o json`.
+// sourceJSON is one source in `sources list -o json`.
 type sourceJSON struct {
 	Name   string `json:"name"`
 	Status string `json:"status"`
@@ -64,12 +64,11 @@ func describeKey(s app.SourceInfo, from string) string {
 }
 
 func newSourcesCmd(c *cli) *cobra.Command {
-	var output string
 	cmd := &cobra.Command{
 		Use:   "sources",
 		Short: "List addon sources and manage their API keys",
-		Long: `List the sources Knapsack installs addons from, whether each is ready,
-and where its API key comes from.
+		Long: `List the sources Knapsack installs addons from, and manage their API
+keys.
 
 Keys are shared by every profile. They're stored in config.toml, which is
 then readable only by you, and an environment variable overrides each one
@@ -77,11 +76,26 @@ then readable only by you, and an environment variable overrides each one
 dotfiles repo can leave them out. GitHub needs no key: Knapsack uses a token
 from GITHUB_TOKEN, GH_TOKEN or the GitHub CLI when there is one, for a
 higher rate limit, and never stores it.`,
-		Example: `  knapsack sources
-  knapsack sources set-key wago
-  pass show wago | knapsack sources set-key wago`,
-		Args:    subcommandArgs,
-		PreRunE: c.buildApp,
+	}
+	return c.groupCmd(cmd, newSourcesListCmd(c), newSetKeyCmd(c), newUnsetKeyCmd(c))
+}
+
+func newSourcesListCmd(c *cli) *cobra.Command {
+	var output string
+	cmd := &cobra.Command{
+		Use:     "list",
+		Aliases: []string{"ls"},
+		Short:   "List sources, whether each is ready, and where its key comes from",
+		Long: `List the sources Knapsack installs addons from.
+
+STATUS is ready, needs key (set one with ` + "`knapsack sources set-key`" + `), or
+not yet for a source Knapsack can't install from yet. KEY says where the
+key comes from: config, or the environment variable that overrides it.
+GitHub needs none, but uses a token from GITHUB_TOKEN, GH_TOKEN or the
+GitHub CLI when there is one, for a higher rate limit.`,
+		Example: `  knapsack sources list
+  knapsack sources list -o json`,
+		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			sources, err := c.app.Sources(cmd.Context())
 			if err != nil {
@@ -108,7 +122,6 @@ higher rate limit, and never stores it.`,
 		},
 	}
 	addOutputFlag(cmd, &output, "json")
-	cmd.AddCommand(newSetKeyCmd(c), newUnsetKeyCmd(c))
 	return cmd
 }
 
@@ -127,8 +140,7 @@ such as pass, which prints the secret first. It never takes the key as an
 argument, which would leave it in your shell history.`,
 		Example: `  knapsack sources set-key wago
   pass show wago | knapsack sources set-key wago`,
-		Args:    exactArgs("source"),
-		PreRunE: c.buildApp,
+		Args: exactArgs("source"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Checked first, so nobody types a key for a source that
 			// can't take one.
@@ -164,7 +176,6 @@ func newUnsetKeyCmd(c *cli) *cobra.Command {
 		Short:   "Remove a source's API key from config",
 		Example: `  knapsack sources unset-key wago`,
 		Args:    exactArgs("source"),
-		PreRunE: c.buildApp,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ks, err := app.KeyedSource(args[0])
 			if err != nil {

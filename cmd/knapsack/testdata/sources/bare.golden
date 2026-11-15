@@ -1,0 +1,30 @@
+# exit: 0
+# stdout:
+List the sources Knapsack installs addons from, and manage their API
+keys.
+
+Keys are shared by every profile. They're stored in config.toml, which is
+then readable only by you, and an environment variable overrides each one
+(KNAPSACK_CURSEFORGE_API_KEY, KNAPSACK_WAGO_API_KEY), so a config kept in a
+dotfiles repo can leave them out. GitHub needs no key: Knapsack uses a token
+from GITHUB_TOKEN, GH_TOKEN or the GitHub CLI when there is one, for a
+higher rate limit, and never stores it.
+
+Usage:
+  knapsack sources [flags]
+  knapsack sources [command]
+
+Available Commands:
+  list        List sources, whether each is ready, and where its key comes from
+  set-key     Store a source's API key
+  unset-key   Remove a source's API key from config
+
+Flags:
+  -h, --help   help for sources
+
+Global Flags:
+      --config string   use this config file instead of the default
+  -v, --verbose         show progress and the underlying cause of errors
+
+Use "knapsack sources [command] --help" for more information about a command.
+# stderr:

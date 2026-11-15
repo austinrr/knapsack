@@ -19,13 +19,16 @@ func TestSourcesCommands(t *testing.T) {
 	t.Parallel()
 	runCases(t, []cliCase{
 		{name: "sources/help", args: []string{"sources", "--help"}},
-		{name: "sources/list", args: []string{"sources"}},
+		// Bare sources shows its subcommands, as config does.
+		{name: "sources/bare", args: []string{"sources"}},
+		{name: "sources/ls", args: []string{"sources", "ls"}},
+		{name: "sources/list", args: []string{"sources", "list"}},
 		{name: "sources/list_keys", after: setCurseForgeKey,
 			env:  map[string]string{"GITHUB_TOKEN": "gh-env", "KNAPSACK_WAGO_API_KEY": "wago-env"},
-			args: []string{"sources"}},
-		{name: "sources/list_wago_ready", env: wagoKeyEnv, args: []string{"sources"}},
-		{name: "sources/list_gh", after: func(s *sandbox) { s.ghToken = "from-gh" }, args: []string{"sources"}},
-		{name: "sources/list_json", after: setCurseForgeKey, env: map[string]string{"GH_TOKEN": "gh-env"}, args: []string{"sources", "-o", "json"}},
+			args: []string{"sources", "list"}},
+		{name: "sources/list_wago_ready", env: wagoKeyEnv, args: []string{"sources", "list"}},
+		{name: "sources/list_gh", after: func(s *sandbox) { s.ghToken = "from-gh" }, args: []string{"sources", "list"}},
+		{name: "sources/list_json", after: setCurseForgeKey, env: map[string]string{"GH_TOKEN": "gh-env"}, args: []string{"sources", "list", "-o", "json"}},
 		{name: "sources/unknown_subcommand", args: []string{"sources", "bogus"}},
 
 		// set-key

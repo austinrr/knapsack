@@ -854,7 +854,7 @@ knapsack config delete-profile <name>
 knapsack config view
 
 # Sources (shared by every profile)
-knapsack sources                   each source, whether it's ready, and where its key comes from
+knapsack sources list              each source, whether it's ready, and where its key comes from
 knapsack sources set-key <source>  store an API key (prompted, or from stdin)
 knapsack sources unset-key <source>
 
@@ -1022,10 +1022,13 @@ forever: 1 upgrade · retail: 1 install
   afterwards; Knapsack doesn't guess another.
 - **`config view`** prints config with API keys shown as `REDACTED`, like
   `kubectl config view`.
-- **`sources`** lists every source with a status (`ready`, `needs key`, or
+- **`sources`** alone prints its help, like `config`. **`sources list`**
+  (`ls`) lists every source with a status (`ready`, `needs key`, or
   `not yet` for one Knapsack can't install from yet) and where its key
   comes from: config, the environment variable that overrides it, or for
   GitHub, `GITHUB_TOKEN`, `GH_TOKEN` or `gh` (which listing may run).
+  Until v0.1.4, bare `sources` was the list; it became a group so its
+  subcommands show up, as `config`'s do.
   `sources set-key <source>` stores a key: typed at a prompt that doesn't
   echo on a terminal, else the first line of stdin (`pass show cf |
   knapsack sources set-key curseforge`; pass prints the secret first),

@@ -40,6 +40,26 @@ func (c *cli) buildApp(cmd *cobra.Command, _ []string) error {
 	return c.build(cmd, false)
 }
 
+// groupCmd makes cmd a group of subs, like config and sources: bare, it
+// prints its help; any other argument is an unknown subcommand. The
+// subcommands get an App from buildApp, but the group's own help doesn't
+// build one.
+func (c *cli) groupCmd(cmd *cobra.Command, subs ...*cobra.Command) *cobra.Command {
+	group := cmd
+	cmd.Args = subcommandArgs
+	cmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		if cmd == group {
+			return nil
+		}
+		return c.buildApp(cmd, args)
+	}
+	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		return cmd.Help()
+	}
+	cmd.AddCommand(subs...)
+	return cmd
+}
+
 // buildNetApp is buildApp plus sources and an HTTP client, for commands
 // that download. Only these, and the update check, look for a GitHub
 // token, which may run the GitHub CLI, and only once they make a request,

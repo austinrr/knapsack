@@ -43,7 +43,7 @@ func explain(err error, r ref.Ref) error {
 		// A built source that isn't configured is one missing its key.
 		hint = fmt.Sprintf("%s needs an API key: get one%s, then run `knapsack sources set-key %s`", r.Source, keyPage(r.Source, " from "), r.Source)
 	case errors.Is(err, source.ErrSourceNotConfigured):
-		hint = fmt.Sprintf("Knapsack can't install from %s yet; `knapsack sources` shows which sources it can", r.Source)
+		hint = fmt.Sprintf("Knapsack can't install from %s yet; `knapsack sources list` shows which sources it can", r.Source)
 	case errors.Is(err, install.ErrWrongGame):
 		hint = "the release isn't built for this profile's flavor"
 	case errors.Is(err, source.ErrNoCompatibleRelease) && r.Source == ref.Wago:

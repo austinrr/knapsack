@@ -60,7 +60,7 @@ func githubToken(ctx context.Context, getenv func(string) string, ghAuthToken fu
 
 // findGitHubToken is githubToken, also saying where the token came from:
 // the variable's name, "gh" for the GitHub CLI, or "" for none. It's the
-// one place the order lives, so `knapsack sources` reports what commands
+// one place the order lives, so `knapsack sources list` reports what commands
 // use.
 func findGitHubToken(ctx context.Context, getenv func(string) string, ghAuthToken func(context.Context) string) (token, origin string) {
 	for _, k := range []string{"GITHUB_TOKEN", "GH_TOKEN"} {

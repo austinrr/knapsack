@@ -1,7 +1,7 @@
 # exit: 0
 # stdout:
-List the sources Knapsack installs addons from, whether each is ready,
-and where its API key comes from.
+List the sources Knapsack installs addons from, and manage their API
+keys.
 
 Keys are shared by every profile. They're stored in config.toml, which is
 then readable only by you, and an environment variable overrides each one
@@ -14,18 +14,13 @@ Usage:
   knapsack sources [flags]
   knapsack sources [command]
 
-Examples:
-  knapsack sources
-  knapsack sources set-key wago
-  pass show wago | knapsack sources set-key wago
-
 Available Commands:
+  list        List sources, whether each is ready, and where its key comes from
   set-key     Store a source's API key
   unset-key   Remove a source's API key from config
 
 Flags:
-  -h, --help            help for sources
-  -o, --output format   output format: json
+  -h, --help   help for sources
 
 Global Flags:
       --config string   use this config file instead of the default
