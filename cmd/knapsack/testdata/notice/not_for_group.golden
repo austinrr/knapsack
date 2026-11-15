@@ -1,6 +1,6 @@
 # exit: 0
 # stdout:
-Show Knapsack's settings, kept in config.toml: profiles (managed with
+Show and edit Knapsack's settings, kept in config.toml: profiles (managed with
 knapsack profiles), how each source is read and its API keys (knapsack
 sources), and settings for all of Knapsack.
 
@@ -9,6 +9,7 @@ Usage:
   knapsack config [command]
 
 Available Commands:
+  edit        Edit config.toml in your editor
   view        Print the config, with API keys redacted
 
 Flags:

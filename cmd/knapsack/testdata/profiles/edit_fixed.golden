@@ -1,0 +1,5 @@
+# exit: 0
+# stdout:
+Profile "forever" saved.
+# stderr:
+1 addon added: install with `knapsack update -p forever`.

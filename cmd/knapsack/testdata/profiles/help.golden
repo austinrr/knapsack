@@ -21,6 +21,7 @@ Available Commands:
   create      Create a profile, or one for each client --auto finds
   current     Print the current profile
   delete      Delete a profile
+  edit        Edit a profile's folder, flavor and addons in your editor
   list        List profiles
   set         Change a profile's folder or flavor
   use         Switch the current profile, which commands act on

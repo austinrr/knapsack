@@ -1,0 +1,5 @@
+# exit: 0
+# stdout:
+Profile "forever" saved.
+# stderr:
+1 addon removed: uninstall with `knapsack update --prune -p forever`.

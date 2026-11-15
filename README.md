@@ -103,8 +103,8 @@ compared by checksum, not version number.
 | `list` (`ls`) | List the profile's addons by title, with whether each is up to date and its source. `--no-check` skips the network; `--unmanaged` also lists folders Knapsack didn't install |
 | `info <addon>` | Show one addon's version, folders, install time and TOC details |
 | `profiles create [name] --path <AddOns>`, `--auto` | Create a profile, named after its flavor unless you name it, or one per client `--auto` finds |
-| `profiles list`, `set`, `use`, `current`, `delete` | List profiles, change one's folder or flavor, and switch between them; `-p` and `-A` scope other commands to one profile or all, like kubectl namespaces |
-| `config view` | Print config.toml, API keys redacted |
+| `profiles list`, `set`, `edit`, `use`, `current`, `delete` | List profiles, change one's folder or flavor (or its addons too, in your editor), and switch between them; `-p` and `-A` scope other commands to one profile or all, like kubectl namespaces |
+| `config view`, `edit` | Print config.toml, API keys redacted, or edit it in your editor |
 | `sources list`, `set-api`, `set-key`, `unset-key` | List addon sources, choose whether each is read from its official API or website, and manage API keys, for every profile |
 | `version` | Print Knapsack's version, and say if there's a newer one |
 | `self-update` | Update Knapsack to the newest release |

@@ -9,12 +9,12 @@ import (
 func newConfigCmd(c *cli) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
-		Short: "Show Knapsack's settings",
-		Long: `Show Knapsack's settings, kept in config.toml: profiles (managed with
+		Short: "Show and edit Knapsack's settings",
+		Long: `Show and edit Knapsack's settings, kept in config.toml: profiles (managed with
 knapsack profiles), how each source is read and its API keys (knapsack
 sources), and settings for all of Knapsack.`,
 	}
-	return c.groupCmd(cmd, newViewCmd(c))
+	return c.groupCmd(cmd, newViewCmd(c), newConfigEditCmd(c))
 }
 
 // configJSON is the -o json shape of config view.

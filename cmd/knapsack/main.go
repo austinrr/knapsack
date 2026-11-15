@@ -56,6 +56,9 @@ type env struct {
 	stdin         io.Reader
 	stdinTerminal bool
 	readPassword  func(context.Context) ([]byte, error)
+	// runEditor runs the user's editor on a file, for the edit commands;
+	// tests edit the file themselves.
+	runEditor func(ctx context.Context, editor, path string) error
 	// githubURL is GitHub's API, and ghAuthToken asks the GitHub CLI for a
 	// token. Tests replace both, so they never reach the real GitHub.
 	githubURL   string
@@ -104,6 +107,7 @@ func main() {
 		// character devices too, but not terminals to read a key at.
 		stdinTerminal: term.IsTerminal(int(os.Stdin.Fd())),
 		readPassword:  readPassword,
+		runEditor:     runEditor,
 
 		githubURL:   github.DefaultBaseURL,
 		ghAuthToken: ghAuthToken,

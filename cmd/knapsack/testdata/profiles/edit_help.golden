@@ -1,0 +1,26 @@
+# exit: 0
+# stdout:
+Edit a profile in your editor: its AddOns path, its flavor, and the
+addons it should have. The editor is $KNAPSACK_EDITOR, $VISUAL or
+$EDITOR, else vi (Notepad on Windows).
+
+Save and quit to apply; quit without saving to cancel. If what's saved
+isn't valid, the editor opens again with the error at the top. Addons
+added are installed by knapsack update, and those taken out are
+uninstalled by knapsack update --prune, so edit says what the profile
+should have, and update makes it so.
+
+Usage:
+  knapsack profiles edit <name> [flags]
+
+Examples:
+  knapsack profiles edit retail
+  EDITOR='code --wait' knapsack profiles edit retail
+
+Flags:
+  -h, --help   help for edit
+
+Global Flags:
+      --config string   use this config file instead of the default
+  -v, --verbose         show progress and the underlying cause of errors
+# stderr:
