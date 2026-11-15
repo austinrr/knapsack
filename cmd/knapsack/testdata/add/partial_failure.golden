@@ -3,6 +3,6 @@
 Added github:austinrr/baganator-mirror v1 to forever.
 # stderr:
 error: github austinrr/missing: no such repository, or it has no releases: not found
-hint: check the ref; a repository with no releases yet also counts as not found
+hint: check the ref; a repository with no releases yet counts as not found, as does a private one without a token that can read it (set GITHUB_TOKEN, or log in with `gh auth login`)
 error: github:austinrr/retail-only: RetailOnly: built for a different game: Interface 120105, but forever needs 16000–16999
 hint: the release isn't built for this profile's flavor

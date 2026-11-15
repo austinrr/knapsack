@@ -28,14 +28,23 @@ const DefaultBaseURL = "https://api.github.com"
 type Source struct {
 	client  *http.Client
 	baseURL string
-	token   string
+	// origin is baseURL's, as httpx.Origin has it: the only place the
+	// token is sent.
+	origin string
+	token  string
 }
 
 // New returns a Source using client. baseURL is DefaultBaseURL except in
 // tests. token is optional: without one GitHub allows 60 requests an hour,
-// with one 5,000.
+// with one 5,000, and a token also reaches the private repositories it can
+// read.
 func New(client *http.Client, baseURL, token string) *Source {
-	return &Source{client: client, baseURL: strings.TrimSuffix(baseURL, "/"), token: token}
+	baseURL = strings.TrimSuffix(baseURL, "/")
+	s := &Source{client: client, baseURL: baseURL, token: token}
+	if u, err := url.Parse(baseURL); err == nil {
+		s.origin = httpx.Origin(u)
+	}
+	return s
 }
 
 // Name implements source.Source.
@@ -50,6 +59,9 @@ type release struct {
 type asset struct {
 	Name               string `json:"name"`
 	BrowserDownloadURL string `json:"browser_download_url"`
+	// URL is the asset in the API, which downloads it, with the token,
+	// for a private repository too.
+	URL string `json:"url"`
 	// Digest is "sha256:<hex>". Assets uploaded before GitHub started
 	// recording digests in 2025 have none.
 	Digest string `json:"digest"`
@@ -73,7 +85,27 @@ func (s *Source) Resolve(ctx context.Context, id string, f flavor.Flavor) (sourc
 	if err != nil {
 		return source.Release{}, fmt.Errorf("github %s %s: asset %s: %w", id, rel.TagName, a.Name, err)
 	}
-	return source.Release{Version: rel.TagName, DownloadURL: a.BrowserDownloadURL, SHA256: sum}, nil
+	out := source.Release{Version: rel.TagName, DownloadURL: a.BrowserDownloadURL, SHA256: sum}
+	if dl, header, ok := s.withToken(a.URL); ok {
+		out.DownloadURL, out.Header = dl, header
+	}
+	return out, nil
+}
+
+// withToken is how to download the asset at apiURL with the token, so a
+// private repository's assets download too: from the API, asking for the
+// file, which GitHub answers with a redirect to a signed link. ok is false
+// without a token, or when apiURL isn't on the API itself, which alone
+// sees the token. httpx.Download drops it from the redirect.
+func (s *Source) withToken(apiURL string) (dl string, header http.Header, ok bool) {
+	u, err := url.Parse(apiURL)
+	if s.token == "" || err != nil || s.origin == "" || httpx.Origin(u) != s.origin {
+		return "", nil, false
+	}
+	return apiURL, http.Header{
+		"Authorization": {"Bearer " + s.token},
+		"Accept":        {"application/octet-stream"},
+	}, true
 }
 
 // LatestAssets returns the newest release of id ("owner/repo") with all
@@ -138,7 +170,7 @@ func checkStatus(resp *http.Response, withToken bool) error {
 		return nil
 	case resp.StatusCode == http.StatusNotFound:
 		// GitHub also answers 404 for a repo with no releases, and for a
-		// private repo the token can't see.
+		// private repo the token can't see, or with no token.
 		return fmt.Errorf("no such repository, or it has no releases: %w", source.ErrNotFound)
 	case resp.StatusCode == http.StatusUnauthorized:
 		return fmt.Errorf("GitHub rejected the token: %w", source.ErrUnauthorized)

@@ -33,7 +33,8 @@ func explain(err error, r ref.Ref) error {
 	case errors.Is(err, source.ErrNotDistributed):
 		hint = "only the source's own app can install it; check whether the author publishes it on GitHub or Wago too"
 	case errors.Is(err, source.ErrNotFound):
-		hint = "check the ref; a repository with no releases yet also counts as not found"
+		// GitHub's, the other sources having theirs above.
+		hint = "check the ref; a repository with no releases yet counts as not found, as does a private one without a token that can read it (set GITHUB_TOKEN, or log in with `gh auth login`)"
 	case errors.Is(err, source.ErrRateLimited) && r.Source == ref.GitHub:
 		hint = "set GITHUB_TOKEN, or log in with `gh auth login`, for a higher limit"
 	case errors.Is(err, source.ErrRateLimited):

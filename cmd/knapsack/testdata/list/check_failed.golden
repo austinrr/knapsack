@@ -6,4 +6,4 @@ gone              not installed  -        github
 # stderr:
 Profile forever:
 error: github austinrr/gone: no such repository, or it has no releases: not found
-hint: check the ref; a repository with no releases yet also counts as not found
+hint: check the ref; a repository with no releases yet counts as not found, as does a private one without a token that can read it (set GITHUB_TOKEN, or log in with `gh auth login`)

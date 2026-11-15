@@ -125,7 +125,14 @@ var fakeReleases = map[string]map[string]string{
 	"austinrr/baganator-mirror": {"Baganator": "16001"},
 	"austinrr/details-mirror":   {"Details": "120105, 16001", "Details_DataStorage": "120105, 16001"},
 	"austinrr/retail-only":      {"RetailOnly": "120105"},
+	"austinrr/private-addon":    {"PrivateAddon": "16001"},
 }
+
+// fakePrivateRepos are the fake GitHub's private repos, which only
+// fakePrivateToken can read.
+var fakePrivateRepos = map[string]bool{"austinrr/private-addon": true}
+
+const fakePrivateToken = "gh-private"
 
 // fakeWagoAddons are the addons the fake Wago has, by ID or slug, as
 // fakeReleases. Its API is at <github>/wago and wants fakeWagoKey.
@@ -353,18 +360,38 @@ func (s *sandbox) serveFakeGitHub(w http.ResponseWriter, r *http.Request) {
 		s.serveFakeCurseForgeSite(w, r)
 		return
 	}
+	// A private repo is there only for its token, as on GitHub, which
+	// answers 404 otherwise.
+	hidden := func(repo string) bool {
+		return fakePrivateRepos[repo] && r.Header.Get("Authorization") != "Bearer "+fakePrivateToken
+	}
 	if repo, ok := strings.CutPrefix(r.URL.Path, "/download/"); ok {
 		repo = strings.TrimSuffix(repo, ".zip")
 		folders, ok := fakeReleases[repo]
-		if !ok {
+		if !ok || fakePrivateRepos[repo] { // a browser link needs a login
 			http.NotFound(w, r)
 			return
 		}
 		_, _ = w.Write(fakeZip(folders, s.version(repo)))
 		return
 	}
+	if repo, ok := strings.CutPrefix(r.URL.Path, "/signed/"); ok {
+		repo = strings.TrimSuffix(repo, ".zip")
+		_, _ = w.Write(fakeZip(fakeReleases[repo], s.version(repo)))
+		return
+	}
+	if repo, ok := strings.CutSuffix(strings.TrimPrefix(r.URL.Path, "/repos/"), "/releases/assets/1"); ok {
+		// The API downloads an asset when asked for the file, redirecting
+		// to a signed link.
+		if _, known := fakeReleases[repo]; !known || hidden(repo) || r.Header.Get("Accept") != "application/octet-stream" {
+			http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
+			return
+		}
+		http.Redirect(w, r, "/signed/"+repo+".zip", http.StatusFound)
+		return
+	}
 	repo, ok := strings.CutSuffix(strings.TrimPrefix(r.URL.Path, "/repos/"), "/releases/latest")
-	if _, known := fakeReleases[repo]; !ok || !known {
+	if _, known := fakeReleases[repo]; !ok || !known || hidden(repo) {
 		http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
 		return
 	}
@@ -374,6 +401,7 @@ func (s *sandbox) serveFakeGitHub(w http.ResponseWriter, r *http.Request) {
 		"tag_name": version,
 		"assets": []map[string]string{{
 			"name":                 name,
+			"url":                  "http://" + r.Host + "/repos/" + repo + "/releases/assets/1",
 			"browser_download_url": "http://" + r.Host + "/download/" + repo + ".zip",
 		}},
 	})

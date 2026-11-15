@@ -825,11 +825,21 @@ command carries on.
    verified on download and compared with state to detect updates. Assets
    uploaded before GitHub recorded digests have none; `SHA256` is then empty,
    and the release can only be identified by downloading and hashing it.
-4. A 404 is `ErrNotFound` (GitHub also answers 404 for a repo with no
-   releases), 401 is `ErrUnauthorized`, and 429, or 403 with no requests left
+4. **Private repositories** work with a token that can read them, from
+   wherever Knapsack finds one (§5.2): the release is resolved with it, and
+   the asset downloads from the API (the asset's `url`, with `Accept:
+   application/octet-stream`), which redirects to a signed, short-lived
+   link. Its `browser_download_url` would need a browser's login.
+   `httpx.Download` drops the token from the redirect, which goes to
+   another origin, and the token goes only to the API's own origin. With
+   a token, public assets download the same way; without one, from
+   `browser_download_url` as before.
+5. A 404 is `ErrNotFound` (GitHub also answers 404 for a repo with no
+   releases, and for a private one without a token that can read it,
+   which the hint says), 401 is `ErrUnauthorized`, and 429, or 403 with no requests left
    or a `Retry-After`, is `ErrRateLimited`, with the reset time and, without a
    token, a note that one raises the limit.
-5. Never fall back to source tarballs automatically. Mixed-TOC source trees
+6. Never fall back to source tarballs automatically. Mixed-TOC source trees
    are what caused the OpenMap problem.
 
 ### Wago resolution

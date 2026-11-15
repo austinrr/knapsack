@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -305,5 +306,40 @@ func TestLatestAssets(t *testing.T) {
 	missing, _ := newSource(t, "", nil)
 	if _, _, err := missing.LatestAssets(context.Background(), "o/missing"); !errors.Is(err, source.ErrNotFound) {
 		t.Errorf("LatestAssets of a missing repo = %v, want ErrNotFound", err)
+	}
+}
+
+// With a token, an asset downloads from the API with it, as a private
+// repository's must; the token goes only to the API's own origin. Without
+// one, it's the asset's public link, with nothing sent.
+func TestResolveDownloadWithToken(t *testing.T) {
+	t.Parallel()
+	var api string
+	h := func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprintf(w, `{"tag_name":"v1","assets":[{"name":"Addon.zip","url":%q,
+			"browser_download_url":"https://github.com/o/r/releases/download/v1/Addon.zip"}]}`, api)
+	}
+	for _, tt := range []struct {
+		name, token, assetURL string
+		wantAPI               bool
+	}{
+		{"token", "secret", "$API/repos/o/r/releases/assets/7", true},
+		{"no token", "", "$API/repos/o/r/releases/assets/7", false},
+		{"asset elsewhere", "secret", "https://api.example.com/repos/o/r/releases/assets/7", false},
+	} {
+		s, _ := newSource(t, tt.token, h)
+		api = strings.ReplaceAll(tt.assetURL, "$API", s.baseURL)
+		got, err := s.Resolve(context.Background(), "o/r", flavor.Retail)
+		if err != nil {
+			t.Fatalf("%s: %v", tt.name, err)
+		}
+		want := source.Release{Version: "v1", DownloadURL: "https://github.com/o/r/releases/download/v1/Addon.zip"}
+		if tt.wantAPI {
+			want.DownloadURL = api
+			want.Header = http.Header{"Authorization": {"Bearer secret"}, "Accept": {"application/octet-stream"}}
+		}
+		if diff := cmp.Diff(want, got); diff != "" {
+			t.Errorf("%s (-want +got):\n%s", tt.name, diff)
+		}
 	}
 }

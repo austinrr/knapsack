@@ -135,6 +135,13 @@ from `GITHUB_TOKEN`, `GH_TOKEN` or the [GitHub CLI](https://cli.github.com/)
 (`gh auth login`) when there is one, which raises that to 5,000. It never
 stores the token.
 
+The token also reaches private repositories it can read: on a machine
+logged in with `gh`, paste a private repo's link like any other.
+
+```sh
+knapsack add https://github.com/you/private-addon
+```
+
 CurseForge and Wago Addons are read through their official APIs, which
 need an API key, shared by every profile. CurseForge's is on its
 [developer console](https://console.curseforge.com), and Wago's on your
