@@ -27,13 +27,8 @@ A profile is one game's AddOns folder and the addons you want in it.
 
 Commands that change config rewrite config.toml in a fixed layout, so
 comments in the file are not kept.`,
-		Args:              subcommandArgs,
-		PersistentPreRunE: c.buildApp,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return cmd.Help()
-		},
 	}
-	cmd.AddCommand(
+	return c.groupCmd(cmd,
 		newSetProfileCmd(c),
 		newGetProfilesCmd(c),
 		newUseProfileCmd(c),
@@ -41,7 +36,6 @@ comments in the file are not kept.`,
 		newDeleteProfileCmd(c),
 		newViewCmd(c),
 	)
-	return cmd
 }
 
 func newSetProfileCmd(c *cli) *cobra.Command {

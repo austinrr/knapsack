@@ -12,7 +12,7 @@ import (
 	"github.com/austinrr/knapsack/internal/app"
 )
 
-// sourceJSON is one source in `sources -o json`.
+// sourceJSON is one source in `sources list -o json`.
 type sourceJSON struct {
 	Name   string `json:"name"`
 	Status string `json:"status"`
@@ -76,14 +76,8 @@ then readable only by you, and an environment variable overrides each one
 dotfiles repo can leave them out. GitHub needs no key: Knapsack uses a token
 from GITHUB_TOKEN, GH_TOKEN or the GitHub CLI when there is one, for a
 higher rate limit, and never stores it.`,
-		Args:              subcommandArgs,
-		PersistentPreRunE: c.buildApp,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return cmd.Help()
-		},
 	}
-	cmd.AddCommand(newSourcesListCmd(c), newSetKeyCmd(c), newUnsetKeyCmd(c))
-	return cmd
+	return c.groupCmd(cmd, newSourcesListCmd(c), newSetKeyCmd(c), newUnsetKeyCmd(c))
 }
 
 func newSourcesListCmd(c *cli) *cobra.Command {
@@ -92,6 +86,13 @@ func newSourcesListCmd(c *cli) *cobra.Command {
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   "List sources, whether each is ready, and where its key comes from",
+		Long: `List the sources Knapsack installs addons from.
+
+STATUS is ready, needs key (set one with ` + "`knapsack sources set-key`" + `), or
+not yet for a source Knapsack can't install from yet. KEY says where the
+key comes from: config, or the environment variable that overrides it.
+GitHub needs none, but uses a token from GITHUB_TOKEN, GH_TOKEN or the
+GitHub CLI when there is one, for a higher rate limit.`,
 		Example: `  knapsack sources list
   knapsack sources list -o json`,
 		Args: noArgs,

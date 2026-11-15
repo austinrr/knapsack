@@ -578,7 +578,7 @@ func TestAddSourceNotConfigured(t *testing.T) {
 		t.Fatal(err)
 	}
 	var ue *app.UserError
-	if !errors.As(results[0].Err, &ue) || !strings.Contains(ue.Hint, "can't install from curseforge yet") || !strings.Contains(ue.Hint, "knapsack sources") {
+	if !errors.As(results[0].Err, &ue) || !strings.Contains(ue.Hint, "can't install from curseforge yet") || !strings.Contains(ue.Hint, "`knapsack sources list`") {
 		t.Errorf("error = %v, want a hint that curseforge isn't available yet", results[0].Err)
 	}
 }
