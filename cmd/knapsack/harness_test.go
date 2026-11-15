@@ -387,7 +387,12 @@ func (s *sandbox) serveFakeGitHub(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, `{"message":"Not Found"}`, http.StatusNotFound)
 			return
 		}
-		http.Redirect(w, r, "/signed/"+repo+".zip", http.StatusFound)
+		// The link is built from the fake's own repo name, not the request's.
+		for known := range fakeReleases {
+			if known == repo {
+				http.Redirect(w, r, "/signed/"+known+".zip", http.StatusFound)
+			}
+		}
 		return
 	}
 	repo, ok := strings.CutSuffix(strings.TrimPrefix(r.URL.Path, "/repos/"), "/releases/latest")
