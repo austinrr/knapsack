@@ -184,7 +184,7 @@ knapsack/
       wago/
     install/             verify → extract → validate → swap (filesystem only)
     selfupdate/          replace the knapsack binary from a release archive (filesystem only)
-    discover/            find World of Warcraft installs for set-profile --auto (filesystem only)
+    discover/            find World of Warcraft installs for profiles create --auto (filesystem only)
     toc/                 .toc parsing
     atomicfile/          atomic file writes (temp file, fsync, rename)
     tomlenc/             TOML value formatting for the config and state encoders
@@ -288,8 +288,10 @@ What belongs here:
   CLI accepts URLs and converts them, so each addon has exactly one spelling.
   GitHub `owner/repo` is lower-cased, because GitHub treats it
   case-insensitively.
-- **Preferences**: only `current_profile` (named after kubectl's
-  `current-context`). Each new preference must justify the code path it adds.
+- **Preferences**: only `current_profile` so far. Settings for all of
+  Knapsack, such as how often the TUI checks for updates, or how many
+  backups to keep, will go here too, shown by `knapsack config`. Each new
+  one must justify the code path it adds.
 - **API keys**: in config, which is what LemonUp, WowUp and Ajour do.
   Environment variables take precedence (`KNAPSACK_CURSEFORGE_API_KEY`,
   `KNAPSACK_WAGO_API_KEY`), so a config kept in a dotfiles repo can leave
@@ -303,7 +305,8 @@ What belongs here:
   `GH_TOKEN` or `gh auth token`, as in the LemonUp fork.
 
 **Rewrites drop comments.** Commands that change config (`add`, `remove`,
-`config set-profile`, `config use-profile`, `config delete-profile`) rewrite
+`profiles create`, `set`, `use` and `delete`, `sources set-api` and
+`set-key`) rewrite
 the whole file in a stable key order, so diffs stay small under version
 control. No Go TOML library preserves comments, so comments in `config.toml`
 are lost when Knapsack writes it. This is documented in `--help` and the
@@ -651,7 +654,7 @@ A **test client** (PTR or beta) has its own client folder and AddOns, and
 runs the same flavor of addons as its live client, so `…/_ptr_/Interface/
 AddOns` is `retail`. It reads its own product's row in `.build.info` for
 the out-of-date check. A profile for one sits beside the live client's, so
-without a name `set-profile` calls it `retail-ptr`, leaving `retail` for the
+without a name `profiles create` calls it `retail-ptr`, leaving `retail` for the
 live client. A test folder's flavor is only a default, though: Blizzard has
 used `_classic_beta_` for betas of more than one Classic game, so `--flavor`
 may differ from it (that profile is then `anniversary-beta`), and a stored
@@ -958,9 +961,20 @@ projects to GitHub releases.
 
 ### 8.1 Grammar
 
-The structure and conventions follow kubectl: profiles are managed the way
-kubectl manages contexts (`config use-profile`, like `config use-context`), and
-`-p`, `-A`, `-o`, `--prune` and the `check` exit codes match kubectl's. The
+The structure and conventions follow kubectl, without copying it: they
+should feel familiar, not be the same. **Profiles are like namespaces**:
+each is a scope of addons, an AddOns folder with a flavor, and `-p` and
+`-A` scope commands to one or to all, as `-n` and `-A` do. They're a
+resource of their own (`knapsack profiles list`, `create`, `delete`), not
+connection settings as kubectl's contexts are: there's only one "cluster",
+the machine, and credentials are shared in `[sources.*]`. Where they
+differ, a profile has fields, a path and a flavor, changed with
+`profiles set` (as `kubectl set` changes a field), and there's a current
+profile rather than a context's default namespace, switched with
+`profiles use`, as kubens does. Up to v0.2, profiles were `config
+set-profile`, `get-profiles`, `use-profile`, `current-profile` and
+`delete-profile`, after kubectl's contexts. `-o`, `--prune` and the `check`
+exit codes match kubectl's. The
 verbs come from package managers (`add`, `remove`, `update`), because they
 describe addons better than kubectl's `create`/`delete`/`apply`. Addons are
 the only everyday resource, so commands don't repeat a noun (`add`, not
@@ -979,12 +993,15 @@ knapsack check [addon...]          show what update would do; changes nothing
 knapsack list [--no-check]         addons, by title, and whether they're up to date  (alias: ls)
 knapsack info <addon>              ref, version, owned folders, TOC flavors, install time
 
-# Profiles
-knapsack config set-profile [name] --path <AddOns> [--flavor <flavor>]
-knapsack config get-profiles
-knapsack config use-profile <name>
-knapsack config current-profile
-knapsack config delete-profile <name>
+# Profiles, like namespaces: addon commands act on the current one, -p names another, -A all
+knapsack profiles list             each profile, its flavor, addon count and folder   (alias: ls)
+knapsack profiles create [name] --path <AddOns> [--flavor <flavor>] | --auto
+knapsack profiles set <name> [--path <AddOns>] [--flavor <flavor>]
+knapsack profiles use <name>
+knapsack profiles current
+knapsack profiles delete <name>    (alias: rm)
+
+# Settings for all of Knapsack
 knapsack config view
 
 # Sources (shared by every profile)
@@ -1114,9 +1131,9 @@ forever: 1 upgrade · retail: 1 install
   catches corruption: it comes from the same release as the archive.
   Verifying build attestations would also catch a tampered release, and is
   a possible follow-up.
-- **`config set-profile --auto`** finds the game and makes a profile for
+- **`profiles create --auto`** finds the game and makes a profile for
   each client folder (live or test) with `Interface/AddOns` in it, named
-  as an unnamed `set-profile` names it (`retail`, `forever`, `retail-ptr`).
+  as an unnamed `profiles create` names it (`retail`, `forever`, `retail-ptr`).
   `internal/discover` lists the usual places: on Windows, `Program Files
   (x86)`, `Program Files`, `Games`, `Blizzard` and the root of every drive;
   on macOS, `/Applications` and `~/Applications`; on Linux, `drive_c` in
@@ -1130,7 +1147,9 @@ forever: 1 upgrade · retail: 1 install
   the rest. A client with no `Interface/AddOns` yet is skipped too:
   Knapsack doesn't make folders in the game's install. `--auto` takes no
   name or `--flavor`.
-- **`config set-profile`** creates or updates a profile. `--path` is the
+- **`profiles create`** creates a profile, and refuses one that exists,
+  named or found by its folder, with a hint to use `profiles set`, as
+  `kubectl create` refuses an existing namespace. `--path` is the
   AddOns folder, or the client folder or its `Interface` folder, which
   Knapsack completes to `Interface/AddOns`; given the game folder itself, the
   error lists its clients. A leading `~` is expanded, since shells don't
@@ -1143,19 +1162,20 @@ forever: 1 upgrade · retail: 1 install
   omitted, it's inferred from the client folder in the path (`_forever_` →
   `forever`), and it's an error if it can't be. The first profile created
   becomes current. The name is optional, since most people have one profile
-  per flavor: without one, it's the profile already using `--path`, so
-  running the command again is harmless, or else the flavor. If a profile
-  of that name already uses another folder, it's an error, not a move: a
-  second install of the same client, such as a test copy, needs its own
-  name, and moving the existing profile means naming it. A test client's
-  folder gets a name of its own, `retail-ptr` (§6.4). Without `--path`,
-  the flavor is never re-inferred: it stays as stored unless `--flavor` is
-  given.
-- **`config set-profile`** on an existing profile changes only the flags given,
-  like kubectl's `set-context`. `--path` must be an existing directory, and
-  an explicit `--flavor` that contradicts the path's client folder is an
-  error.
-- **`config delete-profile`** removes the profile and its state file. It never
+  per flavor: without one, it's the flavor's. If a profile of that name
+  already uses another folder, it's an error, not a move: a second install
+  of the same client, such as a test copy, needs its own name, and moving
+  the existing profile is `profiles set`. A test client's folder gets a
+  name of its own, `retail-ptr` (§6.4). `--path` must be an existing
+  directory, and an explicit `--flavor` that contradicts the path's client
+  folder is an error.
+- **`profiles set <name>`** changes only the flags given, `--path` or
+  `--flavor`, as `kubectl set` changes one field; it needs at least one,
+  and the profile must exist. The addons and state stay, so it's for a
+  game that moved with its addons. Without `--path`, the flavor is never
+  re-inferred: it stays as stored unless `--flavor` is given. Changing a
+  profile never makes it current.
+- **`profiles delete`** removes the profile and its state file. It never
   touches addon files on disk. If it was the current profile, none is current
   afterwards; Knapsack doesn't guess another.
 - **`config view`** prints config with API keys shown as `REDACTED`, like
@@ -1564,7 +1584,7 @@ one command group.
 - Title: `feat(state): load and save per-profile state`
 - Implements: §5.3, §5.4
 - `state.State` types, `Store` with `Load`/`Save`/`Delete`, schema
-  version check. Wires `config delete-profile` to remove the state file.
+  version check. Wires `profiles delete` to remove the state file.
 - Done when: round-trip and golden TOML tests, an unknown schema version
   gives a clear error.
 - Not yet: anything writing state after an install.

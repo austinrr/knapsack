@@ -1,0 +1,36 @@
+# exit: 0
+# stdout:
+Create, list and switch profiles.
+
+A profile is one game client's AddOns folder, its flavor, and the addons
+you want in it. Addon commands act on the current profile; -p names
+another, and -A acts on every profile, as kubectl's -n and -A do for
+namespaces.
+
+Profiles are kept in config.toml, which commands that change it rewrite
+in a fixed layout, so comments in the file are not kept.
+
+Usage:
+  knapsack profiles [flags]
+  knapsack profiles [command]
+
+Aliases:
+  profiles, profile
+
+Available Commands:
+  create      Create a profile, or one for each client --auto finds
+  current     Print the current profile
+  delete      Delete a profile
+  list        List profiles
+  set         Change a profile's folder or flavor
+  use         Switch the current profile, which commands act on
+
+Flags:
+  -h, --help   help for profiles
+
+Global Flags:
+      --config string   use this config file instead of the default
+  -v, --verbose         show progress and the underlying cause of errors
+
+Use "knapsack profiles [command] --help" for more information about a command.
+# stderr:

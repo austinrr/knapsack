@@ -1,5 +1,0 @@
-# exit: 2
-# stdout:
-# stderr:
-error: no profiles yet
-hint: find the game with `knapsack config set-profile --auto`, or name its folder: `knapsack config set-profile --path "<games>/World of Warcraft/_retail_"`

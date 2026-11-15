@@ -2,4 +2,4 @@
 # stdout:
 # stderr:
 error: profile "nope" doesn't exist
-hint: list profiles with: knapsack config get-profiles
+hint: list profiles with: knapsack profiles list

@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: profile "nope" doesn't exist
+hint: make it with `knapsack profiles create nope --path <client folder>`, or list profiles with `knapsack profiles list`

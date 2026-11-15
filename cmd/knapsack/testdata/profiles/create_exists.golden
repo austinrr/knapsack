@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: profile "forever" already exists
+hint: change it with `knapsack profiles set forever --path <folder>` or `--flavor <flavor>`

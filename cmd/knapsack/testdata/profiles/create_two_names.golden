@@ -1,0 +1,4 @@
+# exit: 2
+# stdout:
+# stderr:
+error: knapsack profiles create takes one profile name, got 2 arguments

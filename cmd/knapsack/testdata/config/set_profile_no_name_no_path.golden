@@ -1,5 +1,0 @@
-# exit: 2
-# stdout:
-# stderr:
-error: set-profile needs --path, or the name of a profile to change
-hint: find the game with `knapsack config set-profile --auto`, or pass a client folder, quoted: --path "<games>/World of Warcraft/_retail_"
