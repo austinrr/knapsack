@@ -25,7 +25,7 @@ type ProfileInfo struct {
 	Current bool
 }
 
-// SetProfileRequest is what `config set-profile` asks for. Empty fields are
+// SetProfileRequest is what `profiles create` and `profiles set` ask for. Empty fields are
 // left as they are on an existing profile.
 type SetProfileRequest struct {
 	// Name is the profile's name. "" names it after Path (DESIGN.md §8.4):
@@ -33,7 +33,22 @@ type SetProfileRequest struct {
 	Name   string
 	Path   string // relative paths are resolved against the working directory
 	Flavor string // "" infers it from the client folder in the path
+	// Must says whether the profile must be new, must exist already, or
+	// either, which SetProfile otherwise allows.
+	Must ProfileMust
 }
+
+// ProfileMust is what a SetProfileRequest requires of the profile.
+type ProfileMust int
+
+// What a SetProfileRequest can require: anything, as for --auto, a new
+// profile, as `profiles create` does, or an existing one, as `profiles
+// set` does.
+const (
+	MustAny ProfileMust = iota
+	MustBeNew
+	MustExist
+)
 
 // SetProfileResult says what SetProfile did.
 type SetProfileResult struct {
@@ -71,6 +86,15 @@ func (a *App) SetProfile(ctx context.Context, req SetProfileRequest) (SetProfile
 	err := a.withProfileLock(req.Name, func() error {
 		changed, err := a.changeConfig(func(c *config.Config) error {
 			p, exists := c.Profiles[req.Name]
+			switch {
+			case exists && req.Must == MustBeNew:
+				return profileExists(req.Name, p.Path, named)
+			case !exists && req.Must == MustExist:
+				return &UserError{
+					Msg:  fmt.Sprintf("profile %q doesn't exist", req.Name),
+					Hint: fmt.Sprintf("make it with `knapsack profiles create %s --path <client folder>`, or list profiles with `knapsack profiles list`", req.Name),
+				}
+			}
 			// A name taken from the flavor only ever creates a profile or
 			// matches the one already using the folder; it never moves
 			// another to a new folder. Checked again under the lock, in
@@ -120,15 +144,28 @@ func (a *App) SetProfile(ctx context.Context, req SetProfileRequest) (SetProfile
 	return res, err
 }
 
-// nameForPath names the profile for a set-profile without a name: the
+// profileExists is the error for creating a profile that's already there:
+// named, or named after a folder that already has one.
+func profileExists(name, path string, named bool) error {
+	msg := fmt.Sprintf("profile %q already exists", name)
+	if !named {
+		msg = fmt.Sprintf("%s already has profile %q", path, name)
+	}
+	return &UserError{
+		Msg:  msg,
+		Hint: fmt.Sprintf("change it with `knapsack profiles set %s --path <folder>` or `--flavor <flavor>`", name),
+	}
+}
+
+// nameForPath names the profile for a create without a name: the
 // profile that already uses req.Path, so running it again changes nothing,
 // or else the flavor, which is what most people have one profile per.
 // It also returns req.Path made absolute.
 func (a *App) nameForPath(req SetProfileRequest) (name, path string, err error) {
 	if req.Path == "" {
 		return "", "", &UserError{
-			Msg:  "set-profile needs --path, or the name of a profile to change",
-			Hint: "find the game with `knapsack config set-profile --auto`, or pass a client folder, quoted: --path " + Quoted(ExampleClientFolder()),
+			Msg:  "profiles create needs --path, or --auto",
+			Hint: "find the game with `knapsack profiles create --auto`, or pass a client folder, quoted: --path " + Quoted(ExampleClientFolder()),
 		}
 	}
 	if path, err = addonsDir(req.Path, a.home); err != nil {
@@ -163,7 +200,7 @@ func (a *App) nameForPath(req SetProfileRequest) (name, path string, err error) 
 func flavorNameTaken(name, existing string) error {
 	return &UserError{
 		Msg: fmt.Sprintf("profile %q already uses %s", name, existing),
-		Hint: fmt.Sprintf("give this one its own name with `knapsack config set-profile <name> --path …`, or move %q here by naming it: `knapsack config set-profile %s --path …`",
+		Hint: fmt.Sprintf("give this one its own name with `knapsack profiles create <name> --path …`, or move %q here: `knapsack profiles set %s --path …`",
 			name, name),
 		Err: &NameTakenError{Name: name, Path: existing},
 	}
@@ -437,7 +474,7 @@ func (a *App) ViewConfig(ctx context.Context) (*config.Config, error) {
 func unknownProfile(name string) error {
 	return &UserError{
 		Msg:  fmt.Sprintf("profile %q doesn't exist", name),
-		Hint: "list profiles with: knapsack config get-profiles",
+		Hint: "list profiles with: knapsack profiles list",
 	}
 }
 
@@ -445,11 +482,11 @@ func noCurrentProfile(c *config.Config) error {
 	if len(c.Profiles) == 0 {
 		return &UserError{
 			Msg:  "no profiles yet",
-			Hint: "find the game with `knapsack config set-profile --auto`, or name its folder: `knapsack config set-profile --path " + Quoted(ExampleClientFolder()) + "`",
+			Hint: "find the game with `knapsack profiles create --auto`, or name its folder: `knapsack profiles create --path " + Quoted(ExampleClientFolder()) + "`",
 		}
 	}
 	return &UserError{
 		Msg:  "no current profile",
-		Hint: "choose one with: knapsack config use-profile <name>",
+		Hint: "choose one with: knapsack profiles use <name>",
 	}
 }

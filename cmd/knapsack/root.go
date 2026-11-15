@@ -161,8 +161,9 @@ func newRootCmd(c *cli) *cobra.Command {
 		newCheckCmd(c),
 		newListCmd(c),
 		newInfoCmd(c),
-		newConfigCmd(c),
+		newProfilesCmd(c),
 		newSourcesCmd(c),
+		newConfigCmd(c),
 		newVersionCmd(c),
 		newSelfUpdateCmd(c),
 	)

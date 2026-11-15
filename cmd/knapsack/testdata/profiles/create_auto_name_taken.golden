@@ -10,6 +10,6 @@ classic-beta  _classic_beta_  created
 forever       _forever_       created
 
 A second copy of a client needs its own profile name:
-  knapsack config set-profile <name> --path "<home>/wow/_retail_"
-Or use the existing profile's name there to move it to that copy.
+  knapsack profiles create <name> --path "<home>/wow/_retail_"
+Or move the existing profile to that copy with knapsack profiles set <name> --path ….
 # stderr:

@@ -1,4 +1,4 @@
-// Package discover finds World of Warcraft installs, for set-profile
+// Package discover finds World of Warcraft installs, for profiles create
 // --auto (DESIGN.md §8.4): the folders the game is usually installed in on
 // each OS, kept when they hold client folders such as _retail_. It only
 // reads the filesystem.

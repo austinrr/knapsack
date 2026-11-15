@@ -119,7 +119,7 @@ func main() {
 }
 
 // userHome is the user's home directory, or "" when there's none: it only
-// narrows where set-profile --auto looks.
+// narrows where profiles create --auto looks.
 func userHome() string {
 	home, err := os.UserHomeDir()
 	if err != nil {

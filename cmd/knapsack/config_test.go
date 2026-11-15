@@ -22,8 +22,8 @@ const (
 
 // Setup steps shared by many cases.
 var (
-	addForever = []string{"config", "set-profile", "forever", "--path", forever}
-	addRetail  = []string{"config", "set-profile", "retail", "--path", retail}
+	addForever = []string{"profiles", "create", "forever", "--path", forever}
+	addRetail  = []string{"profiles", "create", "retail", "--path", retail}
 )
 
 // configWithKey has an API key, to check that view redacts it.
@@ -45,137 +45,145 @@ func TestConfigCommands(t *testing.T) {
 	t.Parallel()
 	runCases(t, []cliCase{
 		{name: "config/help", args: []string{"config"}},
-		{name: "config/unknown_subcommand", args: []string{"config", "set-profil"}},
+		{name: "config/unknown_subcommand", args: []string{"config", "set-profile"}},
+		{name: "profiles/help", args: []string{"profiles"}},
+		{name: "profiles/unknown_subcommand", args: []string{"profiles", "craete"}},
 
-		// set-profile
-		{name: "config/set_profile_first", args: addForever},
-		{name: "config/set_profile_second", setup: [][]string{addForever}, args: addRetail},
-		{name: "config/set_profile_modify_path",
-			setup: [][]string{{"config", "set-profile", "main", "--path", forever}},
-			args:  []string{"config", "set-profile", "main", "--path", retail}},
-		{name: "config/set_profile_keeps_flavor",
-			setup: [][]string{{"config", "set-profile", "custom", "--path", plain, "--flavor", "classic_era"}},
-			args:  []string{"config", "set-profile", "custom", "--path", "{home}/wow"}},
-		{name: "config/set_profile_explicit_flavor",
-			args: []string{"config", "set-profile", "custom", "--path", plain, "--flavor", "anniversary"}},
+		// create and set
+		{name: "profiles/create_first", args: addForever},
+		{name: "profiles/create_second", setup: [][]string{addForever}, args: addRetail},
+		{name: "profiles/set_path",
+			setup: [][]string{{"profiles", "create", "main", "--path", forever}},
+			args:  []string{"profiles", "set", "main", "--path", retail}},
+		{name: "profiles/set_game_folder",
+			setup: [][]string{{"profiles", "create", "custom", "--path", plain, "--flavor", "classic_era"}},
+			args:  []string{"profiles", "set", "custom", "--path", "{home}/wow"}},
+		{name: "profiles/set_flavor", setup: [][]string{{"profiles", "create", "test", "--path", plain, "--flavor", "forever"}},
+			args: []string{"profiles", "set", "test", "--flavor", "classic"}},
+		{name: "profiles/set_unchanged", setup: [][]string{addForever}, args: []string{"profiles", "set", "forever", "--path", forever}},
+		{name: "profiles/set_unknown", args: []string{"profiles", "set", "nope", "--path", forever}},
+		{name: "profiles/set_nothing", setup: [][]string{addForever}, args: []string{"profiles", "set", "forever"}},
+		{name: "profiles/set_no_name", args: []string{"profiles", "set", "--flavor", "retail"}},
+		{name: "profiles/set_taken_path", setup: [][]string{addForever, addRetail}, args: []string{"profiles", "set", "retail", "--path", forever}},
+		{name: "profiles/create_explicit_flavor",
+			args: []string{"profiles", "create", "custom", "--path", plain, "--flavor", "anniversary"}},
 		// Without a name, the profile is the one using the path, or is
 		// named after the flavor.
-		{name: "config/set_profile_no_name", args: []string{"config", "set-profile", "--path", forever}},
-		{name: "config/set_profile_no_name_second", setup: [][]string{addForever}, args: []string{"config", "set-profile", "--path", retail}},
-		{name: "config/set_profile_no_name_existing_path", setup: [][]string{{"config", "set-profile", "main", "--path", forever}},
-			args: []string{"config", "set-profile", "--path", forever}},
-		{name: "config/set_profile_no_name_change_flavor", setup: [][]string{{"config", "set-profile", "test", "--path", plain, "--flavor", "forever"}},
-			args: []string{"config", "set-profile", "--path", plain, "--flavor", "classic"}},
-		{name: "config/set_profile_no_name_taken", setup: [][]string{addForever},
-			args: []string{"config", "set-profile", "--path", plain, "--flavor", "forever"}},
-		{name: "config/set_profile_no_name_no_path", args: []string{"config", "set-profile"}},
-		{name: "config/set_profile_no_name_no_flavor", args: []string{"config", "set-profile", "--path", plain}},
+		{name: "profiles/create_no_name", args: []string{"profiles", "create", "--path", forever}},
+		{name: "profiles/create_no_name_second", setup: [][]string{addForever}, args: []string{"profiles", "create", "--path", retail}},
+		// A folder that has a profile already isn't made another.
+		{name: "profiles/create_existing_path", setup: [][]string{{"profiles", "create", "main", "--path", forever}},
+			args: []string{"profiles", "create", "--path", forever}},
+		{name: "profiles/create_no_name_taken", setup: [][]string{addForever},
+			args: []string{"profiles", "create", "--path", plain, "--flavor", "forever"}},
+		{name: "profiles/create_no_name_no_path", args: []string{"profiles", "create"}},
+		{name: "profiles/create_no_name_no_flavor", args: []string{"profiles", "create", "--path", plain}},
 		// No example to show, so the hint only points at --help.
-		{name: "config/use_profile_no_name", args: []string{"config", "use-profile"}},
-		{name: "config/set_profile_two_names", args: []string{"config", "set-profile", "a", "b"}},
-		{name: "config/set_profile_new_without_path", args: []string{"config", "set-profile", "forever"}},
-		{name: "config/set_profile_not_a_dir",
-			args: []string{"config", "set-profile", "forever", "--path", "{home}/missing"}},
-		{name: "config/set_profile_flavor_not_inferable",
-			args: []string{"config", "set-profile", "custom", "--path", plain}},
-		{name: "config/set_profile_flavor_mismatch",
-			args: []string{"config", "set-profile", "forever", "--path", forever, "--flavor", "retail"}},
-		{name: "config/set_profile_unknown_flavor",
-			args: []string{"config", "set-profile", "custom", "--path", plain, "--flavor", "classic_beta"}},
-		{name: "config/set_profile_bad_name",
-			args: []string{"config", "set-profile", "Forever", "--path", forever}},
-		{name: "config/set_profile_unchanged", setup: [][]string{addForever},
-			args: []string{"config", "set-profile", "forever"}},
+		{name: "profiles/use_no_name", args: []string{"profiles", "use"}},
+		{name: "profiles/create_two_names", args: []string{"profiles", "create", "a", "b"}},
+		{name: "profiles/create_new_without_path", args: []string{"profiles", "create", "forever"}},
+		{name: "profiles/create_not_a_dir",
+			args: []string{"profiles", "create", "forever", "--path", "{home}/missing"}},
+		{name: "profiles/create_flavor_not_inferable",
+			args: []string{"profiles", "create", "custom", "--path", plain}},
+		{name: "profiles/create_flavor_mismatch",
+			args: []string{"profiles", "create", "forever", "--path", forever, "--flavor", "retail"}},
+		{name: "profiles/create_unknown_flavor",
+			args: []string{"profiles", "create", "custom", "--path", plain, "--flavor", "classic_beta"}},
+		{name: "profiles/create_bad_name",
+			args: []string{"profiles", "create", "Forever", "--path", forever}},
+		{name: "profiles/create_exists", setup: [][]string{addForever},
+			args: []string{"profiles", "create", "forever", "--path", retail}},
 		// Changing an existing profile never makes it current, even when
 		// none is.
-		{name: "config/set_profile_modify_not_current",
-			setup: [][]string{addForever, addRetail, {"config", "delete-profile", "forever"}},
-			args:  []string{"config", "set-profile", "retail", "--path", classic}},
-		{name: "config/set_profile_same_path", setup: [][]string{addForever},
-			args: []string{"config", "set-profile", "again", "--path", forever + "/"}},
+		{name: "profiles/set_not_current",
+			setup: [][]string{addForever, addRetail, {"profiles", "delete", "forever"}},
+			args:  []string{"profiles", "set", "retail", "--path", classic}},
+		{name: "profiles/create_same_path", setup: [][]string{addForever},
+			args: []string{"profiles", "create", "again", "--path", forever + "/"}},
 		// --path can be the client folder or its Interface folder, and the
 		// game folder lists its clients.
-		{name: "config/set_profile_client_folder", args: []string{"config", "set-profile", "--path", "{home}/wow/_forever_"}},
-		{name: "config/set_profile_interface_folder", args: []string{"config", "set-profile", "--path", "{home}/wow/_forever_/Interface"}},
-		{name: "config/set_profile_game_folder", args: []string{"config", "set-profile", "--path", "{home}/wow"}},
+		{name: "profiles/create_client_folder", args: []string{"profiles", "create", "--path", "{home}/wow/_forever_"}},
+		{name: "profiles/create_interface_folder", args: []string{"profiles", "create", "--path", "{home}/wow/_forever_/Interface"}},
+		{name: "profiles/create_game_folder", args: []string{"profiles", "create", "--path", "{home}/wow"}},
 		// An unquoted path split by the shell, with and without a name.
-		{name: "config/set_profile_split_path", args: []string{"config", "set-profile", "--path", "C:/Program", "Files", "(x86)/World", "of", "Warcraft/_retail_"}},
-		{name: "config/set_profile_split_path_named", args: []string{"config", "set-profile", "retail", "--path", "/games/World", "of", "Warcraft/_retail_"}},
+		{name: "profiles/create_split_path", args: []string{"profiles", "create", "--path", "C:/Program", "Files", "(x86)/World", "of", "Warcraft/_retail_"}},
+		{name: "profiles/create_split_path_named", args: []string{"profiles", "create", "retail", "--path", "/games/World", "of", "Warcraft/_retail_"}},
 		// "of" is a valid profile name, but it's part of the path here.
-		{name: "config/set_profile_split_path_of", args: []string{"config", "set-profile", "--path", "/games/World", "of", "Warcraft/_retail_"}},
-		{name: "config/set_profile_split_path_flag_after", args: []string{"config", "set-profile", "--path", "/games/World", "of", "Warcraft", "--flavor", "retail"}},
+		{name: "profiles/create_split_path_of", args: []string{"profiles", "create", "--path", "/games/World", "of", "Warcraft/_retail_"}},
+		{name: "profiles/create_split_path_flag_after", args: []string{"profiles", "create", "--path", "/games/World", "of", "Warcraft", "--flavor", "retail"}},
 		// A name after a path that exists isn't a split.
-		{name: "config/set_profile_name_after_path", args: []string{"config", "set-profile", "--path", forever, "main"}},
+		{name: "profiles/create_name_after_path", args: []string{"profiles", "create", "--path", forever, "main"}},
 		// A client that's never been started has no AddOns folder yet.
-		{name: "config/set_profile_client_without_addons", after: noAddOns("_xptr_"), args: []string{"config", "set-profile", "--path", "{home}/wow/_xptr_"}},
+		{name: "profiles/create_client_without_addons", after: noAddOns("_xptr_"), args: []string{"profiles", "create", "--path", "{home}/wow/_xptr_"}},
 		// --auto makes a profile per client folder with AddOns in it.
-		{name: "config/auto", after: noAddOns("_xptr_"), args: []string{"config", "set-profile", "--auto", "--path", "{home}/wow"}},
+		{name: "profiles/create_auto", after: noAddOns("_xptr_"), args: []string{"profiles", "create", "--auto", "--path", "{home}/wow"}},
 		// A quoted ~ path, which the shell leaves alone, then a name.
-		{name: "config/set_profile_tilde_then_name", args: []string{"config", "set-profile", "--path", "~/wow/_retail_", "main"}},
-		{name: "config/auto_again", setup: [][]string{{"config", "set-profile", "--auto", "--path", "{home}/wow"}},
-			args: []string{"config", "set-profile", "--auto", "--path", "{home}/wow"}},
-		{name: "config/auto_name_taken", setup: [][]string{{"config", "set-profile", "retail", "--path", plain, "--flavor", "retail"}},
-			args: []string{"config", "set-profile", "--auto", "--path", "{home}/wow"}},
+		{name: "profiles/create_tilde_then_name", args: []string{"profiles", "create", "--path", "~/wow/_retail_", "main"}},
+		{name: "profiles/create_auto_again", setup: [][]string{{"profiles", "create", "--auto", "--path", "{home}/wow"}},
+			args: []string{"profiles", "create", "--auto", "--path", "{home}/wow"}},
+		{name: "profiles/create_auto_name_taken", setup: [][]string{{"profiles", "create", "retail", "--path", plain, "--flavor", "retail"}},
+			args: []string{"profiles", "create", "--auto", "--path", "{home}/wow"}},
 		// The current profile is a live client's, though a test client
 		// comes first.
-		{name: "config/auto_live_first", after: game("wow2", "_classic_beta_", "_forever_"), args: []string{"config", "set-profile", "--auto", "--path", "{home}/wow2"}},
+		{name: "profiles/create_auto_live_first", after: game("wow2", "_classic_beta_", "_forever_"), args: []string{"profiles", "create", "--auto", "--path", "{home}/wow2"}},
 		// Every client skipped is an error, after saying why.
-		{name: "config/auto_all_skipped", after: func(s *sandbox) {
+		{name: "profiles/create_auto_all_skipped", after: func(s *sandbox) {
 			if err := os.MkdirAll(filepath.Join(s.home, "fresh", "_retail_"), 0o700); err != nil {
 				s.t.Fatal(err)
 			}
-		}, args: []string{"config", "set-profile", "--auto", "--path", "{home}/fresh"}},
-		{name: "config/auto_not_a_game", args: []string{"config", "set-profile", "--auto", "--path", plain}},
-		{name: "config/auto_with_name", args: []string{"config", "set-profile", "retail", "--auto"}},
-		{name: "config/auto_with_flavor", args: []string{"config", "set-profile", "--auto", "--flavor", "retail"}},
+		}, args: []string{"profiles", "create", "--auto", "--path", "{home}/fresh"}},
+		{name: "profiles/create_auto_not_a_game", args: []string{"profiles", "create", "--auto", "--path", plain}},
+		{name: "profiles/create_auto_with_name", args: []string{"profiles", "create", "retail", "--auto"}},
+		{name: "profiles/create_auto_with_flavor", args: []string{"profiles", "create", "--auto", "--flavor", "retail"}},
 		// A test client is its live client's flavor.
-		{name: "config/set_profile_ptr", setup: [][]string{addRetail}, args: []string{"config", "set-profile", "retail-ptr", "--path", ptr}},
+		{name: "profiles/create_ptr", setup: [][]string{addRetail}, args: []string{"profiles", "create", "retail-ptr", "--path", ptr}},
 		// A test folder's flavor is only a default: Blizzard has used
 		// _classic_beta_ for more than one game.
-		{name: "config/set_profile_ptr_explicit_flavor", args: []string{"config", "set-profile", "ptr", "--path", ptr, "--flavor", "forever"}},
+		{name: "profiles/create_ptr_explicit_flavor", args: []string{"profiles", "create", "ptr", "--path", ptr, "--flavor", "forever"}},
 		// Without a name, a test client is named after its flavor and
 		// itself, leaving the flavor's name for the live client.
-		{name: "config/set_profile_ptr_no_name", args: []string{"config", "set-profile", "--path", ptr}},
-		{name: "config/set_profile_retail_after_ptr", setup: [][]string{{"config", "set-profile", "--path", ptr}},
-			args: []string{"config", "set-profile", "--path", retail}},
-		{name: "config/set_profile_beta_other_flavor", args: []string{"config", "set-profile", "--path", beta, "--flavor", "anniversary"}},
+		{name: "profiles/create_ptr_no_name", args: []string{"profiles", "create", "--path", ptr}},
+		{name: "profiles/create_retail_after_ptr", setup: [][]string{{"profiles", "create", "--path", ptr}},
+			args: []string{"profiles", "create", "--path", retail}},
+		{name: "profiles/create_beta_other_flavor", args: []string{"profiles", "create", "--path", beta, "--flavor", "anniversary"}},
 		// A stored flavor stands: changing the profile doesn't re-infer it
 		// from a test folder, so a beta profile made with --flavor keeps it.
-		{name: "config/set_profile_beta_keeps_flavor", setup: [][]string{{"config", "set-profile", "--path", beta, "--flavor", "anniversary"}},
-			args: []string{"config", "set-profile", "--path", beta}},
+		{name: "profiles/set_beta_keeps_flavor", setup: [][]string{{"profiles", "create", "--path", beta, "--flavor", "anniversary"}},
+			args: []string{"profiles", "set", "anniversary-beta", "--path", beta}},
 
-		// get-profiles
-		{name: "config/get_profiles_empty", args: []string{"config", "get-profiles"}},
-		{name: "config/get_profiles", setup: [][]string{addForever, addRetail},
-			args: []string{"config", "get-profiles"}},
-		{name: "config/get_profiles_wide", setup: [][]string{addForever, addRetail},
-			args: []string{"config", "get-profiles", "-o", "wide"}},
-		{name: "config/get_profiles_json", config: configWithKey, setup: [][]string{addRetail},
-			args: []string{"config", "get-profiles", "-o", "json"}},
-		{name: "config/get_profiles_json_empty", args: []string{"config", "get-profiles", "-o", "json"}},
-		{name: "config/get_profiles_bad_output", args: []string{"config", "get-profiles", "-o", "yaml"}},
-		{name: "config/get_profiles_extra_arg", args: []string{"config", "get-profiles", "forever"}},
+		// list
+		{name: "profiles/list_empty", args: []string{"profiles", "list"}},
+		{name: "profiles/list", setup: [][]string{addForever, addRetail},
+			args: []string{"profiles", "list"}},
+		{name: "profiles/list_wide", setup: [][]string{addForever, addRetail},
+			args: []string{"profiles", "list", "-o", "wide"}},
+		{name: "profiles/list_json", config: configWithKey, setup: [][]string{addRetail},
+			args: []string{"profiles", "list", "-o", "json"}},
+		{name: "profiles/list_json_empty", args: []string{"profiles", "list", "-o", "json"}},
+		{name: "profiles/list_bad_output", args: []string{"profiles", "list", "-o", "yaml"}},
+		{name: "profiles/list_extra_arg", args: []string{"profiles", "list", "forever"}},
 
-		// use-profile
-		{name: "config/use_profile", setup: [][]string{addForever, addRetail},
-			args: []string{"config", "use-profile", "retail"}},
-		{name: "config/use_profile_unknown", setup: [][]string{addForever},
-			args: []string{"config", "use-profile", "retial"}},
+		// use
+		{name: "profiles/use", setup: [][]string{addForever, addRetail},
+			args: []string{"profiles", "use", "retail"}},
+		{name: "profiles/use_unknown", setup: [][]string{addForever},
+			args: []string{"profiles", "use", "retial"}},
 
-		// current-profile
-		{name: "config/current_profile", setup: [][]string{addForever, addRetail},
-			args: []string{"config", "current-profile"}},
-		{name: "config/current_profile_no_profiles", args: []string{"config", "current-profile"}},
-		{name: "config/current_profile_none",
-			setup: [][]string{addForever, addRetail, {"config", "delete-profile", "forever"}},
-			args:  []string{"config", "current-profile"}},
+		// current
+		{name: "profiles/current", setup: [][]string{addForever, addRetail},
+			args: []string{"profiles", "current"}},
+		{name: "profiles/current_no_profiles", args: []string{"profiles", "current"}},
+		{name: "profiles/current_none",
+			setup: [][]string{addForever, addRetail, {"profiles", "delete", "forever"}},
+			args:  []string{"profiles", "current"}},
 
-		// delete-profile
-		{name: "config/delete_profile", setup: [][]string{addForever, addRetail},
-			args: []string{"config", "delete-profile", "retail"}},
-		{name: "config/delete_profile_current", setup: [][]string{addForever},
-			args: []string{"config", "delete-profile", "forever"}},
-		{name: "config/delete_profile_unknown", args: []string{"config", "delete-profile", "nope"}},
+		// delete
+		{name: "profiles/delete", setup: [][]string{addForever, addRetail},
+			args: []string{"profiles", "delete", "retail"}},
+		{name: "profiles/delete_current", setup: [][]string{addForever},
+			args: []string{"profiles", "delete", "forever"}},
+		{name: "profiles/delete_unknown", args: []string{"profiles", "delete", "nope"}},
 
 		// view
 		{name: "config/view", config: configWithKey, setup: [][]string{addRetail},
@@ -184,14 +192,14 @@ func TestConfigCommands(t *testing.T) {
 		{name: "config/view_empty", args: []string{"config", "view"}},
 
 		// Global flags and broken config.
-		{name: "config/config_flag",
-			setup: [][]string{{"--config", "{home}/other.toml", "config", "set-profile", "elsewhere", "--path", classic}},
-			args:  []string{"--config", "{home}/other.toml", "config", "get-profiles"}},
-		{name: "config/config_flag_default_untouched",
-			setup: [][]string{{"--config", "{home}/other.toml", "config", "set-profile", "elsewhere", "--path", classic}},
-			args:  []string{"config", "get-profiles"}},
-		{name: "config/invalid_config", config: "[profiles.forever]\nflavour = \"forever\"\n",
-			args: []string{"config", "get-profiles"}},
+		{name: "profiles/config_flag",
+			setup: [][]string{{"--config", "{home}/other.toml", "profiles", "create", "elsewhere", "--path", classic}},
+			args:  []string{"--config", "{home}/other.toml", "profiles", "list"}},
+		{name: "profiles/config_flag_default_untouched",
+			setup: [][]string{{"--config", "{home}/other.toml", "profiles", "create", "elsewhere", "--path", classic}},
+			args:  []string{"profiles", "list"}},
+		{name: "profiles/invalid_config", config: "[profiles.forever]\nflavour = \"forever\"\n",
+			args: []string{"profiles", "list"}},
 	})
 }
 
@@ -203,9 +211,9 @@ func TestConfigLocked(t *testing.T) {
 		name string
 		args []string
 	}{
-		{"config/locked", []string{"config", "set-profile", "forever", "--path", forever}},
-		{"config/locked_verbose", []string{"-v", "config", "set-profile", "forever", "--path", forever}},
-		{"config/profile_locked", []string{"config", "delete-profile", "forever"}},
+		{"profiles/locked", []string{"profiles", "create", "forever", "--path", forever}},
+		{"profiles/locked_verbose", []string{"-v", "profiles", "create", "forever", "--path", forever}},
+		{"profiles/profile_locked", []string{"profiles", "delete", "forever"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -215,7 +223,7 @@ func TestConfigLocked(t *testing.T) {
 				t.Fatal(err)
 			}
 			path := p.ConfigLock()
-			if tc.name == "config/profile_locked" {
+			if tc.name == "profiles/profile_locked" {
 				s.mustRun(addForever...)
 				path = p.ProfileLock("forever")
 			}
@@ -260,7 +268,7 @@ func TestAutoProfilesSearch(t *testing.T) {
 		t.Skip("looks in Wine prefixes on Linux only")
 	}
 	s := newSandbox(t)
-	if r := s.run("config", "set-profile", "--auto"); r.Code != exitError || !strings.Contains(r.Stderr, "couldn't find World of Warcraft") {
+	if r := s.run("profiles", "create", "--auto"); r.Code != exitError || !strings.Contains(r.Stderr, "couldn't find World of Warcraft") {
 		t.Errorf("with no game installed:\n%s", r)
 	}
 	// Two installs, as with Lutris and Steam: each has _classic_beta_, so
@@ -269,10 +277,10 @@ func TestAutoProfilesSearch(t *testing.T) {
 	steam := filepath.Join(".steam", "steam", "steamapps", "compatdata", "123", "pfx", "drive_c", "Program Files (x86)", "World of Warcraft")
 	game(lutris, "_classic_beta_", "_forever_")(s)
 	game(steam, "_retail_", "_classic_beta_")(s)
-	r := s.run("config", "set-profile", "--auto", "-v")
+	r := s.run("profiles", "create", "--auto", "-v")
 	if !strings.Contains(r.Stderr, "Looked for World of Warcraft in:") {
 		t.Errorf("-v doesn't list where it looked:\n%s", r)
 	}
 	r.Stderr = "" // the places looked are tested in discover
-	checkGolden(t, "config/auto_two_installs", r)
+	checkGolden(t, "profiles/create_auto_two_installs", r)
 }

@@ -2,5 +2,5 @@
 # stdout:
 # stderr:
 error: no profiles yet
-hint: find the game with `knapsack config set-profile --auto`, or name its folder: `knapsack config set-profile --path "<games>/World of Warcraft/_retail_"`
+hint: find the game with `knapsack profiles create --auto`, or name its folder: `knapsack profiles create --path "<games>/World of Warcraft/_retail_"`
 knapsack v0.0.1 is available (you have v0.0.0-test); run `knapsack self-update`.

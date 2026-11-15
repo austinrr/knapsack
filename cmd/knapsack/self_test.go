@@ -16,7 +16,7 @@ func TestSelfCommands(t *testing.T) {
 	// today, so the next one doesn't check again.
 	checked := func(s *sandbox) {
 		s.interactive, s.latest = true, newerVersion
-		s.mustRun("config", "get-profiles")
+		s.mustRun("profiles", "list")
 	}
 	runCases(t, []cliCase{
 		// version checks every time, whether or not stderr is a terminal.
@@ -29,15 +29,15 @@ func TestSelfCommands(t *testing.T) {
 		{name: "version/after_daily_check", after: checked, args: []string{"version"}},
 
 		// Other commands check once a day, on a terminal.
-		{name: "notice/shown", latest: newerVersion, interactive: true, args: []string{"config", "get-profiles"}},
+		{name: "notice/shown", latest: newerVersion, interactive: true, args: []string{"profiles", "list"}},
 		{name: "notice/after_error", latest: newerVersion, interactive: true, args: []string{"info", "nope"}},
-		{name: "notice/up_to_date", latest: testVersion, interactive: true, args: []string{"config", "get-profiles"}},
-		{name: "notice/not_a_terminal", latest: newerVersion, args: []string{"config", "get-profiles"}},
-		{name: "notice/ci", latest: newerVersion, interactive: true, env: map[string]string{"CI": "true"}, args: []string{"config", "get-profiles"}},
-		{name: "notice/opted_out", latest: newerVersion, interactive: true, env: noNotifier, args: []string{"config", "get-profiles"}},
-		{name: "notice/once_a_day", after: checked, args: []string{"config", "get-profiles"}},
-		{name: "notice/go_install", latest: newerVersion, interactive: true, notReleased: true, args: []string{"config", "get-profiles"}},
-		{name: "notice/check_failed", interactive: true, args: []string{"config", "get-profiles"}},
+		{name: "notice/up_to_date", latest: testVersion, interactive: true, args: []string{"profiles", "list"}},
+		{name: "notice/not_a_terminal", latest: newerVersion, args: []string{"profiles", "list"}},
+		{name: "notice/ci", latest: newerVersion, interactive: true, env: map[string]string{"CI": "true"}, args: []string{"profiles", "list"}},
+		{name: "notice/opted_out", latest: newerVersion, interactive: true, env: noNotifier, args: []string{"profiles", "list"}},
+		{name: "notice/once_a_day", after: checked, args: []string{"profiles", "list"}},
+		{name: "notice/go_install", latest: newerVersion, interactive: true, notReleased: true, args: []string{"profiles", "list"}},
+		{name: "notice/check_failed", interactive: true, args: []string{"profiles", "list"}},
 		{name: "notice/not_for_help", latest: newerVersion, interactive: true, args: []string{"help"}},
 		{name: "notice/not_for_help_flag", latest: newerVersion, interactive: true, args: []string{"add", "--help"}},
 		{name: "notice/not_for_group", latest: newerVersion, interactive: true, args: []string{"config"}},
@@ -80,11 +80,11 @@ func TestUpdateCheckCachedSkipsToken(t *testing.T) {
 	t.Parallel()
 	s := newSandbox(t)
 	s.interactive, s.latest = true, newerVersion
-	s.mustRun("config", "get-profiles") // checks, asking for a token
+	s.mustRun("profiles", "list") // checks, asking for a token
 	if n := s.ghCalls.Load(); n != 1 {
 		t.Fatalf("gh asked %d times by the first check, want 1", n)
 	}
-	s.mustRun("config", "get-profiles")
+	s.mustRun("profiles", "list")
 	if n := s.ghCalls.Load(); n != 1 {
 		t.Errorf("gh asked %d times in all, want 1: the second run's check was cached", n)
 	}

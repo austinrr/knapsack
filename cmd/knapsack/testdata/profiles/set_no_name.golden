@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: knapsack profiles set needs a profile name
+hint: for example, `knapsack profiles set retail --path "<games>/World of Warcraft/_retail_"`; `knapsack profiles set --help` shows more

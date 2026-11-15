@@ -10,10 +10,11 @@ Available Commands:
   add         Add addons to the profile and install them
   check       Show what update would do, without changing anything
   completion  Generate the autocompletion script for the specified shell
-  config      Manage profiles and config.toml
+  config      Show Knapsack's settings
   help        Help about any command
   info        Show details of one addon
   list        List the profile's addons and whether they're up to date
+  profiles    Create, list and switch profiles
   remove      Uninstall addons and remove them from the profile
   self-update Update knapsack to the newest release
   sources     List addon sources and set how each is read

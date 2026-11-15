@@ -1,5 +1,0 @@
-# exit: 2
-# stdout:
-# stderr:
-error: knapsack config use-profile needs a profile name
-hint: `knapsack config use-profile --help` shows more

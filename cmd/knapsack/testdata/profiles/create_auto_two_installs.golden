@@ -13,6 +13,6 @@ retail        [2] _retail_        created
 Switched to profile "forever".
 
 A second copy of a client needs its own profile name:
-  knapsack config set-profile <name> --path "<home>/.steam/steam/steamapps/compatdata/123/pfx/drive_c/Program Files (x86)/World of Warcraft/_classic_beta_"
-Or use the existing profile's name there to move it to that copy.
+  knapsack profiles create <name> --path "<home>/.steam/steam/steamapps/compatdata/123/pfx/drive_c/Program Files (x86)/World of Warcraft/_classic_beta_"
+Or move the existing profile to that copy with knapsack profiles set <name> --path ….
 # stderr:

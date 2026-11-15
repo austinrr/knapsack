@@ -40,7 +40,7 @@ Let Knapsack find the game and make a profile for each client it has
 (`retail`, `forever`, …):
 
 ```sh
-knapsack config set-profile --auto
+knapsack profiles create --auto
 ```
 
 It looks where the game is usually installed: `Program Files (x86)` and the
@@ -55,9 +55,9 @@ it, and the first profile becomes the current one. Quote the path: it
 usually has spaces in it.
 
 ```powershell
-knapsack config set-profile --path "C:\Program Files (x86)\World of Warcraft\_retail_"
-knapsack config set-profile --path "C:\Program Files (x86)\World of Warcraft\_forever_"
-knapsack config use-profile forever    # switch between them
+knapsack profiles create --path "C:\Program Files (x86)\World of Warcraft\_retail_"
+knapsack profiles create --path "C:\Program Files (x86)\World of Warcraft\_forever_"
+knapsack profiles use forever    # switch between them
 ```
 
 On macOS the game is usually in `/Applications/World of Warcraft`; on
@@ -65,7 +65,7 @@ Linux, inside the Wine prefix your launcher made, such as
 `"$HOME/Games/battlenet/drive_c/Program Files (x86)/World of Warcraft"`.
 
 A second profile for the same client, such as a test copy of the game,
-needs its own name: `knapsack config set-profile forever-test --path …`.
+needs its own name: `knapsack profiles create forever-test --path …`.
 
 Then add addons by ref or GitHub URL:
 
@@ -89,7 +89,7 @@ them. To have Knapsack take one over, `add` it with `--force`, which
 replaces the folder with the release.
 
 `update` makes a profile match its config, so on a new machine,
-`config set-profile` plus `update` reinstalls everything. Releases are
+`profiles create` plus `update` reinstalls everything. Releases are
 compared by checksum, not version number.
 
 ## Commands
@@ -102,8 +102,9 @@ compared by checksum, not version number.
 | `check [addon...]` | Show what `update` would do, without changing anything |
 | `list` (`ls`) | List the profile's addons by title, with whether each is up to date and its source. `--no-check` skips the network; `--unmanaged` also lists folders Knapsack didn't install |
 | `info <addon>` | Show one addon's version, folders, install time and TOC details |
-| `config set-profile [name] --path <AddOns>` | Create or change a profile, named after its flavor unless you name it |
-| `config get-profiles`, `use-profile`, `current-profile`, `delete-profile`, `view` | Manage profiles, like kubectl contexts |
+| `profiles create [name] --path <AddOns>`, `--auto` | Create a profile, named after its flavor unless you name it, or one per client `--auto` finds |
+| `profiles list`, `set`, `use`, `current`, `delete` | List profiles, change one's folder or flavor, and switch between them; `-p` and `-A` scope other commands to one profile or all, like kubectl namespaces |
+| `config view` | Print config.toml, API keys redacted |
 | `sources list`, `set-api`, `set-key`, `unset-key` | List addon sources, choose whether each is read from its official API or website, and manage API keys, for every profile |
 | `version` | Print Knapsack's version, and say if there's a newer one |
 | `self-update` | Update Knapsack to the newest release |
@@ -119,7 +120,7 @@ addons.wago.io link, or its short name (`baganator-mirror`) when only one addon 
 |---|---|
 | `-p, --profile <name>` | Act on this profile instead of the current one (or `$KNAPSACK_PROFILE`) |
 | `-A, --all-profiles` | Act on every profile (`update`, `check`, `list`) |
-| `-o, --output <format>` | `json`, or `wide`: the full ref as the source in `list` and `check`, the full AddOns path in `config get-profiles` |
+| `-o, --output <format>` | `json`, or `wide`: the full ref as the source in `list` and `check`, the full AddOns path in `profiles list` |
 | `--force` | Replace folders in AddOns that no addon owns (`add`, `update`) |
 | `-v, --verbose` | Show each step and the underlying cause of errors |
 | `--config <file>` | Use another config file |

@@ -1,5 +1,0 @@
-# exit: 2
-# stdout:
-# stderr:
-error: no current profile
-hint: choose one with: knapsack config use-profile <name>

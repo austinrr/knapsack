@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: no profiles yet
+hint: find the game with `knapsack profiles create --auto`, or name its folder: `knapsack profiles create --path "<games>/World of Warcraft/_retail_"`

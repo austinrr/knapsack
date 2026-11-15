@@ -1,0 +1,4 @@
+# exit: 2
+# stdout:
+# stderr:
+error: knapsack profiles list takes no arguments, got "forever"
