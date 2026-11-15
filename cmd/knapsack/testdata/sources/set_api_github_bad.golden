@@ -1,0 +1,4 @@
+# exit: 2
+# stdout:
+# stderr:
+error: GitHub is always read through its API, which needs no key

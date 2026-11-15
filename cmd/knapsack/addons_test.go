@@ -11,7 +11,7 @@ import (
 var (
 	addBaganator = []string{"add", "github:austinrr/baganator-mirror"}
 	addDetails   = []string{"add", "github:austinrr/details-mirror"}
-	addPlumber   = []string{"add", "wago:plumber"} // needs wagoKeyEnv
+	addPlumber   = []string{"add", "wago:plumber"} // needs wagoKeyEnv, or useWagoSite
 )
 
 // wagoKeyInConfig is a Forever profile with the fake Wago's key in config
@@ -70,7 +70,15 @@ func TestAddonCommands(t *testing.T) {
 		{name: "add/profile_env", setup: [][]string{addForever, addRetail},
 			env:  map[string]string{"KNAPSACK_PROFILE": "retail"},
 			args: []string{"add", "github:austinrr/retail-only"}},
-		// Wago, with the key in the environment or config, or without one.
+		// Wago's website, which needs no key.
+		{name: "add/wago_website", setup: [][]string{addForever, useWagoSite}, args: addPlumber},
+		{name: "add/wago_website_url", setup: [][]string{addForever, useWagoSite},
+			args: []string{"add", "https://addons.wago.io/addons/plumber"}},
+		{name: "add/wago_website_unknown", setup: [][]string{addForever, useWagoSite}, args: []string{"add", "wago:nope"}},
+		// A page Knapsack doesn't understand gets a link to report it.
+		{name: "add/wago_website_changed", setup: [][]string{addForever, useWagoSite}, args: []string{"add", "wago:" + changedWagoAddon}},
+		// Wago's official API, the default, with the key in the environment
+		// or config, or without one.
 		{name: "add/wago", env: wagoKeyEnv, setup: [][]string{addForever}, args: addPlumber},
 		{name: "add/wago_url", env: wagoKeyEnv, setup: [][]string{addForever},
 			args: []string{"add", "https://addons.wago.io/addons/plumber"}},
@@ -99,6 +107,7 @@ func TestAddonCommands(t *testing.T) {
 		{name: "list/update_available", setup: [][]string{addForever, addBaganator, addDetails}, after: bumpBaganator, args: []string{"list"}},
 		{name: "list/no_check", setup: [][]string{addForever, addBaganator}, after: bumpBaganator, args: []string{"list", "--no-check"}},
 		{name: "list/wago", env: wagoKeyEnv, setup: [][]string{addForever, addBaganator, addPlumber}, args: []string{"list"}},
+		{name: "list/wago_website", setup: [][]string{addForever, useWagoSite, addBaganator, addPlumber}, args: []string{"list"}},
 		{name: "list/check_failed", config: missingAndGone, args: []string{"list"}},
 		{name: "list/check_failed_json", config: missingAndGone, args: []string{"list", "-o", "json"}},
 		// list names addons by title, so commands take titles too.

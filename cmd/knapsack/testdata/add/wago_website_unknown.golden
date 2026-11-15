@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: wago nope: no such addon: not found
+hint: check the ref: use the addon's Wago ID, or its addons.wago.io link

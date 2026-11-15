@@ -1,7 +1,7 @@
 # exit: 0
 # stdout:
-NAME        STATUS   KEY
-github      ready    none (60 requests an hour)
-curseforge  not yet  -
-wago        ready    from $KNAPSACK_WAGO_API_KEY
+NAME        STATUS   API       KEY
+github      ready    official  none (60 requests an hour)
+curseforge  not yet  official  -
+wago        ready    official  from $KNAPSACK_WAGO_API_KEY
 # stderr:

@@ -6,4 +6,4 @@ VBNBxKx5          not installed  -        wago
 # stderr:
 Profile forever:
 error: wago VBNBxKx5: no API key: source not configured
-hint: wago needs an API key: get one from https://addons.wago.io/account/apikeys, then run `knapsack sources set-key wago`
+hint: wago's official API needs a key: get one from https://addons.wago.io/account/apikeys, then run `knapsack sources set-key wago`; or read its website instead, with `knapsack sources set-api wago website`

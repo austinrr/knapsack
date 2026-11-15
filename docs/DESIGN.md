@@ -269,6 +269,9 @@ addons = [
 
 [sources.curseforge]
 api_key = "…"
+
+[sources.wago]
+api = "website"
 ```
 
 What belongs here:
@@ -293,6 +296,9 @@ What belongs here:
   them empty. When a config contains a key, Knapsack writes it with `0600`
   permissions. Keys are global, shared by every profile, and managed with
   `knapsack sources` (§8.4) rather than by editing the file.
+- **How each source is read**: `api = "official"`, the default, or
+  `"website"`, per source (§7). Set with `knapsack sources set-api`; the
+  default isn't written.
 - **GitHub tokens are never stored.** They come from `GITHUB_TOKEN`,
   `GH_TOKEN` or `gh auth token`, as in the LemonUp fork.
 
@@ -305,7 +311,7 @@ README rather than worked around.
 
 The layout is fixed: profiles in name order, one addon per line so adding
 or removing one is a one-line diff, and `[sources.*]` tables only when they
-hold a key. Saving what was loaded gives identical bytes. Unknown keys are
+hold a setting. Saving what was loaded gives identical bytes. Unknown keys are
 an error on load, because they're almost always typos (`flavour`) that
 would otherwise be silently ignored.
 
@@ -758,8 +764,33 @@ write user-facing text.
 | Source | Access | v1 status |
 |---|---|---|
 | **GitHub** | Public REST API. 60 req/h anonymous, 5000 with a token. Asset metadata includes a `sha256:` digest | **v1** |
-| **CurseForge** | Official API needs an API key (console.curseforge.com). Authors can opt out of third-party distribution | Later |
-| **Wago** | Addons API needs a per-user API key | **v1** |
+| **CurseForge** | Official API needs an API key (console.curseforge.com). Authors can opt out of third-party distribution. The website's own JSON API needs none | Later |
+| **Wago** | Official addons API needs a per-user API key. The website needs none | **v1** |
+
+**Official API or website.** CurseForge and Wago both give API keys out
+only to some, so each can be read two ways, chosen per source in config
+(`api`, §5.2) with `knapsack sources set-api <source> <official|website>`:
+
+- **`website`**: what the source's own website loads, as a
+  browser does, with no key. It isn't an API, so it can change without
+  notice. Anything Knapsack doesn't understand (an unexpected status, a
+  page without the data it reads, JSON of another shape) is
+  `ErrUnexpectedWebsite`, saying what was wrong and which URL. Its hint
+  suggests `self-update`, a newer release possibly understanding it, and
+  the official API, and the CLI adds a `report:` line: a link that opens a
+  GitHub issue with the error, the version and the platform filled in
+  (§8.6). Not found and rate limits are still `ErrNotFound` and
+  `ErrRateLimited`, and a 5xx is a plain error: an outage, fixed by
+  retrying later, not by a report. A 403, such as a bot challenge, is
+  unexpected, since it means the website no longer answers Knapsack.
+- **`official`**, the default: the documented API, with the key. Without
+  one, resolving is `ErrSourceNotConfigured`, whose hint says how to get
+  and set a key, or to switch to the website. The official API is the
+  default because it's the supported way in: the website is the fallback
+  for those without a key.
+
+The source's failure is the addon's, as any other, so the rest of a bulk
+command carries on.
 
 ### GitHub resolution
 
@@ -789,6 +820,24 @@ write user-facing text.
 
 ### Wago resolution
 
+#### Website
+
+1. `GET https://addons.wago.io/addons/{id}`, `{id}` the Wago ID or slug, as
+   for the API. The page is drawn by Inertia, which puts its data, as
+   HTML-escaped JSON, in the app element's `data-page` attribute. Its
+   `component` must be `Addon/AddonDetails`.
+2. `props.metadata.recent_releases` maps a game version, named as for the
+   API, to its newest stable release, with `label` and `download_link`. As
+   in the API, `[]` or `null` is none. Without the flavor's game version,
+   it's `ErrNoCompatibleRelease`.
+3. The download link is signed and expires; it needs no key, so none is
+   sent. It's resolved just before it's downloaded, so it doesn't expire
+   first.
+4. 404 is `ErrNotFound`, 429 `ErrRateLimited`, 5xx a plain error, and
+   anything else unexpected `ErrUnexpectedWebsite` (§7).
+
+#### Official API
+
 The API isn't publicly documented. Its shape here is what WowUp and
 instawow use, which agree.
 
@@ -812,7 +861,8 @@ instawow use, which agree.
    downloads the archive to compare it with state.
 5. 404 is `ErrNotFound`, 401 and 403 are `ErrUnauthorized`, 429 is
    `ErrRateLimited`. A missing key is `ErrSourceNotConfigured`, whose hint
-   names `knapsack sources set-key wago` and Wago's API keys page.
+   names `knapsack sources set-key wago` and Wago's API keys page, and
+   `knapsack sources set-api wago website`.
 
 CurseForge projects that block third-party access are covered by the existing
 `wow-addon-mirror-action`, which mirrors them to GitHub releases, so GitHub
@@ -1026,9 +1076,10 @@ forever: 1 upgrade · retail: 1 install
 - **`config view`** prints config with API keys shown as `REDACTED`, like
   `kubectl config view`.
 - **`sources`** alone prints its help, like `config`. **`sources list`**
-  (`ls`) lists every source with a status (`ready`, `needs key`, or
-  `not yet` for one Knapsack can't install from yet) and where its key
-  comes from: config, the environment variable that overrides it, or for
+  (`ls`) lists every source with a status (`ready`; `needs key` for one
+  read through its official API without a key; or `not yet` for one
+  Knapsack can't install from yet), how it's read (`official` or
+  `website`; GitHub is always `official`), and where its key comes from: config, the environment variable that overrides it, or for
   GitHub, `GITHUB_TOKEN`, `GH_TOKEN` or `gh` (which listing may run).
   Until v0.1.4, bare `sources` was the list; it became a group so its
   subcommands show up, as `config`'s do.
@@ -1043,7 +1094,12 @@ forever: 1 upgrade · retail: 1 install
   these commands don't build network clients. The source is checked before the key is asked
   for; GitHub is refused, since its token is never stored. Both `set-key`
   and `unset-key` note on stderr when the environment variable overrides
-  config, and `set-key` when the source isn't built yet.
+  config, and `set-key` when the source isn't built yet or is read from its
+  website, which doesn't use the key.
+  `sources set-api <source> <official|website>` chooses how a source is
+  read (§7); choosing `official`, the default, removes the setting. It
+  notes on stderr when the official API has no key yet, or the source
+  isn't built yet. GitHub is refused: it has only its API.
 
 ### 8.5 Naming addons
 
@@ -1071,6 +1127,14 @@ forever: 1 upgrade · retail: 1 install
   ```
   error: curseforge is not configured
   hint: set sources.curseforge.api_key or KNAPSACK_CURSEFORGE_API_KEY
+  ```
+- A source's website answering unexpectedly (§7) adds a third line, a link
+  to report it, with the error, version and platform filled in. The error
+  names the addon and URL, nothing of the user's, such as paths:
+  ```
+  error: wago plater: unexpected answer from the website: GET https://addons.wago.io/addons/plater has no data-page attribute
+  hint: Knapsack reads wago's website, which may have changed since this release. `knapsack self-update` may fix it; if not, please report it at https://github.com/austinrr/knapsack/issues, …
+  report: https://github.com/austinrr/knapsack/issues/new?body=…&title=…
   ```
 - When several addons are processed, one failure doesn't stop the rest. Each
   failure is reported on stderr after the successes, as its own `error:` line

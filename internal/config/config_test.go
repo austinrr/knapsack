@@ -60,6 +60,7 @@ func sample(t *testing.T) *config.Config {
 		Flavor: flavor.Classic,
 	}
 	c.Sources.CurseForge.APIKey = `key-with-"quotes"\and\backslashes`
+	c.Sources.Wago.API = config.APIWebsite
 	return c
 }
 
@@ -208,6 +209,11 @@ func TestLoadErrors(t *testing.T) {
 			name:    "unknown table",
 			file:    "[profile.forever]\n" + ok,
 			wantErr: []string{"unknown keys: profile.forever\n"},
+		},
+		{
+			name:    "bad api",
+			file:    "[sources.wago]\napi = \"browser\"\n",
+			wantErr: []string{`sources.wago: invalid api "browser" (want official or website)`},
 		},
 		{
 			name:    "unknown source table",
@@ -405,6 +411,33 @@ func TestAPIKey(t *testing.T) {
 	}
 }
 
+// A source is read through its official API unless config says
+// otherwise, and GitHub, with no setting, always is.
+func TestAPI(t *testing.T) {
+	t.Parallel()
+	c := config.New()
+	if got := c.API(ref.Wago); got != config.APIOfficial {
+		t.Errorf("default API = %q, want official", got)
+	}
+	if !c.SetAPI(ref.Wago, config.APIWebsite) || c.API(ref.Wago) != config.APIWebsite {
+		t.Errorf("after SetAPI, API = %q, want website", c.API(ref.Wago))
+	}
+	if c.API(ref.CurseForge) != config.APIOfficial {
+		t.Errorf("CurseForge API = %q, want official, unchanged", c.API(ref.CurseForge))
+	}
+	if c.SetAPI(ref.GitHub, config.APIWebsite) || c.API(ref.GitHub) != config.APIOfficial {
+		t.Errorf("GitHub API = %q, want official and no setting", c.API(ref.GitHub))
+	}
+	for _, s := range []string{"website", "official"} {
+		if a, err := config.ParseAPI(s); err != nil || string(a) != s {
+			t.Errorf("ParseAPI(%q) = %q, %v", s, a, err)
+		}
+	}
+	if _, err := config.ParseAPI(""); err == nil {
+		t.Error("ParseAPI accepted an empty api")
+	}
+}
+
 // Profiles from both OSes can share one config, as in a dotfiles repo, and
 // it loads on either.
 func TestLoadMixedOSPaths(t *testing.T) {
@@ -466,6 +499,9 @@ func TestSaveValidation(t *testing.T) {
 		{"non-UTF-8 key", func(c *config.Config) {
 			c.Sources.Wago.APIKey = "\xff"
 		}, "sources.wago.api_key is not valid UTF-8"},
+		{"bad api", func(c *config.Config) {
+			c.Sources.CurseForge.API = "Official"
+		}, `sources.curseforge: invalid api "Official"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

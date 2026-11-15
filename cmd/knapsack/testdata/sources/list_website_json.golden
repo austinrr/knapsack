@@ -1,0 +1,20 @@
+# exit: 0
+# stdout:
+[
+  {
+    "name": "github",
+    "status": "ready",
+    "api": "official"
+  },
+  {
+    "name": "curseforge",
+    "status": "not yet",
+    "api": "official"
+  },
+  {
+    "name": "wago",
+    "status": "ready",
+    "api": "website"
+  }
+]
+# stderr:

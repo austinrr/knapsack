@@ -522,14 +522,11 @@ func toConfigJSON(cfg *config.Config) configJSON {
 	out := configJSON{
 		CurrentProfile: cfg.CurrentProfile,
 		Profiles:       map[string]profileJSON{},
-		Sources:        map[string]map[string]string{},
+		Sources:        cfg.Sources.Settings(),
 	}
 	for _, name := range cfg.ProfileNames() {
 		p := cfg.Profiles[name]
 		out.Profiles[name] = profileJSON{name, name == cfg.CurrentProfile, string(p.Flavor), p.Path, refStrings(p.Addons)}
-	}
-	for name, key := range cfg.Sources.Keys() {
-		out.Sources[name] = map[string]string{"api_key": key}
 	}
 	return out
 }

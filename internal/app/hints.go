@@ -40,8 +40,13 @@ func explain(err error, r ref.Ref) error {
 		hint = fmt.Sprintf("check the key%s, and set it again with `knapsack sources set-key %s`%s",
 			keyPage(r.Source, " at "), r.Source, envOverride(r.Source))
 	case errors.Is(err, source.ErrSourceNotConfigured) && builtSources[r.Source]:
-		// A built source that isn't configured is one missing its key.
-		hint = fmt.Sprintf("%s needs an API key: get one%s, then run `knapsack sources set-key %s`", r.Source, keyPage(r.Source, " from "), r.Source)
+		// A built source that isn't configured is one read through its
+		// official API without a key.
+		hint = fmt.Sprintf("%s's official API needs a key: get one%s, then run `knapsack sources set-key %s`; or read its website instead, with `knapsack sources set-api %s website`",
+			r.Source, keyPage(r.Source, " from "), r.Source, r.Source)
+	case errors.Is(err, source.ErrUnexpectedWebsite):
+		hint = fmt.Sprintf("Knapsack reads %s's website, which may have changed since this release. `knapsack self-update` may fix it; if not, please report it at %s, or use %s's official API, with a key: `knapsack sources set-api %s official`",
+			r.Source, IssuesURL, r.Source, r.Source)
 	case errors.Is(err, source.ErrSourceNotConfigured):
 		hint = fmt.Sprintf("Knapsack can't install from %s yet; `knapsack sources list` shows which sources it can", r.Source)
 	case errors.Is(err, install.ErrWrongGame):
@@ -55,6 +60,9 @@ func explain(err error, r ref.Ref) error {
 	}
 	return &UserError{Msg: err.Error(), Hint: hint, Err: err}
 }
+
+// IssuesURL is where Knapsack's issues are reported.
+const IssuesURL = "https://github.com/austinrr/knapsack/issues"
 
 // keyPages are where each keyed source's users manage their API keys.
 var keyPages = map[string]string{

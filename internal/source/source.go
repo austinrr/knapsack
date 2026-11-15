@@ -27,6 +27,10 @@ var (
 	// ErrSourceNotConfigured means the source isn't registered, usually
 	// because it needs an API key that isn't set.
 	ErrSourceNotConfigured = errors.New("source not configured")
+	// ErrUnexpectedWebsite means a source read from its website, rather
+	// than an official API, answered in a way Knapsack doesn't understand:
+	// the website has likely changed since this release of Knapsack.
+	ErrUnexpectedWebsite = errors.New("unexpected answer from the website")
 )
 
 // Source resolves an addon ID to the newest release compatible with a

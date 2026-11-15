@@ -1,7 +1,7 @@
 # exit: 0
 # stdout:
-NAME        STATUS     KEY
-github      ready      from gh auth token
-curseforge  not yet    -
-wago        needs key  -
+NAME        STATUS     API       KEY
+github      ready      official  from gh auth token
+curseforge  not yet    official  -
+wago        needs key  official  -
 # stderr:

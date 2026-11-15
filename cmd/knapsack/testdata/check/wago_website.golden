@@ -1,0 +1,8 @@
+# exit: 1
+# stdout:
+ADDON      INSTALLED  AVAILABLE  ACTION   SOURCE
+Baganator  v1         v1         -        github
+Plumber    v1         v2         upgrade  wago
+
+forever: 1 upgrade
+# stderr:

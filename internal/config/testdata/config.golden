@@ -23,3 +23,6 @@ addons = [
 
 [sources.curseforge]
 api_key = "key-with-\"quotes\"\\and\\backslashes"
+
+[sources.wago]
+api = "website"

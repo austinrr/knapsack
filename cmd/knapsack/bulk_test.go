@@ -42,6 +42,8 @@ func TestBulkCommands(t *testing.T) {
 		{name: "update/up_to_date", setup: [][]string{addForever, addBaganator, addDetails}, args: []string{"update"}},
 		{name: "update/wago", env: wagoKeyEnv, setup: [][]string{addForever, addBaganator, addPlumber}, after: bumpPlumber,
 			args: []string{"update"}},
+		{name: "update/wago_website", setup: [][]string{addForever, useWagoSite, addBaganator, addPlumber}, after: bumpPlumber,
+			args: []string{"update"}},
 		{name: "update/upgrade", setup: [][]string{addForever, addBaganator, addDetails}, after: bumpBaganator,
 			args: []string{"update"}},
 		// One addon, so the progress lines come in a fixed order.
@@ -70,6 +72,8 @@ func TestBulkCommands(t *testing.T) {
 		{name: "check/wago", env: wagoKeyEnv, setup: [][]string{addForever, addBaganator, addPlumber}, after: bumpPlumber,
 			args: []string{"check"}},
 		{name: "check/wago_up_to_date", env: wagoKeyEnv, setup: [][]string{addForever, addPlumber}, args: []string{"check"}},
+		{name: "check/wago_website", setup: [][]string{addForever, useWagoSite, addBaganator, addPlumber}, after: bumpPlumber,
+			args: []string{"check"}},
 		{name: "check/up_to_date", setup: [][]string{addForever, addBaganator}, args: []string{"check"}},
 		{name: "check/pending", setup: [][]string{addForever, addBaganator, addDetails},
 			after: func(s *sandbox) { bumpBaganator(s); pruneDetails(s) }, args: []string{"check"}},

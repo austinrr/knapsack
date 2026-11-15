@@ -16,7 +16,7 @@ Available Commands:
   list        List the profile's addons and whether they're up to date
   remove      Uninstall addons and remove them from the profile
   self-update Update knapsack to the newest release
-  sources     List addon sources and manage their API keys
+  sources     List addon sources and set how each is read
   update      Upgrade outdated addons and install missing ones
   version     Print the knapsack version
 

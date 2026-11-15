@@ -1,0 +1,5 @@
+# exit: 0
+# stdout:
+Saved the wago API key to config.
+# stderr:
+wago is read from its website, which needs no key; `knapsack sources set-api wago official` uses the key.

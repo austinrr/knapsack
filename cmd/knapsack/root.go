@@ -98,7 +98,7 @@ func newApp(e env, p paths.Paths, network bool, reporter app.Reporter) *app.App 
 	if network {
 		opts.HTTP = httpx.NewClient(e.version)
 		gh := &lazyGitHub{client: opts.HTTP, baseURL: e.githubURL, getenv: e.getenv, ghAuthToken: e.ghAuthToken}
-		wg := &lazyWago{client: opts.HTTP, baseURL: e.wagoURL, config: opts.Config, getenv: e.getenv}
+		wg := &lazyWago{client: opts.HTTP, baseURL: e.wagoURL, siteURL: e.wagoSiteURL, config: opts.Config, getenv: e.getenv}
 		opts.Sources, opts.Releases = source.NewRegistry(gh, wg), gh
 	}
 	return app.New(opts)

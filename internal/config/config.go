@@ -48,6 +48,33 @@ type Source struct {
 	// APIKey as written in config. Use Config.APIKey, which applies
 	// environment overrides.
 	APIKey string
+	// API is how the source is read, as written in config: "" when it
+	// isn't, for the default. Use Config.API, which applies the default.
+	API API
+}
+
+// API is how a source is read: through its official API, which needs an
+// API key, or from its website, as a browser does, which needs none
+// (DESIGN.md §7).
+type API string
+
+// The ways a source can be read. The official API is the default; the
+// website is for those without a key, as the official APIs give keys out
+// only to some.
+const (
+	APIOfficial API = "official"
+	APIWebsite  API = "website"
+)
+
+// APIs are the valid values of API, in the order help lists them.
+var APIs = []API{APIOfficial, APIWebsite}
+
+// ParseAPI checks s is a valid API.
+func ParseAPI(s string) (API, error) {
+	if a := API(s); slices.Contains(APIs, a) {
+		return a, nil
+	}
+	return "", fmt.Errorf("invalid api %q (want %s or %s)", s, APIOfficial, APIWebsite)
 }
 
 // Environment variables that override the API keys in config, so a config
@@ -62,16 +89,25 @@ func New() *Config {
 	return &Config{Profiles: map[string]Profile{}}
 }
 
-// Keys returns the API keys that are set, by source name. Environment
-// overrides aren't applied; use Config.APIKey for that.
-func (s Sources) Keys() map[string]string {
-	keys := map[string]string{}
+// Settings returns each source's settings that are set, by source name,
+// then by their keys in config: api_key and api. Environment overrides and
+// defaults aren't applied; use Config.APIKey and Config.API for that.
+func (s Sources) Settings() map[string]map[string]string {
+	out := map[string]map[string]string{}
 	for _, ks := range keyedSources {
-		if k := ks.field(&s).APIKey; k != "" {
-			keys[ks.name] = k
+		f := ks.field(&s)
+		set := map[string]string{}
+		if f.APIKey != "" {
+			set["api_key"] = f.APIKey
+		}
+		if f.API != "" {
+			set["api"] = string(f.API)
+		}
+		if len(set) > 0 {
+			out[ks.name] = set
 		}
 	}
-	return keys
+	return out
 }
 
 // Redacted returns a copy with every API key that's set replaced by
@@ -117,16 +153,44 @@ func KeyedSources() []KeyedSource {
 	return out
 }
 
+// keyed finds source among keyedSources, and its settings in c.
+func (c *Config) keyed(source string) (keyedSource, *Source, bool) {
+	for _, ks := range keyedSources {
+		if ks.name == source {
+			return ks, ks.field(&c.Sources), true
+		}
+	}
+	return keyedSource{}, nil, false
+}
+
 // SetAPIKey stores key in config for source, or removes it when key is "".
 // It reports false for a source that takes no key.
 func (c *Config) SetAPIKey(source, key string) bool {
-	for _, ks := range keyedSources {
-		if ks.name == source {
-			ks.field(&c.Sources).APIKey = key
-			return true
-		}
+	_, s, ok := c.keyed(source)
+	if ok {
+		s.APIKey = key
 	}
-	return false
+	return ok
+}
+
+// SetAPI stores how source is read, or removes the setting, for the
+// default, when api is "". It reports false for a source that has no
+// setting for it.
+func (c *Config) SetAPI(source string, api API) bool {
+	_, s, ok := c.keyed(source)
+	if ok {
+		s.API = api
+	}
+	return ok
+}
+
+// API returns how source is read: as set in config, or APIOfficial, the
+// default, when it isn't. GitHub, with no setting, is always APIOfficial.
+func (c *Config) API(source string) API {
+	if _, s, ok := c.keyed(source); ok && s.API != "" {
+		return s.API
+	}
+	return APIOfficial
 }
 
 // Where an API key comes from, as KeyOrigin reports it.
@@ -152,16 +216,13 @@ func (c *Config) KeyOrigin(source string, getenv func(string) string) string {
 
 // apiKey is the one place the environment-over-config rule lives.
 func (c *Config) apiKey(source string, getenv func(string) string) (string, string) {
-	for _, ks := range keyedSources {
-		if ks.name != source {
-			continue
-		}
-		if v := getenv(ks.env); v != "" {
-			return v, FromEnv
-		}
-		if k := ks.field(&c.Sources).APIKey; k != "" {
-			return k, FromConfig
-		}
+	ks, s, ok := c.keyed(source)
+	switch {
+	case !ok:
+	case getenv(ks.env) != "":
+		return getenv(ks.env), FromEnv
+	case s.APIKey != "":
+		return s.APIKey, FromConfig
 	}
 	return "", FromNowhere
 }
@@ -215,8 +276,14 @@ func (c *Config) Validate() error {
 		}
 	}
 	for _, ks := range keyedSources {
-		if !utf8.ValidString(ks.field(&c.Sources).APIKey) {
+		f := ks.field(&c.Sources)
+		if !utf8.ValidString(f.APIKey) {
 			errs = append(errs, fmt.Errorf("sources.%s.api_key is not valid UTF-8", ks.name))
+		}
+		if f.API != "" {
+			if _, err := ParseAPI(string(f.API)); err != nil {
+				errs = append(errs, fmt.Errorf("sources.%s: %w", ks.name, err))
+			}
 		}
 	}
 	return errors.Join(errs...)

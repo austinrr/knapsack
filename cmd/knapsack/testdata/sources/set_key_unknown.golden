@@ -2,4 +2,4 @@
 # stdout:
 # stderr:
 error: unknown source "nope"
-hint: sources that take an API key: curseforge, wago
+hint: sources with settings: curseforge, wago

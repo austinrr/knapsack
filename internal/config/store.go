@@ -51,6 +51,7 @@ type fileProfile struct {
 
 type fileSource struct {
 	APIKey string `toml:"api_key"`
+	API    string `toml:"api"`
 }
 
 // Load reads and validates the config file. A missing file is not an error:
@@ -122,7 +123,8 @@ func fromFile(fc *fileConfig) (*Config, error) {
 			errs = append(errs, fmt.Errorf("unknown source table [sources.%s] (sources with settings: %s)", name, strings.Join(known, ", ")))
 			continue
 		}
-		keyedSources[i].field(&c.Sources).APIKey = fc.Sources[name].APIKey
+		f := keyedSources[i].field(&c.Sources)
+		f.APIKey, f.API = fc.Sources[name].APIKey, API(fc.Sources[name].API)
 	}
 
 	for _, name := range slices.Sorted(maps.Keys(fc.Profiles)) {

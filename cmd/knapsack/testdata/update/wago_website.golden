@@ -1,0 +1,6 @@
+# exit: 0
+# stdout:
+Upgraded wago:plumber to v2.
+
+forever: 1 upgraded, 1 up to date
+# stderr:
