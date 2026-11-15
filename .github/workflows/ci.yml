@@ -58,10 +58,13 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: stable
-      - uses: golangci/golangci-lint-action@v9
-        with:
-          # Keep in sync with the version developers run locally.
-          version: v2.15.0
+          # Cache the linter's modules too, which make lint builds it from.
+          cache-dependency-path: |
+            go.sum
+            tools/lint/go.sum
+      - name: Lint
+        # The version pinned in tools/lint/go.mod, as developers run it.
+        run: make lint
 
   tidy:
     name: Go mod tidy
@@ -72,10 +75,11 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: stable
-          # Tidy covers tools/go.mod too, so cache its modules.
+          # Tidy covers the tools modules too, so cache theirs.
           cache-dependency-path: |
             go.sum
             tools/go.sum
+            tools/lint/go.sum
       - name: Check go.mod and go.sum are tidy
         run: make tidy
 
