@@ -50,6 +50,9 @@ func TestBulkCommands(t *testing.T) {
 			after: func(s *sandbox) { s.bump("syndicator") }, args: []string{"update", "curseforge:syndicator"}},
 		{name: "update/curseforge_website", setup: [][]string{addForever, useCurseForgeSite, {"add", "curseforge:syndicator"}},
 			after: func(s *sandbox) { s.bump("syndicator") }, args: []string{"update"}},
+		{name: "update/github_private", env: map[string]string{"GITHUB_TOKEN": fakePrivateToken},
+			setup: [][]string{addForever, {"add", "github:austinrr/private-addon"}},
+			after: func(s *sandbox) { s.bump("austinrr/private-addon") }, args: []string{"update"}},
 		{name: "update/upgrade", setup: [][]string{addForever, addBaganator, addDetails}, after: bumpBaganator,
 			args: []string{"update"}},
 		// One addon, so the progress lines come in a fixed order.

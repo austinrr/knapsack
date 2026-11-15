@@ -120,6 +120,13 @@ func TestAddonCommands(t *testing.T) {
 		{name: "add/curseforge_already_added", env: cfKeyEnv, setup: [][]string{addForever, {"add", "curseforge:988370"}},
 			args: []string{"add", "https://www.curseforge.com/wow/addons/syndicator"}},
 		{name: "add/curseforge_website_unknown", setup: [][]string{addForever, useCurseForgeSite}, args: []string{"add", "curseforge:nope", "curseforge:999"}},
+		// A private repo installs with a token that can read it, from
+		// GITHUB_TOKEN or gh, pasted as its link.
+		{name: "add/github_private", env: map[string]string{"GITHUB_TOKEN": fakePrivateToken}, setup: [][]string{addForever},
+			args: []string{"add", "https://github.com/austinrr/private-addon"}},
+		{name: "add/github_private_gh", after: func(s *sandbox) { s.ghToken = fakePrivateToken }, setup: [][]string{addForever},
+			args: []string{"add", "https://github.com/austinrr/private-addon"}},
+		{name: "add/github_private_no_token", setup: [][]string{addForever}, args: []string{"add", "https://github.com/austinrr/private-addon"}},
 		{name: "add/unknown_profile", setup: [][]string{addForever}, args: []string{"add", "-p", "nope", "github:austinrr/baganator-mirror"}},
 
 		// remove
