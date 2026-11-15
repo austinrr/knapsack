@@ -1,5 +1,5 @@
 # exit: 0
 # stdout:
 [sources.wago]
-api = "official"
+api = "website"
 # stderr:

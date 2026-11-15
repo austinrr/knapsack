@@ -1,5 +1,5 @@
 # exit: 2
 # stdout:
 # stderr:
-error: invalid api "browser" (want website or official)
-hint: for example, `knapsack sources set-api wago official`
+error: invalid api "browser" (want official or website)
+hint: for example, `knapsack sources set-api wago website`

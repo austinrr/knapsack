@@ -1,0 +1,7 @@
+# exit: 0
+# stdout:
+NAME        STATUS   API       KEY
+github      ready    official  none (60 requests an hour)
+curseforge  not yet  official  -
+wago        ready    website   -
+# stderr:

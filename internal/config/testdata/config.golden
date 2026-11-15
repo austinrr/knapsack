@@ -25,4 +25,4 @@ addons = [
 api_key = "key-with-\"quotes\"\\and\\backslashes"
 
 [sources.wago]
-api = "official"
+api = "website"

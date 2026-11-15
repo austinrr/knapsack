@@ -2,4 +2,4 @@
 # stdout:
 # stderr:
 error: knapsack sources set-api needs a source and an api
-hint: for example, `knapsack sources set-api wago official`; `knapsack sources set-api --help` shows more
+hint: for example, `knapsack sources set-api wago website`; `knapsack sources set-api --help` shows more

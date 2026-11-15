@@ -74,11 +74,12 @@ func newSourcesCmd(c *cli) *cobra.Command {
 		Long: `List the sources Knapsack installs addons from, choose how each is read,
 and manage their API keys.
 
-CurseForge and Wago are read from their websites by default, as a browser
-reads them, which needs no key. Their official APIs give keys out only to
-some; with one, ` + "`knapsack sources set-api <source> official`" + ` reads the API
-instead. The website isn't an API, so it can change under Knapsack: when
-it does, the error has a link to report it.
+CurseForge and Wago are read through their official APIs by default, which
+need an API key (` + "`knapsack sources set-key`" + `). They give keys out only to
+some, so ` + "`knapsack sources set-api <source> website`" + ` reads the source's
+website instead, as a browser does, which needs none. The website isn't an
+API, so it can change under Knapsack: when it does, the error has a link to
+report it.
 
 Keys are shared by every profile. They're stored in config.toml, which is
 then readable only by you, and an environment variable overrides each one
@@ -100,8 +101,8 @@ func newSourcesListCmd(c *cli) *cobra.Command {
 
 STATUS is ready; needs key, for a source read through its official API
 without one (set one with ` + "`knapsack sources set-key`" + `); or not yet, for a
-source Knapsack can't install from yet. API is how it's read: website or
-official (` + "`knapsack sources set-api`" + `). KEY says where the key comes
+source Knapsack can't install from yet. API is how it's read: official or
+website (` + "`knapsack sources set-api`" + `). KEY says where the key comes
 from: config, or the environment variable that overrides it.
 GitHub needs none, but uses a token from GITHUB_TOKEN, GH_TOKEN or the
 GitHub CLI when there is one, for a higher rate limit.`,
@@ -139,21 +140,22 @@ GitHub CLI when there is one, for a higher rate limit.`,
 
 func newSetAPICmd(c *cli) *cobra.Command {
 	return &cobra.Command{
-		Use:   "set-api <source> <website|official>",
-		Short: "Choose whether a source is read from its website or its official API",
+		Use:   "set-api <source> <official|website>",
+		Short: "Choose whether a source is read from its official API or its website",
 		Long: `Choose how a source is read, for every profile.
 
-website, the default, reads the source's website as a browser does, and
-needs no key. official reads its official API, which needs an API key
-(` + "`knapsack sources set-key`" + `); without one, commands fail until it's set.`,
-		Example: `  knapsack sources set-api wago official
-  knapsack sources set-api wago website`,
+official, the default, reads the source's official API, which needs an API
+key (` + "`knapsack sources set-key`" + `); without one, commands fail until it's
+set. website reads the source's website as a browser does, which needs no
+key.`,
+		Example: `  knapsack sources set-api wago website
+  knapsack sources set-api wago official`,
 		Args:      twoArgs("source", "api"),
 		ValidArgs: []string{"curseforge", "wago"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			api, err := config.ParseAPI(args[1])
 			if err != nil {
-				return &app.UserError{Msg: err.Error(), Hint: "for example, `knapsack sources set-api " + args[0] + " official`"}
+				return &app.UserError{Msg: err.Error(), Hint: "for example, `knapsack sources set-api " + args[0] + " website`"}
 			}
 			res, err := c.app.SetSourceAPI(cmd.Context(), args[0], api)
 			if err != nil {

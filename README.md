@@ -134,26 +134,26 @@ from `GITHUB_TOKEN`, `GH_TOKEN` or the [GitHub CLI](https://cli.github.com/)
 (`gh auth login`) when there is one, which raises that to 5,000. It never
 stores the token.
 
-Wago Addons, and CurseForge once it's supported, are read from their
-websites by default, as a browser reads them, so they need no API key:
+Wago Addons, and CurseForge once it's supported, are read through their
+official APIs, which need an API key, shared by every profile. Wago's is on
+your [account's API keys page](https://addons.wago.io/account/apikeys):
 
 ```sh
+knapsack sources set-key wago                   # asks for it
+pass show wago | knapsack sources set-key wago  # or pipe it in
 knapsack add https://addons.wago.io/addons/plater
+```
+
+Without a key, Knapsack can read the source's website instead, as a
+browser does:
+
+```sh
+knapsack sources set-api wago website
 ```
 
 A website isn't an API, so it can change under Knapsack. When one answers
 in a way Knapsack doesn't understand, the error ends with a `report:` link
 that opens a GitHub issue with the details filled in; please send it.
-
-With an API key, Knapsack can use the official API instead. Keys are
-shared by every profile; Wago's is on your
-[account's API keys page](https://addons.wago.io/account/apikeys):
-
-```sh
-knapsack sources set-api wago official
-knapsack sources set-key wago                   # asks for it
-pass show wago | knapsack sources set-key wago  # or pipe it in
-```
 
 `KNAPSACK_WAGO_API_KEY` and `KNAPSACK_CURSEFORGE_API_KEY` override the
 stored keys. Wago publishes no checksums, so `check`, and `list` unless

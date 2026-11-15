@@ -10,13 +10,13 @@
   {
     "name": "curseforge",
     "status": "not yet",
-    "api": "website",
+    "api": "official",
     "key_from": "config"
   },
   {
     "name": "wago",
-    "status": "ready",
-    "api": "website"
+    "status": "needs key",
+    "api": "official"
   }
 ]
 # stderr:

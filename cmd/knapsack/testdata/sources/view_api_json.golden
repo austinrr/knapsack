@@ -5,7 +5,7 @@
   "profiles": {},
   "sources": {
     "wago": {
-      "api": "official"
+      "api": "website"
     }
   }
 }

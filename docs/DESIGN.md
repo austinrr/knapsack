@@ -268,8 +268,10 @@ addons = [
 ]
 
 [sources.curseforge]
-api = "official"
 api_key = "…"
+
+[sources.wago]
+api = "website"
 ```
 
 What belongs here:
@@ -294,8 +296,8 @@ What belongs here:
   them empty. When a config contains a key, Knapsack writes it with `0600`
   permissions. Keys are global, shared by every profile, and managed with
   `knapsack sources` (§8.4) rather than by editing the file.
-- **How each source is read**: `api = "website"`, the default, or
-  `"official"`, per source (§7). Set with `knapsack sources set-api`; the
+- **How each source is read**: `api = "official"`, the default, or
+  `"website"`, per source (§7). Set with `knapsack sources set-api`; the
   default isn't written.
 - **GitHub tokens are never stored.** They come from `GITHUB_TOKEN`,
   `GH_TOKEN` or `gh auth token`, as in the LemonUp fork.
@@ -767,9 +769,9 @@ write user-facing text.
 
 **Official API or website.** CurseForge and Wago both give API keys out
 only to some, so each can be read two ways, chosen per source in config
-(`api`, §5.2) with `knapsack sources set-api <source> <website|official>`:
+(`api`, §5.2) with `knapsack sources set-api <source> <official|website>`:
 
-- **`website`**, the default: what the source's own website loads, as a
+- **`website`**: what the source's own website loads, as a
   browser does, with no key. It isn't an API, so it can change without
   notice. Anything Knapsack doesn't understand (an unexpected status, a
   page without the data it reads, JSON of another shape) is
@@ -779,9 +781,11 @@ only to some, so each can be read two ways, chosen per source in config
   GitHub issue with the error, the version and the platform filled in
   (§8.6). Not found and rate limits are still `ErrNotFound` and
   `ErrRateLimited`.
-- **`official`**: the documented API, with the key. Without one, resolving
-  is `ErrSourceNotConfigured`, whose hint says how to get and set a key,
-  or to go back to the website.
+- **`official`**, the default: the documented API, with the key. Without
+  one, resolving is `ErrSourceNotConfigured`, whose hint says how to get
+  and set a key, or to switch to the website. The official API is the
+  default because it's the supported way in: the website is the fallback
+  for those without a key.
 
 The source's failure is the addon's, as any other, so the rest of a bulk
 command carries on.
@@ -1072,8 +1076,8 @@ forever: 1 upgrade · retail: 1 install
 - **`sources`** alone prints its help, like `config`. **`sources list`**
   (`ls`) lists every source with a status (`ready`; `needs key` for one
   read through its official API without a key; or `not yet` for one
-  Knapsack can't install from yet), how it's read (`website` or
-  `official`; GitHub is always `official`), and where its key comes from: config, the environment variable that overrides it, or for
+  Knapsack can't install from yet), how it's read (`official` or
+  `website`; GitHub is always `official`), and where its key comes from: config, the environment variable that overrides it, or for
   GitHub, `GITHUB_TOKEN`, `GH_TOKEN` or `gh` (which listing may run).
   Until v0.1.4, bare `sources` was the list; it became a group so its
   subcommands show up, as `config`'s do.
@@ -1090,8 +1094,8 @@ forever: 1 upgrade · retail: 1 install
   and `unset-key` note on stderr when the environment variable overrides
   config, and `set-key` when the source isn't built yet or is read from its
   website, which doesn't use the key.
-  `sources set-api <source> <website|official>` chooses how a source is
-  read (§7); choosing `website`, the default, removes the setting. It
+  `sources set-api <source> <official|website>` chooses how a source is
+  read (§7); choosing `official`, the default, removes the setting. It
   notes on stderr when the official API has no key yet, or the source
   isn't built yet. GitHub is refused: it has only its API.
 

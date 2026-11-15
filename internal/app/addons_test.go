@@ -733,8 +733,8 @@ func TestSourcesWithoutNetwork(t *testing.T) {
 	}
 	want := []app.SourceInfo{
 		{Name: "github", Available: true, API: config.APIOfficial},
-		{Name: "curseforge", NeedsKey: true, Env: config.CurseForgeKeyEnv, API: config.APIWebsite},
-		{Name: "wago", Available: true, NeedsKey: true, Key: app.KeyEnv, Env: config.WagoKeyEnv, API: config.APIWebsite},
+		{Name: "curseforge", NeedsKey: true, Env: config.CurseForgeKeyEnv, API: config.APIOfficial},
+		{Name: "wago", Available: true, NeedsKey: true, Key: app.KeyEnv, Env: config.WagoKeyEnv, API: config.APIOfficial},
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("Sources (-want +got):\n%s", diff)

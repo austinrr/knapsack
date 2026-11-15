@@ -9,12 +9,12 @@
   {
     "name": "curseforge",
     "status": "not yet",
-    "api": "website"
+    "api": "official"
   },
   {
     "name": "wago",
-    "status": "needs key",
-    "api": "official"
+    "status": "ready",
+    "api": "website"
   }
 ]
 # stderr:

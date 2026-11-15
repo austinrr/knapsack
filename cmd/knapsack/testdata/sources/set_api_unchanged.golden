@@ -1,5 +1,4 @@
 # exit: 0
 # stdout:
-wago is already read from its official API.
+wago is already read from its website.
 # stderr:
-The official API needs a key: set one with `knapsack sources set-key wago`.

@@ -60,7 +60,7 @@ func sample(t *testing.T) *config.Config {
 		Flavor: flavor.Classic,
 	}
 	c.Sources.CurseForge.APIKey = `key-with-"quotes"\and\backslashes`
-	c.Sources.Wago.API = config.APIOfficial
+	c.Sources.Wago.API = config.APIWebsite
 	return c
 }
 
@@ -213,7 +213,7 @@ func TestLoadErrors(t *testing.T) {
 		{
 			name:    "bad api",
 			file:    "[sources.wago]\napi = \"browser\"\n",
-			wantErr: []string{`sources.wago: invalid api "browser" (want website or official)`},
+			wantErr: []string{`sources.wago: invalid api "browser" (want official or website)`},
 		},
 		{
 			name:    "unknown source table",
@@ -411,19 +411,19 @@ func TestAPIKey(t *testing.T) {
 	}
 }
 
-// A source is read from its website unless config says otherwise, and
-// GitHub, with no setting, always through its API.
+// A source is read through its official API unless config says
+// otherwise, and GitHub, with no setting, always is.
 func TestAPI(t *testing.T) {
 	t.Parallel()
 	c := config.New()
-	if got := c.API(ref.Wago); got != config.APIWebsite {
-		t.Errorf("default API = %q, want website", got)
+	if got := c.API(ref.Wago); got != config.APIOfficial {
+		t.Errorf("default API = %q, want official", got)
 	}
-	if !c.SetAPI(ref.Wago, config.APIOfficial) || c.API(ref.Wago) != config.APIOfficial {
-		t.Errorf("after SetAPI, API = %q, want official", c.API(ref.Wago))
+	if !c.SetAPI(ref.Wago, config.APIWebsite) || c.API(ref.Wago) != config.APIWebsite {
+		t.Errorf("after SetAPI, API = %q, want website", c.API(ref.Wago))
 	}
-	if c.API(ref.CurseForge) != config.APIWebsite {
-		t.Errorf("CurseForge API = %q, want website, unchanged", c.API(ref.CurseForge))
+	if c.API(ref.CurseForge) != config.APIOfficial {
+		t.Errorf("CurseForge API = %q, want official, unchanged", c.API(ref.CurseForge))
 	}
 	if c.SetAPI(ref.GitHub, config.APIWebsite) || c.API(ref.GitHub) != config.APIOfficial {
 		t.Errorf("GitHub API = %q, want official and no setting", c.API(ref.GitHub))

@@ -58,22 +58,23 @@ type Source struct {
 // (DESIGN.md §7).
 type API string
 
-// The ways a source can be read. The website is the default, since the
-// official APIs give keys out only to some.
+// The ways a source can be read. The official API is the default; the
+// website is for those without a key, as the official APIs give keys out
+// only to some.
 const (
-	APIWebsite  API = "website"
 	APIOfficial API = "official"
+	APIWebsite  API = "website"
 )
 
 // APIs are the valid values of API, in the order help lists them.
-var APIs = []API{APIWebsite, APIOfficial}
+var APIs = []API{APIOfficial, APIWebsite}
 
 // ParseAPI checks s is a valid API.
 func ParseAPI(s string) (API, error) {
 	if a := API(s); slices.Contains(APIs, a) {
 		return a, nil
 	}
-	return "", fmt.Errorf("invalid api %q (want %s or %s)", s, APIWebsite, APIOfficial)
+	return "", fmt.Errorf("invalid api %q (want %s or %s)", s, APIOfficial, APIWebsite)
 }
 
 // Environment variables that override the API keys in config, so a config
@@ -177,15 +178,12 @@ func (c *Config) SetAPI(source string, api API) bool {
 	return false
 }
 
-// API returns how source is read: as set in config, or APIWebsite when it
-// isn't. Sources with no setting for it, GitHub, return APIOfficial.
+// API returns how source is read: as set in config, or APIOfficial, the
+// default, when it isn't. GitHub, with no setting, is always APIOfficial.
 func (c *Config) API(source string) API {
 	for _, ks := range keyedSources {
-		if ks.name == source {
-			if a := ks.field(&c.Sources).API; a != "" {
-				return a
-			}
-			return APIWebsite
+		if a := ks.field(&c.Sources).API; ks.name == source && a != "" {
+			return a
 		}
 	}
 	return APIOfficial

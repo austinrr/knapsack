@@ -138,9 +138,9 @@ const fakeWagoKey = "wago-key"
 // wagoKeyEnv sets the fake Wago's key in the environment.
 var wagoKeyEnv = map[string]string{"KNAPSACK_WAGO_API_KEY": fakeWagoKey}
 
-// useWagoAPI is a setup step that reads Wago through its official API, as
-// the fake API wants wagoKeyEnv.
-var useWagoAPI = []string{"sources", "set-api", "wago", "official"}
+// useWagoSite is a setup step that reads Wago from its website rather than
+// its official API, the default, so it needs no key.
+var useWagoSite = []string{"sources", "set-api", "wago", "website"}
 
 // changedWagoAddon is an addon whose page on the fake Wago website isn't
 // as Knapsack knows it, as if Wago had changed it.

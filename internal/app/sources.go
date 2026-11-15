@@ -132,7 +132,7 @@ type SetSourceAPIResult struct {
 
 // SetSourceAPI stores how a source is read: through its official API,
 // which needs a key, or from its website (DESIGN.md §7). Choosing the
-// default, the website, removes the setting.
+// default, the official API, removes the setting.
 func (a *App) SetSourceAPI(ctx context.Context, name string, api config.API) (SetSourceAPIResult, error) {
 	if err := ctx.Err(); err != nil {
 		return SetSourceAPIResult{}, err
@@ -145,7 +145,7 @@ func (a *App) SetSourceAPI(ctx context.Context, name string, api config.API) (Se
 		return SetSourceAPIResult{}, err
 	}
 	stored := api
-	if api == config.APIWebsite {
+	if api == config.APIOfficial {
 		stored = "" // the default, so config can stay empty
 	}
 	res := SetSourceAPIResult{Available: builtSources[ks.Name]}
