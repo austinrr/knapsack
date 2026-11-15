@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 
 	"github.com/austinrr/knapsack/internal/app"
 	"github.com/austinrr/knapsack/internal/config"
@@ -528,7 +529,7 @@ func TestLockContention(t *testing.T) {
 	_, removeErr := e.app.Remove(context.Background(), e.profile, []string{"x"})
 	_, listErr := e.app.List(context.Background(), app.Selector{}, app.ListOptions{})
 	_, updateErr := e.app.Update(context.Background(), app.Selector{}, app.UpdateOptions{})
-	_, checkErr := e.app.Check(context.Background(), app.Selector{})
+	_, checkErr := e.app.Check(context.Background(), app.Selector{}, app.CheckOptions{})
 	for _, err := range []error{addErr, removeErr, listErr, updateErr, checkErr} {
 		var ue *app.UserError
 		if !errors.As(err, &ue) || !strings.Contains(ue.Msg, "in use by another knapsack process") {
@@ -778,6 +779,65 @@ func TestListChecks(t *testing.T) {
 	list, err = e.app.List(context.Background(), app.Selector{}, app.ListOptions{})
 	if err != nil || list.Addons[1].Status != app.StatusInstalled || e.src.resolves.Load() != before {
 		t.Errorf("unchecked list = %+v, %v after %d resolves", list.Addons, err, e.src.resolves.Load()-before)
+	}
+}
+
+// watcher records what an app.Watcher is told.
+type watcher[T any] struct {
+	mu       sync.Mutex
+	listed   [][]T
+	finished map[string]map[int]T // by profile, then index
+}
+
+func newWatcher[T any]() *watcher[T] { return &watcher[T]{finished: map[string]map[int]T{}} }
+
+func (w *watcher[T]) Listed(rows []T) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.listed = append(w.listed, rows)
+}
+
+func (w *watcher[T]) Finished(profile string, i int, row T) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.finished[profile] == nil {
+		w.finished[profile] = map[int]T{}
+	}
+	w.finished[profile][i] = row
+}
+
+// A Watcher sees the addons before they're checked, as checking, and
+// then each as List returns it.
+func TestListWatch(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	current, outdated := mustRef(t, "github:o/current"), mustRef(t, "github:o/outdated")
+	e.src.publish(t, "o/current", "Current")
+	e.src.publish(t, "o/outdated", "Outdated")
+	if _, err := e.app.Add(context.Background(), e.profile, []ref.Ref{current, outdated}, false); err != nil {
+		t.Fatal(err)
+	}
+	e.src.release(t, "o/outdated", "v2", "Outdated")
+
+	w := newWatcher[app.Installed]()
+	list, err := e.app.List(context.Background(), app.Selector{}, app.ListOptions{Check: true, Watch: w})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(w.listed) != 1 {
+		t.Fatalf("Listed %d times, want once for the one profile", len(w.listed))
+	}
+	for _, in := range w.listed[0] {
+		if in.Status != app.StatusChecking || in.Version != "v1" || in.Available != "" {
+			t.Errorf("listed %s as %s %s %q, want checking v1 with nothing available yet", in.Name(), in.Status, in.Version, in.Available)
+		}
+	}
+	want := map[string]map[int]app.Installed{e.profile: {0: list.Addons[0], 1: list.Addons[1]}}
+	if diff := cmp.Diff(want, w.finished, cmpopts.EquateErrors()); diff != "" {
+		t.Errorf("finished (-want +got):\n%s", diff)
+	}
+	if list.Addons[1].Status != app.StatusUpdateAvailable {
+		t.Errorf("outdated is %s, want update available", list.Addons[1].Status)
 	}
 }
 

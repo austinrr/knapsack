@@ -164,6 +164,10 @@ const (
 	PlanFailed  PlanAction = "failed"  // couldn't tell; Err says why
 )
 
+// PlanChecking is only for Watcher.Listed: the addon is being resolved.
+// Check's result never has it.
+const PlanChecking PlanAction = "checking"
+
 // Plan is what update would do to one addon, as Check reports it.
 type Plan struct {
 	Profile string
@@ -189,37 +193,56 @@ func (p Plan) DisplayName() string { return displayName(p.Title, p.Ref, p.Name) 
 // addon whose source publishes no SHA-256 is downloaded, only to compare
 // it. Prune candidates are reported whether or not update would prune.
 // Like Update, plans are returned even when err is set.
-func (a *App) Check(ctx context.Context, sel Selector) ([]Plan, error) {
+func (a *App) Check(ctx context.Context, sel Selector, opts CheckOptions) ([]Plan, error) {
 	var plans []Plan
 	err := a.eachProfile(ctx, sel.Profiles, readOnly, func(s *session) error {
-		plans = append(plans, a.checkSession(ctx, s, targets(s, sel.Addons))...)
+		ps, at := a.planSession(s, targets(s, sel.Addons))
+		pending := func(p *Plan) { p.Action = PlanChecking }
+		a.resolvePlans(ctx, s, ps, at, watched(opts.Watch, s.name, ps, at, pending, func(i int) Plan { return ps[i] }))
+		plans = append(plans, ps...)
 		return nil
 	})
 	return plans, err
 }
 
-// checkSession is Check for one profile's targets, in their order.
-func (a *App) checkSession(ctx context.Context, s *session, ts []target) []Plan {
-	out := make([]Plan, len(ts))
-	var toResolve []ref.Ref
-	var at []int
+// CheckOptions configure Check.
+type CheckOptions struct {
+	// Watch, if not nil, sees each profile's plans as they're resolved.
+	Watch Watcher[Plan]
+}
+
+// planSession is the part of Check that needs no network: a plan for each
+// target, with its title and installed version, already final for a
+// failed target or a prune candidate. The others, at the indexes in at,
+// are for resolvePlans to finish.
+func (a *App) planSession(s *session, ts []target) (plans []Plan, at []int) {
+	plans = make([]Plan, len(ts))
 	for i, t := range ts {
-		out[i] = Plan{Profile: s.name, Name: t.name, Ref: t.ref, Installed: s.state.Addons[t.ref].Version, Title: addonTitle(s, t.ref)}
+		plans[i] = Plan{Profile: s.name, Name: t.name, Ref: t.ref, Installed: s.state.Addons[t.ref].Version, Title: addonTitle(s, t.ref)}
 		switch {
 		case t.err != nil:
-			out[i].Action, out[i].Err = PlanFailed, t.err
+			plans[i].Action, plans[i].Err = PlanFailed, t.err
 			a.report(Event{Kind: EventFailed, Profile: s.name, Name: t.name, Err: t.err})
 		case t.prune:
-			out[i].Action = PlanPrune
+			plans[i].Action = PlanPrune
 		default:
-			toResolve = append(toResolve, t.ref)
 			at = append(at, i)
 		}
 	}
-	got := a.fetchAll(ctx, s, toResolve, fetchIdentity)
-	defer discard(got)
-	for j, f := range got {
-		p := &out[at[j]]
+	return plans, at
+}
+
+// resolvePlans resolves the plans at the indexes in at, in parallel, and
+// sets what each would do. done, if not nil, is called with each plan's
+// index as soon as it's set, from several goroutines at once.
+func (a *App) resolvePlans(ctx context.Context, s *session, plans []Plan, at []int, done func(i int)) {
+	refs := make([]ref.Ref, len(at))
+	for j, i := range at {
+		refs[j] = plans[i].Ref
+	}
+	got := a.fetchAll(ctx, s, refs, fetchIdentity, func(j int, f fetched) {
+		// Each plan is set by only its own fetch, so they don't race.
+		p := &plans[at[j]]
 		p.Available = f.release.Version
 		_, installed := s.state.Addons[p.Ref]
 		switch {
@@ -236,6 +259,9 @@ func (a *App) checkSession(ctx context.Context, s *session, ts []target) []Plan 
 		if p.Action != PlanFailed {
 			a.report(Event{Kind: EventChecked, Profile: s.name, Ref: p.Ref, Version: p.Available, Message: string(p.Action)})
 		}
-	}
-	return out
+		if done != nil {
+			done(at[j])
+		}
+	})
+	discard(got)
 }

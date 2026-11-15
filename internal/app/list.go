@@ -38,6 +38,10 @@ const (
 	StatusUnmanaged       Status = "unmanaged"        // a folder in AddOns no addon owns
 )
 
+// StatusChecking is only for Watcher.Listed: the addon is being
+// checked. List's result never has it.
+const StatusChecking Status = "checking"
+
 // Installed is one addon in a profile, as List reports it. For an
 // unmanaged folder, Ref and InstalledAt are zero, Folders is that one
 // folder, and Version is from its TOC; Name gives the folder.
@@ -89,6 +93,24 @@ type ListOptions struct {
 	// Check resolves each addon as Check does, so statuses say whether
 	// it's up to date. It needs the network and the App's sources.
 	Check bool
+	// Watch, if not nil, sees each profile's addons as they're checked.
+	// It's used only with Check.
+	Watch Watcher[Installed]
+}
+
+// Watcher sees a use case's rows for each profile before the slow part,
+// the network, is done, and then each row as it's finished, so a terminal
+// can show them meanwhile. List's rows are Installed, and Check's are
+// Plans. Profiles are listed one after another, each in full before the
+// next.
+type Watcher[T any] interface {
+	// Listed is a profile's rows, in the order the use case returns
+	// them. Those still to be finished say so: StatusChecking, or
+	// PlanChecking.
+	Listed(rows []T)
+	// Finished is the row at index i of the profile's Listed rows, now
+	// final. It's called from several goroutines at once.
+	Finished(profile string, i int, row T)
 }
 
 // Listing is what List reports.
@@ -114,41 +136,70 @@ func (a *App) List(ctx context.Context, sel Selector, opts ListOptions) (Listing
 				return t.err
 			}
 		}
-		var plans []Plan
-		if opts.Check {
-			plans = a.checkSession(ctx, s, ts)
-		}
+		plans, at := a.planSession(s, ts)
+		addons := make([]Installed, len(ts))
 		for i, t := range ts {
-			var in Installed
-			if plans != nil {
-				// The check already read each title.
-				in = installedInfo(s, t.ref, plans[i].Title)
-				in.withPlan(plans[i])
+			// The plan already read each title.
+			addons[i] = installedInfo(s, t.ref, plans[i].Title)
+		}
+		if len(sel.Addons) == 0 {
+			// Unmanaged folders aren't addons, so they're left out when
+			// addons are named.
+			names := unmanagedFolders(s)
+			if opts.Unmanaged {
+				addons = append(addons, unmanagedInfo(s, names)...)
 			} else {
-				in = installedInfo(s, t.ref, addonTitle(s, t.ref))
+				out.Hidden += len(names)
 			}
-			out.Addons = append(out.Addons, in)
 		}
-		if len(sel.Addons) > 0 {
-			return nil
+		if opts.Check {
+			a.checkListed(ctx, s, addons, plans, at, opts.Watch)
 		}
-		names := unmanagedFolders(s)
-		if !opts.Unmanaged {
-			out.Hidden += len(names)
-			return nil
-		}
-		for _, name := range names {
-			in := Installed{Profile: s.name, Status: StatusUnmanaged, Folders: []string{name}}
-			// A folder without a TOC for this client is still listed, as
-			// something the user put there.
-			if _, file, err := install.TOC(filepath.Join(s.addonsDir, name), s.profile.Flavor); err == nil {
-				in.Version, in.Title = file.Get("Version"), toc.Plain(file.Get("Title"))
-			}
-			out.Addons = append(out.Addons, in)
-		}
+		out.Addons = append(out.Addons, addons...)
 		return nil
 	})
 	return out, err
+}
+
+// checkListed checks the addons listed for one profile, which start with
+// one for each plan, telling watch, if not nil, as each finishes.
+func (a *App) checkListed(ctx context.Context, s *session, addons []Installed, plans []Plan, at []int, watch Watcher[Installed]) {
+	pending := func(in *Installed) { in.Status = StatusChecking }
+	a.resolvePlans(ctx, s, plans, at, watched(watch, s.name, addons, at, pending, func(i int) Installed {
+		// Each addon is set by only its own check, so they don't race.
+		addons[i].withPlan(plans[i])
+		return addons[i]
+	}))
+}
+
+// watched tells w, if not nil, a profile's rows, with those at the indexes
+// in at marked by pending, and returns resolvePlans' done: finish makes
+// row i final, and w is told it.
+func watched[T any](w Watcher[T], profile string, rows []T, at []int, pending func(*T), finish func(i int) T) func(int) {
+	if w == nil {
+		return func(i int) { finish(i) }
+	}
+	shown := slices.Clone(rows)
+	for _, i := range at {
+		pending(&shown[i])
+	}
+	w.Listed(shown)
+	return func(i int) { w.Finished(profile, i, finish(i)) }
+}
+
+// unmanagedInfo describes the unmanaged folders names.
+func unmanagedInfo(s *session, names []string) []Installed {
+	out := make([]Installed, len(names))
+	for i, name := range names {
+		in := Installed{Profile: s.name, Status: StatusUnmanaged, Folders: []string{name}}
+		// A folder without a TOC for this client is still listed, as
+		// something the user put there.
+		if _, file, err := install.TOC(filepath.Join(s.addonsDir, name), s.profile.Flavor); err == nil {
+			in.Version, in.Title = file.Get("Version"), toc.Plain(file.Get("Title"))
+		}
+		out[i] = in
+	}
+	return out
 }
 
 // unmanagedFolders lists the folders in the profile's AddOns that no addon
@@ -182,6 +233,8 @@ func (in *Installed) withPlan(p Plan) {
 		in.Status = StatusUpdateAvailable
 	case PlanInstall, PlanPrune:
 		// Not installed or not in config either way.
+	case PlanChecking:
+		// Only a Watcher sees it, never withPlan.
 	}
 }
 

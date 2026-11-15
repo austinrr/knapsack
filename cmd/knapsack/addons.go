@@ -169,9 +169,12 @@ func noteEmpty(cmd *cobra.Command, sel app.Selector, all bool) error {
 // stdout stays just the table for scripts. Under -A the table has a
 // PROFILE column instead.
 func noteProfile(cmd *cobra.Command, name string) error {
-	_, err := fmt.Fprintf(cmd.ErrOrStderr(), "Profile %s:\n", name)
+	_, err := fmt.Fprintln(cmd.ErrOrStderr(), profileNote(name))
 	return err
 }
+
+// profileNote is the line noteProfile prints.
+func profileNote(name string) string { return "Profile " + name + ":" }
 
 // noteUnmanaged says how many unmanaged folders list left out, and how to
 // see them, so a profile made over an existing AddOns folder doesn't look
@@ -300,8 +303,19 @@ add one with add --force to have Knapsack manage it.`,
 			if err != nil {
 				return err
 			}
-			listing, err := c.app.List(cmd.Context(), sel, app.ListOptions{Unmanaged: unmanaged, Check: !noCheck})
-			c.stopProgress()
+			opts := app.ListOptions{Unmanaged: unmanaged, Check: !noCheck}
+			if opts.Check && output != "json" {
+				// On a terminal, the table shows before checking is done.
+				header := ""
+				if !sc.all {
+					header = profileNote(sel.Profiles[0])
+				}
+				if live := startLiveTable(c, cmd, liveList(header, sc.all, output == "wide")); live != nil {
+					opts.Watch = live
+				}
+			}
+			listing, err := c.app.List(cmd.Context(), sel, opts)
+			c.stopProgress() // erases the live table, for the finished one
 			if err != nil {
 				return err
 			}

@@ -926,7 +926,10 @@ forever: 1 upgrade · retail: 1 install
   failed (the error prints under the table, and `list` exits 2, as `check`
   does). Otherwise an addon is `not installed` (in config only) or `not in
   config` (in state only). `--no-check` skips the network, so `list` is
-  instant and installed addons are just `installed`. `check` stays for
+  instant and installed addons are just `installed`. On a terminal, the
+  table is drawn before checking, from config and state alone, with a
+  spinner (`⠋ checking`) for each addon being checked; each row is redrawn
+  as its check finishes (§8.6). `check`'s table does the same. `check` stays for
   scripts: its exit code says whether anything is pending.
   Addons are named by the `## Title` in their installed TOC, with WoW's
   color and texture codes removed (`toc.Plain`), or by repo name when not
@@ -1081,7 +1084,30 @@ forever: 1 upgrade · retail: 1 install
   100 ms and erased before results print: `2 done · 1 resolving · 3
   downloading, 1.2 of 4.5 MiB`. One line needs no cursor movement, so it
   works in every terminal, the old Windows console included. `TERM=dumb`
-  gets plain lines. An empty `list` prints a note
+  gets plain lines.
+- Wherever Knapsack waits on the network on a terminal, a spinner turns
+  (`⠋`, or `|/-\` in the Windows console, whose fonts lack braille), so a
+  slow lookup never looks like a hang. One `spinner` drives three
+  displays, all on a 100 ms ticker:
+  - the progress bar above, prefixed with it while anything is in
+    progress (`⠹ 2 done · 1 resolving`);
+  - a one-line status on stderr for a wait with nothing else to show:
+    `self-update` finding and downloading the release, `version`'s check,
+    and the daily check when it's still running after the command. It
+    appears only after 200 ms, so a quick answer doesn't flash one;
+  - a live table for `list` and `check`, the commands whose output is a
+    table of what the network says. It's drawn before anything is
+    resolved, from config and state alone, with `⠋ checking` in STATUS or
+    ACTION, and each row is redrawn as it's resolved (`app.Watcher`). The
+    live table needs cursor movement (ANSI escapes, which Windows 10's
+    console takes once `ENABLE_VIRTUAL_TERMINAL_PROCESSING` is set). Every
+    line is cut to the terminal's width, so none wraps, and rows that
+    don't fit on the screen are counted on a last line (`… 12 more`), so
+    the cursor can always move back up over the table. It replaces the
+    bar, and a warning prints above it. When checking is done the live
+    table is erased and the finished one printed as anywhere else, so it's
+    never cut. Piped output, `-o json`, `-v`, `TERM=dumb` and a console
+    without VT support get the table only when it's done, as before. An empty `list` prints a note
   on stderr and nothing on stdout. Times are shown in UTC (RFC 3339).
 - `update` prints a line per addon it installs, upgrades or removes, then a
   summary (`forever: 1 upgraded, 3 up to date`). `check` prints the table in

@@ -1,6 +1,9 @@
 # Build output
 /bin/
 /dist/
+# go build ./cmd/knapsack at the root
+/knapsack
+/knapsack.exe
 
 # Test and coverage output
 *.test

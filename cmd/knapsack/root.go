@@ -22,7 +22,7 @@ type cli struct {
 	profile    string // -p, for the commands that take it
 
 	app      *app.App
-	progress reporter // the App's Reporter
+	progress *relay // the App's Reporter
 }
 
 // stopProgress ends the progress display before a command prints its
@@ -78,7 +78,7 @@ func (c *cli) build(cmd *cobra.Command, network bool) error {
 			return err
 		}
 	}
-	c.progress = newReporter(cmd.ErrOrStderr(), c.verbose, c.env.getenv)
+	c.progress = &relay{to: newReporter(cmd.ErrOrStderr(), c.verbose, c.env.getenv)}
 	c.app = newApp(c.env, p, network, c.progress)
 	return nil
 }
