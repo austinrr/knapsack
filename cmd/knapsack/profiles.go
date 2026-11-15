@@ -219,11 +219,11 @@ func printAutoProfiles(out *printer, profiles []app.AutoProfile, home string) {
 	// label is how the table names a client: "_retail_", or "[2] _retail_".
 	label := func(p app.AutoProfile) string { return p.Client }
 	if len(games) == 1 {
-		out.printf("Found World of Warcraft in %s\n\n", shortPath(games[0], home))
+		out.printf("Found World of Warcraft in %s\n\n", app.ShortenHome(games[0], home))
 	} else {
 		out.printf("Found World of Warcraft in %d places:\n", len(games))
 		for i, g := range games {
-			out.printf("  [%d] %s\n", i+1, shortPath(g, home))
+			out.printf("  [%d] %s\n", i+1, app.ShortenHome(g, home))
 		}
 		out.printf("\n")
 		label = func(p app.AutoProfile) string {
@@ -265,7 +265,7 @@ func printAutoProfiles(out *printer, profiles []app.AutoProfile, home string) {
 			_ = errors.As(p.Err, &taken) // always there for SkipNameTaken
 			where := inGame(taken.Path)
 			if where == "" {
-				where = shortPath(taken.Path, home)
+				where = app.ShortenHome(taken.Path, home)
 			}
 			result = fmt.Sprintf("skipped: %q already uses %s", taken.Name, where)
 			copies = append(copies, p)
@@ -314,20 +314,8 @@ func sameFolder(a, b string) bool {
 // hintPath is a path for a command to copy, quoted: one under home starts
 // with $HOME, which shells expand inside double quotes, unlike ~.
 func hintPath(path, home string) string {
-	if short := shortPath(path, home); short != path {
+	if short := app.ShortenHome(path, home); short != path {
 		return "$HOME" + strings.TrimPrefix(short, "~")
-	}
-	return path
-}
-
-// shortPath shows a path under home as ~/…, which --path accepts too.
-// Windows paths are left alone: ~ isn't how anyone writes them there.
-func shortPath(path, home string) string {
-	if home == "" || runtime.GOOS == "windows" {
-		return path
-	}
-	if rest, ok := strings.CutPrefix(path, home); ok && (rest == "" || rest[0] == '/') {
-		return "~" + rest
 	}
 	return path
 }
@@ -451,15 +439,15 @@ to copy, and -o json always has it.`,
 // shown as the client folder, and in a Wine prefix, the launcher's default
 // drive_c/Program Files (x86)/World of Warcraft becomes …:
 // ~/Games/battlenet/…/_retail_. Only that one layout is cut, so two
-// installs in one prefix never look the same. A home is ~, as shortPath
-// has it.
+// installs in one prefix never look the same. A home is ~, as
+// app.ShortenHome has it.
 func displayPath(path, home string) string {
 	path = filepath.Clean(path)
 	interfaceDir := filepath.Dir(path)
 	client := filepath.Dir(interfaceDir)
 	if !sameName(filepath.Base(path), "AddOns") || !sameName(filepath.Base(interfaceDir), "Interface") ||
 		!flavor.IsClientFolder(filepath.Base(client)) {
-		return shortPath(path, home)
+		return app.ShortenHome(path, home)
 	}
 	sep := string(filepath.Separator)
 	parts := strings.Split(client, sep)
@@ -468,7 +456,7 @@ func displayPath(path, home string) string {
 		sameName(parts[n-4], "drive_c") {
 		client = strings.Join(parts[:n-4], sep) + sep + "…" + sep + parts[n-1]
 	}
-	return shortPath(client, home)
+	return app.ShortenHome(client, home)
 }
 
 // sameName reports whether two names are the same file or folder, ignoring

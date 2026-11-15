@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 	"fmt"
+	"net/url"
 
 	"github.com/austinrr/knapsack/internal/config"
 	"github.com/austinrr/knapsack/internal/install"
@@ -69,6 +70,21 @@ func explain(err error, r ref.Ref) error {
 
 // IssuesURL is where Knapsack's issues are reported.
 const IssuesURL = "https://github.com/austinrr/knapsack/issues"
+
+// ReportURL is a link that opens an issue about err when it's a source's
+// website answering unexpectedly (DESIGN.md §8.6), with the error and
+// running, the Knapsack running ("v0.2.0 on linux/amd64"), filled in. For
+// any other error it's "". The error names the addon and the request, but
+// nothing of the user's.
+func ReportURL(err error, running string) string {
+	if !errors.Is(err, source.ErrUnexpectedWebsite) {
+		return ""
+	}
+	body := "Knapsack couldn't read a source's website:\n\n```\n" + err.Error() + "\n```\n\n" +
+		"Knapsack " + running + "\n"
+	q := url.Values{"title": {"Unexpected answer from a source's website"}, "body": {body}}
+	return IssuesURL + "/new?" + q.Encode()
+}
 
 // keyPages are where each keyed source's users manage their API keys.
 var keyPages = map[string]string{

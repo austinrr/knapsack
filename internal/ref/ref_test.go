@@ -188,6 +188,32 @@ func TestStringAndShortName(t *testing.T) {
 	}
 }
 
+func TestURL(t *testing.T) {
+	t.Parallel()
+	for in, want := range map[string]string{
+		"github:austinrr/baganator-mirror": "https://github.com/austinrr/baganator-mirror",
+		"curseforge:12345":                 "https://www.curseforge.com/projects/12345",
+		"curseforge:deadly-boss-mods":      "https://www.curseforge.com/wow/addons/deadly-boss-mods",
+		"wago:VBNBxKx5":                    "https://addons.wago.io/addons/VBNBxKx5",
+	} {
+		r, err := ref.Parse(in)
+		if err != nil {
+			t.Fatalf("Parse(%q): %v", in, err)
+		}
+		got := r.URL()
+		if got != want {
+			t.Errorf("%s.URL() = %q, want %q", r, got, want)
+		}
+		// Each URL is one Parse reads back as the same ref.
+		if back, err := ref.Parse(got); err != nil || back != r {
+			t.Errorf("Parse(%q) = %v, %v, want %v", got, back, err, r)
+		}
+	}
+	if got := (ref.Ref{}).URL(); got != "" {
+		t.Errorf("zero Ref's URL = %q, want empty", got)
+	}
+}
+
 // FuzzParse checks that whatever Parse accepts is already normalized:
 // parsing its String() gives back the same Ref.
 func FuzzParse(f *testing.F) {

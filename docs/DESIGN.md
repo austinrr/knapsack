@@ -1501,12 +1501,13 @@ type Options struct {
     // Edit runs the CLI's edit loop (§8.4, profiles edit) on a profile,
     // with the terminal handed over to the editor.
     Edit func(ctx context.Context, profile string) (saved bool, err error)
-    // ReportURL is the report: link for an error that has one, else "".
-    ReportURL func(error) string
 }
 
 func Run(ctx context.Context, opts Options) error
 ```
+
+Paths are shortened with `app.ShortenHome`, and an error's `report:` link
+is `app.ReportURL`, as the CLI's are.
 
 `tui` uses the App through an interface of the methods it calls, defined
 in `tui` (§4, rule 5), so its tests can use a fake. `*app.App` satisfies
@@ -2011,12 +2012,13 @@ one command group.
 **PR 20 — What the TUI shares with the CLI**
 - Title: `refactor(cli): share editing and path display with the tui`
 - Implements: §9.3, §9.6 (`ref.Ref.URL`)
-- `cli.edit` no longer takes a `*cobra.Command`, so `Options.Edit` can
-  run it; `shortPath` moves to `paths`, which `tui` may import; the
-  report link is built by a function `tui` can be given; `ref.Ref.URL`
-  gives each source's page for a ref.
-- Done when: the CLI's golden tests pass unchanged; `ref` tests for each
-  source's URL.
+- `cli.edit` takes a context instead of a `*cobra.Command`, and
+  `profiles edit`'s body becomes `cli.editProfile`, which `Options.Edit`
+  will call; `shortPath` becomes `app.ShortenHome`, beside `ExpandHome`;
+  the `report:` link becomes `app.ReportURL`; `ref.Ref.URL` gives each
+  source's page for a ref, one `ref.Parse` reads back.
+- Done when: the CLI's golden tests pass unchanged; tests for each
+  source's URL, `ShortenHome` and `ReportURL`.
 - Not yet: `internal/tui`.
 
 **PR 21 — `knapsack tui`, read-only**

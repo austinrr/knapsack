@@ -68,8 +68,8 @@ const noteMark = "#| "
 // above the text, as kubectl edit does, until it's saved as valid, or
 // left unchanged, which cancels. On any other failure, the text is kept
 // in a file whose path the error gives, so nothing typed is lost.
-func (c *cli) edit(cmd *cobra.Command, notes []string, text []byte, save func(ctx context.Context, edited []byte) error) (saved bool, err error) {
-	ctx := context.WithoutCancel(cmd.Context())
+func (c *cli) edit(ctx context.Context, notes []string, text []byte, save func(ctx context.Context, edited []byte) error) (saved bool, err error) {
+	ctx = context.WithoutCancel(ctx)
 	dir, err := c.app.EditDir()
 	if err != nil {
 		return false, fmt.Errorf("edit: %w", err)
@@ -179,20 +179,7 @@ should have, and update makes it so.`,
 		Args:    exactArgs("profile name"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
-			original, err := c.app.ProfileForEdit(cmd.Context(), name)
-			if err != nil {
-				return err
-			}
-			var res app.ProfileEditResult
-			notes := []string{
-				fmt.Sprintf("Editing profile %q. Save and quit to apply; quit without saving to cancel.", name),
-				"Lines starting with #| are dropped.",
-			}
-			saved, err := c.edit(cmd, notes, original, func(ctx context.Context, edited []byte) error {
-				var err error
-				res, err = c.app.SaveProfileEdit(ctx, name, original, edited)
-				return err
-			})
+			saved, res, err := c.editProfile(cmd.Context(), name)
 			if err != nil {
 				return err
 			}
@@ -208,6 +195,25 @@ should have, and update makes it so.`,
 			return noteProfileEdit(cmd, name, res)
 		},
 	}
+}
+
+// editProfile opens a profile in the user's editor, as profiles edit
+// does, and saves it. saved is false when the edit was cancelled.
+func (c *cli) editProfile(ctx context.Context, name string) (saved bool, res app.ProfileEditResult, err error) {
+	original, err := c.app.ProfileForEdit(ctx, name)
+	if err != nil {
+		return false, res, err
+	}
+	notes := []string{
+		fmt.Sprintf("Editing profile %q. Save and quit to apply; quit without saving to cancel.", name),
+		"Lines starting with #| are dropped.",
+	}
+	saved, err = c.edit(ctx, notes, original, func(ctx context.Context, edited []byte) error {
+		var err error
+		res, err = c.app.SaveProfileEdit(ctx, name, original, edited)
+		return err
+	})
+	return saved, res, err
 }
 
 // noteProfileEdit says on stderr what to run for the addons an edit
@@ -259,7 +265,7 @@ saved.`,
 				"Editing config.toml. Save and quit to apply; quit without saving to cancel.",
 				"Lines starting with #| are dropped; other comments are kept.",
 			}
-			saved, err := c.edit(cmd, notes, original, func(ctx context.Context, edited []byte) error {
+			saved, err := c.edit(cmd.Context(), notes, original, func(ctx context.Context, edited []byte) error {
 				var err error
 				res, err = c.app.SaveConfigEdit(ctx, original, edited)
 				return err

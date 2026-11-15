@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -16,7 +15,6 @@ import (
 
 	"github.com/austinrr/knapsack/internal/app"
 	"github.com/austinrr/knapsack/internal/selfupdate"
-	"github.com/austinrr/knapsack/internal/source"
 	"github.com/austinrr/knapsack/internal/source/curseforge"
 	"github.com/austinrr/knapsack/internal/source/github"
 	"github.com/austinrr/knapsack/internal/source/wago"
@@ -235,21 +233,10 @@ func renderError(w io.Writer, err error, verbose bool, running string) {
 			msg += "cause: " + ue.Err.Error() + "\n"
 		}
 	}
-	if errors.Is(err, source.ErrUnexpectedWebsite) {
-		msg += "report: " + issueURL(err, running) + "\n"
+	if report := app.ReportURL(err, running); report != "" {
+		msg += "report: " + report + "\n"
 	}
 	// A failed write to stderr leaves nowhere else to report, so the error
 	// is deliberately ignored.
 	_, _ = io.WriteString(w, msg)
-}
-
-// issueURL is a link that opens an issue about err, a source's website
-// answering unexpectedly, with the error and the Knapsack running filled
-// in. The error names the addon and the request, but nothing of the
-// user's.
-func issueURL(err error, running string) string {
-	body := "Knapsack couldn't read a source's website:\n\n```\n" + err.Error() + "\n```\n\n" +
-		"Knapsack " + running + "\n"
-	q := url.Values{"title": {"Unexpected answer from a source's website"}, "body": {body}}
-	return app.IssuesURL + "/new?" + q.Encode()
 }
