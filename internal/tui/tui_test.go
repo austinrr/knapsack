@@ -19,6 +19,7 @@ import (
 
 	"github.com/austinrr/knapsack/internal/app"
 	"github.com/austinrr/knapsack/internal/ref"
+	"github.com/austinrr/knapsack/internal/source"
 )
 
 var updateGolden = flag.Bool("update", false, "rewrite golden files in testdata/")
@@ -81,6 +82,29 @@ func (f *fake) Update(_ context.Context, sel app.Selector, opts app.UpdateOption
 			f.rep.Event(app.Event{Kind: app.EventDownloading, Profile: p, Ref: r})
 			f.rep.Event(app.Event{Kind: app.EventProgress, Profile: p, Ref: r, Done: 1 << 20, Total: 2 << 20})
 			f.rep.Event(app.Event{Kind: app.EventInstalled, Profile: p, Ref: r, Version: version})
+		}
+		out = append(out, res)
+	}
+	return out, nil
+}
+
+// Add installs each ref not already in the profile at version 1.0.
+func (f *fake) Add(_ context.Context, profile string, refs []ref.Ref, force bool) ([]app.Result, error) {
+	f.calls = append(f.calls, fmt.Sprintf("add %s %v force=%v", profile, refs, force))
+	var out []app.Result
+	for _, r := range refs {
+		res := app.Result{Profile: profile, Name: r.String(), Ref: r}
+		if err := f.failed[r]; err != nil {
+			res.Action, res.Err = app.ActionFailed, err
+		} else if slices.ContainsFunc(f.local, func(in app.Installed) bool { return in.Ref == r }) {
+			res.Action = app.ActionUnchanged
+		} else {
+			res.Action, res.Version = app.ActionInstalled, "1.0"
+			in := app.Installed{Profile: profile, Ref: r, Title: r.ShortName(), Status: app.StatusInstalled,
+				Version: "1.0", InstalledAt: now, Folders: []string{r.ShortName()}}
+			f.local = append(f.local, in)
+			f.checked = append(f.checked, in)
+			f.rep.Event(app.Event{Kind: app.EventInstalled, Profile: profile, Ref: r, Version: "1.0"})
 		}
 		out = append(out, res)
 	}
@@ -164,6 +188,10 @@ type harness struct {
 	hold    bool
 	pending []tea.Cmd
 	quit    bool
+	// opened are the URLs the TUI opened in the browser, or tried to,
+	// failing with openErr.
+	opened  []string
+	openErr error
 }
 
 func newHarness(t *testing.T, f *fake, opts Options) *harness {
@@ -179,6 +207,14 @@ func newHarness(t *testing.T, f *fake, opts Options) *harness {
 	h.m.tickEvery = 0
 	h.m.spin = spinnerDots // the same frames on every OS
 	h.m.now = func() time.Time { return now }
+	h.m.blink = false
+	h.m.openURL = func(_ context.Context, url string) error {
+		if h.openErr != nil {
+			return h.openErr
+		}
+		h.opened = append(h.opened, url)
+		return nil
+	}
 	// The filter's cursor blink sleeps; the harness runs commands at once.
 	st := h.m.filter.Styles()
 	st.Cursor.Blink = false
@@ -276,6 +312,10 @@ func (h *harness) keys(keys ...string) {
 			msg = tea.KeyPressMsg{Code: '\\', Mod: tea.ModCtrl}
 		case "space":
 			msg = tea.KeyPressMsg{Code: ' ', Text: " "}
+		case "tab":
+			msg = tea.KeyPressMsg{Code: tea.KeyTab}
+		case "ctrl+s":
+			msg = tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl}
 		default:
 			r := []rune(k)[0]
 			msg = tea.KeyPressMsg{Code: r, Text: k}
@@ -1125,5 +1165,205 @@ func TestFlashUntilNextKey(t *testing.T) {
 	h.keys("j")
 	if h.m.flash != "" {
 		t.Errorf("flash after j = %q, want none", h.m.flash)
+	}
+}
+
+// a opens the add dialog; a pasted list with a line that isn't a ref
+// stays open, says which line and why, and adds nothing.
+func TestAddProblems(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	h := newHarness(t, f, Options{})
+	f.calls = nil
+	h.keys("a")
+	h.golden("add_empty")
+	h.send(tea.PasteMsg{Content: "https://github.com/kemayo/silverdragon\nbaganator\n"})
+	h.keys("ctrl+s")
+	if h.m.add == nil || len(f.calls) != 0 {
+		t.Fatalf("dialog open %v, calls %v; want it open and nothing added", h.m.add != nil, f.calls)
+	}
+	h.golden("add_problems")
+	// An empty dialog says what to type.
+	h.m.add.text.SetValue("  \n")
+	h.keys("ctrl+s")
+	if want := []string{"type a ref or link, one per line"}; !slices.Equal(h.m.add.problems, want) {
+		t.Errorf("problems = %v, want %v", h.m.add.problems, want)
+	}
+	h.keys("esc")
+	if h.m.add != nil || len(f.calls) != 0 {
+		t.Errorf("esc: dialog open %v, calls %v; want neither", h.m.add != nil, f.calls)
+	}
+}
+
+// ctrl+s adds every ref, with Force when its box is checked; q and
+// digits are text in the dialog, not keys. Afterwards the new addon is
+// a row, known to be up to date.
+func TestAdd(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	h := newHarness(t, f, Options{})
+	f.calls = nil
+	h.keys("a", "q", "1")
+	if h.quit || h.m.add == nil {
+		t.Fatal("q in the add dialog closed it or quit")
+	}
+	h.m.add.text.SetValue("https://github.com/Kemayo/SilverDragon/releases\ngithub:austinrr/baganator-mirror")
+	h.keys("tab", "space", "ctrl+s")
+	silver := ref.Ref{Source: ref.GitHub, ID: "kemayo/silverdragon"}
+	want := []string{
+		fmt.Sprintf("add forever [%s %s] force=true", silver, baganator),
+		"list forever",
+	}
+	if diff := cmp.Diff(want, f.calls); diff != "" {
+		t.Errorf("calls (-want +got):\n%s", diff)
+	}
+	if want := "forever: 1 installed, 1 unchanged"; h.m.flash != want {
+		t.Errorf("flash = %q, want %q", h.m.flash, want)
+	}
+	if k := h.m.known["forever"][silver]; k.status != app.StatusUpToDate {
+		t.Errorf("silverdragon known as %q, want up to date", k.status)
+	}
+	h.golden("added")
+}
+
+// A paste goes into the filter while it's open.
+func TestPasteFilter(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, sample(), Options{})
+	h.keys("/")
+	h.send(tea.PasteMsg{Content: "wago"})
+	if h.m.query != "wago" || len(h.m.visible()) != 2 {
+		t.Errorf("query %q, %d rows; want wago and 2", h.m.query, len(h.m.visible()))
+	}
+}
+
+// o opens the addon's page, from the table or describe; r opens the
+// report link of a website that answered unexpectedly.
+func TestOpen(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	f.checked[2].Err = fmt.Errorf("wago plater: %w: no data-page", source.ErrUnexpectedWebsite)
+	h := newHarness(t, f, Options{})
+	h.keys("o")
+	h.keys("j", "j", "enter", "o", "r")
+	if len(h.opened) != 3 {
+		t.Fatalf("opened %v, want Baganator's page, Plater's and a report", h.opened)
+	}
+	if h.opened[0] != baganator.URL() || h.opened[1] != plater.URL() || !strings.HasPrefix(h.opened[2], app.IssuesURL+"/new?") {
+		t.Errorf("opened %v", h.opened)
+	}
+	if want := "Opened the report in the browser."; h.m.flash != want {
+		t.Errorf("flash = %q, want %q", h.m.flash, want)
+	}
+	// An error with no report link says so.
+	h.keys("esc", "k", "k", "enter", "r")
+	if len(h.opened) != 3 || !strings.Contains(h.m.flash, "no report link") {
+		t.Errorf("r with no link: opened %v, flash %q", h.opened, h.m.flash)
+	}
+	// A browser that won't start is an error in the status line.
+	h.openErr = errors.New(`exec: "xdg-open": executable file not found in $PATH`)
+	h.keys("o")
+	if h.m.err == nil || !strings.Contains(h.m.err.Error(), "couldn't open") {
+		t.Errorf("err = %v, want couldn't open", h.m.err)
+	}
+}
+
+// An addon Add couldn't add opens the dialog again with only the failed
+// refs, each with why and its hint, and Force as it was.
+func TestAddFailedReopens(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	silver := ref.Ref{Source: ref.GitHub, ID: "kemayo/silverdragon"}
+	f.failed = map[ref.Ref]error{silver: &app.UserError{
+		Msg:  "github kemayo/silverdragon: folder SilverDragon in AddOns belongs to no addon",
+		Hint: "check Force to replace it with the release",
+	}}
+	h := newHarness(t, f, Options{})
+	h.keys("a")
+	h.m.add.text.SetValue("github:kemayo/silverdragon\ngithub:leatrix/leatrix-maps")
+	h.keys("ctrl+s")
+	if h.m.add == nil {
+		t.Fatal("the dialog didn't open again on the failed addon")
+	}
+	if got := h.m.add.text.Value(); got != silver.String() {
+		t.Errorf("dialog text = %q, want only the failed ref", got)
+	}
+	if h.m.add.force {
+		t.Error("Force was checked, though it wasn't before")
+	}
+	h.golden("add_failed")
+}
+
+// Adopting records an installed addon in config at the version on disk,
+// unchecked: it isn't claimed to be up to date.
+func TestAdoptedUnchecked(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, sample(), Options{})
+	h.send(jobDoneMsg{doneMsg{kind: jobAdd, profile: "forever", refs: []ref.Ref{weak},
+		results: []app.Result{{Profile: "forever", Ref: weak, Action: app.ActionAdopted, Version: "5.17.1"}}}})
+	if k, ok := h.m.known["forever"][weak]; ok {
+		t.Errorf("adopted WeakAuras known as %+v, want unchecked", k)
+	}
+}
+
+// Many problems are cut to what fits, so the Force box stays in view.
+func TestAddManyProblems(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, sample(), Options{})
+	h.keys("a")
+	var bad []string
+	for i := range 20 {
+		bad = append(bad, fmt.Sprintf("nope%d", i))
+	}
+	h.m.add.text.SetValue(strings.Join(bad, "\n"))
+	h.keys("ctrl+s")
+	h.golden("add_many_problems")
+}
+
+// The dialog is drawn while it's open, even over a reload that failed,
+// since it's what takes the keys.
+func TestAddOverLoadError(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, sample(), Options{})
+	h.keys("a")
+	h.m.loadErr = errors.New("config.toml: line 3: invalid flavor")
+	if title, _ := h.m.content(76, 19); !strings.Contains(ansi.Strip(title), "add(") {
+		t.Errorf("box title = %q, want the add dialog's", ansi.Strip(title))
+	}
+	if got := ansi.Strip(h.m.footer()); !strings.Contains(got, "ctrl+s add") {
+		t.Errorf("footer = %q, want the dialog's keys", got)
+	}
+}
+
+// A page opening replaces an earlier error with saying so.
+func TestOpenClearsError(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, sample(), Options{})
+	h.m.err = errors.New("an old check's error")
+	h.keys("o")
+	if h.m.err != nil || !strings.HasPrefix(h.m.flash, "Opened") {
+		t.Errorf("err %v, flash %q; want no error and Opened", h.m.err, h.m.flash)
+	}
+}
+
+// A paste while the quit question is asked goes nowhere; one while the
+// Force box has the focus moves it back to the text.
+func TestPasteRouting(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, sample(), Options{})
+	h.keys("a", "tab")
+	h.send(tea.PasteMsg{Content: "github:a/b"})
+	if h.m.add.onForce || h.m.add.text.Value() != "github:a/b" {
+		t.Errorf("onForce %v, text %q; want the text focused, with the paste", h.m.add.onForce, h.m.add.text.Value())
+	}
+	h.hold = true
+	h.run(h.m.enqueue(writeJob(make(chan struct{}))))
+	h.keys("ctrl+c")
+	if !h.m.confirmQuit {
+		t.Fatal("ctrl+c during a write didn't ask")
+	}
+	h.send(tea.PasteMsg{Content: "more"})
+	if got := h.m.add.text.Value(); got != "github:a/b" {
+		t.Errorf("text after a paste at the quit question = %q, want it unchanged", got)
 	}
 }

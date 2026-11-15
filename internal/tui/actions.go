@@ -18,6 +18,7 @@ type doneMsg struct {
 	kind    jobKind
 	profile string
 	refs    []ref.Ref
+	force   bool // Add's, to keep if its dialog opens again
 	results []app.Result
 	err     error
 }
@@ -189,7 +190,7 @@ func (m *model) runRemove(refs []ref.Ref) tea.Cmd {
 // so its events are dropped.
 func (m *model) event(e app.Event) {
 	if e.Profile != m.profile || e.Ref == (ref.Ref{}) || m.running == nil ||
-		m.running.kind != jobUpdate && m.running.kind != jobRemove {
+		m.running.kind != jobUpdate && m.running.kind != jobRemove && m.running.kind != jobAdd {
 		return
 	}
 	switch e.Kind {
@@ -221,17 +222,17 @@ func (m *model) applyResults(msg doneMsg) tea.Cmd {
 		return nil
 	}
 	profile, results, err := msg.profile, msg.results, msg.err
-	verb := "update"
-	if msg.kind == jobRemove {
-		verb = "remove"
-	}
+	verb := map[jobKind]string{jobUpdate: "update", jobRemove: "remove", jobAdd: "add"}[msg.kind]
 	k := m.knownFor(profile)
 	counts := map[app.Action]int{}
 	for _, res := range results {
 		counts[res.Action]++
 		switch res.Action {
-		case app.ActionInstalled, app.ActionUpgraded, app.ActionUpToDate, app.ActionAdopted:
+		case app.ActionInstalled, app.ActionUpgraded, app.ActionUpToDate:
 			k[res.Ref] = known{status: app.StatusUpToDate, available: res.Version}
+		case app.ActionAdopted:
+			// Recorded in config as installed, unchecked: c checks it.
+			delete(k, res.Ref)
 		case app.ActionRemoved:
 			delete(k, res.Ref)
 			delete(m.warnings, res.Ref)
@@ -252,6 +253,9 @@ func (m *model) applyResults(msg doneMsg) tea.Cmd {
 		m.flash = resultSummary(profile, counts, verb)
 	}
 	cmd := m.enqueue(m.loadJob())
+	if msg.kind == jobAdd {
+		return tea.Batch(cmd, m.reopenAdd(msg))
+	}
 	if m.describing {
 		for _, res := range results {
 			if res.Ref == m.describeRef && res.Action != app.ActionRemoved {
@@ -268,7 +272,7 @@ func (m *model) applyResults(msg doneMsg) tea.Cmd {
 func resultSummary(profile string, counts map[app.Action]int, verb string) string {
 	var parts []string
 	for _, a := range []app.Action{app.ActionUpgraded, app.ActionInstalled, app.ActionAdopted,
-		app.ActionRemoved, app.ActionUpToDate, app.ActionNotInConfig, app.ActionFailed} {
+		app.ActionRemoved, app.ActionUpToDate, app.ActionUnchanged, app.ActionNotInConfig, app.ActionFailed} {
 		if n := counts[a]; n > 0 {
 			parts = append(parts, fmt.Sprintf("%d %s", n, a))
 		}

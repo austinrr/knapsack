@@ -1,0 +1,24 @@
+ Profile: forever                                                    [1] addons
+ Path:    C:\Program Files (x86)\World of W…\_forever_\Interface\AddOns  ? help
+┌──────────────────────────────── add(forever) ────────────────────────────────┐
+│ Refs or links to add to forever, one per line:                               │
+│                                                                              │
+│ ┃   1 github:kemayo/silverdragon                                             │
+│ ┃                                                                            │
+│ ┃                                                                            │
+│ ┃                                                                            │
+│ ┃                                                                            │
+│ ✗ github kemayo/silverdragon: folder SilverDragon in AddOns belongs to no    │
+│ addon · hint: check Force to replace it with the release                     │
+│                                                                              │
+│ [ ] Force: take over folders no addon owns                                   │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ ctrl+s add  tab force box  esc cancel           forever: 1 unchanged, 1 failed

@@ -163,6 +163,15 @@ func (m *model) content(width, height int) (string, []string) {
 	switch {
 	case m.help:
 		return accentStyle.Render("help"), m.helpLines(width)
+	// An open dialog comes first: it takes the keys, so it's what's
+	// shown, even if a reload failed meanwhile.
+	case m.add != nil:
+		return accentStyle.Render("add") + "(" + m.profile + ")", m.addLines(width, height)
+	case m.plan != nil:
+		lines, _ := m.planLines(width)
+		return accentStyle.Render("update") + "(" + m.profile + ")", lines
+	case m.confirm != nil:
+		return m.confirmContent(width)
 	case !m.loaded:
 		return accentStyle.Render("addons"), []string{faintStyle.Render(m.spinner() + " loading")}
 	case m.noProfiles:
@@ -174,25 +183,26 @@ func (m *model) content(width, height int) (string, []string) {
 				", then open knapsack tui again.")
 	case m.loadErr != nil:
 		return accentStyle.Render("addons"), errorLines(width, m.loadErr, m.opts.Running)
-	case m.plan != nil:
-		lines, _ := m.planLines(width)
-		return accentStyle.Render("update") + "(" + m.profile + ")", lines
-	case m.confirm != nil:
-		lines := wrap(width, warnStyle.Render(m.confirm.question), "")
-		for _, p := range m.confirm.lines {
-			for i, l := range wrap(width-4, p) {
-				indent := "  "
-				if i > 0 {
-					indent = "    " // a paragraph's own lines, under its name
-				}
-				lines = append(lines, indent+l)
-			}
-		}
-		return accentStyle.Render(m.confirm.title) + "(" + m.profile + ")", lines
 	case m.describing:
 		return m.describe(width)
 	}
 	return m.table(width, height)
+}
+
+// confirmContent is the confirm modal: its question, then its
+// paragraphs, wrapped.
+func (m *model) confirmContent(width int) (string, []string) {
+	lines := wrap(width, warnStyle.Render(m.confirm.question), "")
+	for _, p := range m.confirm.lines {
+		for i, l := range wrap(width-4, p) {
+			indent := "  "
+			if i > 0 {
+				indent = "    " // a paragraph's own lines, under its name
+			}
+			lines = append(lines, indent+l)
+		}
+	}
+	return accentStyle.Render(m.confirm.title) + "(" + m.profile + ")", lines
 }
 
 // table is the addons view.
@@ -215,7 +225,7 @@ func (m *model) table(width, height int) (string, []string) {
 			}
 			msg += fmt.Sprintf(" %s in AddOns %s installed by Knapsack.", count(m.hidden, "folder"), verb)
 		}
-		return title, wrap(width, msg, "", "Add one with "+boldStyle.Render("knapsack add <ref or URL>")+".")
+		return title, wrap(width, msg, "", "Press "+boldStyle.Render("a")+" to add one, by ref or link.")
 	}
 	if len(all) == 0 {
 		return title, []string{faintStyle.Render("No addons match /" + m.query + ".")}
@@ -415,11 +425,13 @@ func (m *model) helpLines(width int) []string {
 	}
 	lines := section("Addons",
 		key{"enter", "describe the addon"},
+		key{"a", "add addons, by ref or link"},
 		key{"u", "update the marked addons, or this one"},
 		key{"U", "update all: shows the plan first"},
 		key{"ctrl+d", "remove the marked addons, or this one"},
 		key{"space", "mark or unmark the addon"},
 		key{"ctrl+\\", "clear marks"},
+		key{"o", "open the addon's page in the browser"},
 		key{"c", "check every addon again"},
 		key{"/", "filter by name, ref or source"},
 		key{"esc", "clear the filter"},
@@ -427,6 +439,8 @@ func (m *model) helpLines(width int) []string {
 	lines = append(lines, section("Describe",
 		key{"u", "update this addon"},
 		key{"ctrl+d", "remove it"},
+		key{"o", "open its page"},
+		key{"r", "open the error's report link, when it has one"},
 		key{"esc", "back to addons"},
 		key{"j k", "scroll, when it doesn't fit"},
 	)...)
@@ -452,19 +466,23 @@ func (m *model) footer() string {
 	switch {
 	case m.help:
 		keys = []string{"esc", "close", "j k", "scroll"}
-	case !m.loaded || m.noProfiles:
-		keys = []string{"q", "quit"}
-	case m.loadErr != nil:
-		keys = []string{"c", "try again", "q", "quit"}
+	case m.add != nil:
+		keys = []string{"ctrl+s", "add", "tab", "force box", "esc", "cancel"}
 	case m.plan != nil:
 		keys = []string{"enter", "update", "space", "check box", "j k", "move", "esc", "cancel"}
 	case m.confirm != nil:
 		keys = []string{"y", m.confirm.yes, "n", "cancel"}
+	case !m.loaded || m.noProfiles:
+		keys = []string{"q", "quit"}
+	case m.loadErr != nil:
+		keys = []string{"c", "try again", "q", "quit"}
 	case m.describing:
-		keys = []string{"u", "update", "ctrl+d", "remove", "esc", "back", "j k", "scroll"}
+		keys = []string{"u", "update", "ctrl+d", "remove", "o", "open", "esc", "back", "j k", "scroll"}
+	case len(m.rows) == 0:
+		keys = []string{"a", "add", "c", "check", "?", "help", "q", "quit"}
 	default:
-		keys = []string{"u", "update", "U", "update all", "enter", "describe", "ctrl+d", "remove",
-			"space", "mark", "c", "check", "/", "filter", "?", "help"}
+		keys = []string{"u", "update", "U", "update all", "a", "add", "enter", "describe", "ctrl+d", "remove",
+			"space", "mark", "o", "open", "c", "check", "/", "filter", "?", "help"}
 	}
 	// The status comes first; hints that don't fit beside it are left
 	// out whole, from the end, since ? lists them all anyway.
