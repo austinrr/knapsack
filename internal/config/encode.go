@@ -7,6 +7,29 @@ import (
 	"github.com/austinrr/knapsack/internal/tomlenc"
 )
 
+// MarshalProfile returns one profile's settings as TOML, without the
+// [profiles.<name>] header, as ParseProfile reads them.
+func MarshalProfile(p Profile) []byte {
+	var buf bytes.Buffer
+	encodeProfile(&buf, p)
+	return buf.Bytes()
+}
+
+// encodeProfile writes a profile's keys, one addon per line.
+func encodeProfile(buf *bytes.Buffer, p Profile) {
+	fmt.Fprintf(buf, "path = %s\n", tomlenc.Quote(p.Path))
+	fmt.Fprintf(buf, "flavor = %s\n", tomlenc.Quote(string(p.Flavor)))
+	if len(p.Addons) == 0 {
+		buf.WriteString("addons = []\n")
+		return
+	}
+	buf.WriteString("addons = [\n")
+	for _, r := range p.Addons {
+		fmt.Fprintf(buf, "  %s,\n", tomlenc.Quote(r.String()))
+	}
+	buf.WriteString("]\n")
+}
+
 // Marshal returns c as TOML, in the same layout Save writes. It doesn't
 // validate.
 func Marshal(c *Config) []byte {
@@ -35,20 +58,9 @@ func encode(buf *bytes.Buffer, c *Config) {
 	}
 
 	for _, name := range c.ProfileNames() {
-		p := c.Profiles[name]
 		section()
 		fmt.Fprintf(buf, "[profiles.%s]\n", name)
-		fmt.Fprintf(buf, "path = %s\n", tomlenc.Quote(p.Path))
-		fmt.Fprintf(buf, "flavor = %s\n", tomlenc.Quote(string(p.Flavor)))
-		if len(p.Addons) == 0 {
-			buf.WriteString("addons = []\n")
-			continue
-		}
-		buf.WriteString("addons = [\n")
-		for _, r := range p.Addons {
-			fmt.Fprintf(buf, "  %s,\n", tomlenc.Quote(r.String()))
-		}
-		buf.WriteString("]\n")
+		encodeProfile(buf, c.Profiles[name])
 	}
 
 	for _, ks := range keyedSources {

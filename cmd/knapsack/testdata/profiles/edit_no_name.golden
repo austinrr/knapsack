@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: knapsack profiles edit needs a profile name
+hint: for example, `knapsack profiles edit retail`; `knapsack profiles edit --help` shows more

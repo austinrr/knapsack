@@ -997,12 +997,14 @@ knapsack info <addon>              ref, version, owned folders, TOC flavors, ins
 knapsack profiles list             each profile, its flavor, addon count and folder   (alias: ls)
 knapsack profiles create [name] --path <AddOns> [--flavor <flavor>] | --auto
 knapsack profiles set <name> [--path <AddOns>] [--flavor <flavor>]
+knapsack profiles edit <name>      its path, flavor and addons, in your editor
 knapsack profiles use <name>
 knapsack profiles current
 knapsack profiles delete <name>    (alias: rm)
 
 # Settings for all of Knapsack
 knapsack config view
+knapsack config edit               config.toml, in your editor
 
 # Sources (shared by every profile)
 knapsack sources list              each source, how it's read, whether it's ready, and where its key comes from
@@ -1175,6 +1177,38 @@ forever: 1 upgrade · retail: 1 install
   game that moved with its addons. Without `--path`, the flavor is never
   re-inferred: it stays as stored unless `--flavor` is given. Changing a
   profile never makes it current.
+- **`profiles edit <name>`** and **`config edit`** open what they edit
+  in the user's editor, as `kubectl edit` does: `$KNAPSACK_EDITOR`, then
+  `$VISUAL`, then `$EDITOR`, else `vi` (Notepad on Windows), run by the
+  shell, so it can take arguments (`code --wait`). `profiles edit` shows
+  the profile's `path`, `flavor` and `addons`; `config edit`, all of
+  `config.toml`, API keys included, as stored. Notes on what's edited,
+  and the last error, are lines starting `#| `, dropped on save wherever
+  they are, so the file's own comments stay: `config edit` saves the file
+  as written. What's saved is validated as a load would, and a profile's
+  path and flavor as `profiles set` checks them (an existing folder,
+  completed to `Interface/AddOns`; a flavor that agrees with a live
+  client folder). Invalid, the editor opens again with the error at the
+  top. Unchanged, the edit is cancelled. Editing is declarative: addons
+  added or taken out are installed by `update` and uninstalled by
+  `update --prune`, which a note after saving says. A profile's path and
+  flavor are checked only when the edit changes them, so a profile whose
+  folder is missing for now (one for the other OS, in a shared config)
+  can still have its addons edited; a changed path may use `~` and a
+  client folder, as `--path` does. `config edit` deletes a profile taken
+  out of the file as `profiles delete` does, with its state, and moves the
+  state of one renamed (its folder, under a new name). No lock is held
+  while the editor is open; instead, saving refuses if the profile or
+  file changed meanwhile, as `kubectl edit` refuses a stale object, and
+  saving takes the locks a change to those profiles would, so nothing is
+  edited under a running `update`. Ctrl-C reaches Knapsack from the
+  editor too, so it's ignored while the editor runs, as git ignores it:
+  the editor alone decides when it's done. On Windows the editor runs
+  through `cmd.exe /S /C`, given the command line as it is, since cmd.exe
+  doesn't parse Go's quoting. The copy is next to `config.toml`, which it
+  may hold all of, readable only by the user, and kept when an edit fails,
+  or is cancelled or the editor fails after an invalid try, with its path
+  in the hint; otherwise it's removed.
 - **`profiles delete`** removes the profile and its state file. It never
   touches addon files on disk. If it was the current profile, none is current
   afterwards; Knapsack doesn't guess another.

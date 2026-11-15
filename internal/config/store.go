@@ -58,32 +58,74 @@ type fileSource struct {
 // it returns an empty Config, as on first run. Refs written by hand in any
 // accepted form are normalized, so the next Save writes them canonically.
 func (s *Store) Load() (*Config, error) {
+	data, err := s.Read()
+	if err != nil {
+		return nil, err
+	}
+	if data == nil {
+		return New(), nil
+	}
+	c, err := Parse(data)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", s.path, err)
+	}
+	return c, nil
+}
+
+// Read returns the config file as it is, or nil when there's none yet.
+func (s *Store) Read() ([]byte, error) {
 	data, err := os.ReadFile(s.path)
 	if errors.Is(err, fs.ErrNotExist) {
-		return New(), nil
+		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
+	return data, nil
+}
 
+// Parse reads and validates config as TOML, as Load does the file.
+func Parse(data []byte) (*Config, error) {
 	var fc fileConfig
 	md, err := toml.NewDecoder(bytes.NewReader(data)).Decode(&fc)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", s.path, err)
+		return nil, err
 	}
 	// Unknown keys are almost always typos ("flavour", "api-key"), which
 	// would otherwise be silently ignored.
 	if unknown := unknownKeys(md.Undecoded()); len(unknown) > 0 {
-		return nil, fmt.Errorf("%s: unknown keys: %s", s.path, strings.Join(unknown, ", "))
+		return nil, fmt.Errorf("unknown keys: %s", strings.Join(unknown, ", "))
 	}
-
 	// Report bad refs and every other problem together, so one Load shows
 	// the user everything to fix.
 	c, refErrs := fromFile(&fc)
 	if err := errors.Join(refErrs, c.Validate()); err != nil {
-		return nil, fmt.Errorf("%s: %w", s.path, err)
+		return nil, err
 	}
 	return c, nil
+}
+
+// ParseProfile reads one profile's settings as TOML, as MarshalProfile
+// writes them, for profile name: its keys and refs. The rest, such as
+// whether its path is absolute, is left for Validate on the config it's
+// put in, once the caller has made the path what it should be.
+func ParseProfile(name string, data []byte) (Profile, error) {
+	var fp fileProfile
+	md, err := toml.NewDecoder(bytes.NewReader(data)).Decode(&fp)
+	if err != nil {
+		return Profile{}, err
+	}
+	if unknown := unknownKeys(md.Undecoded()); len(unknown) > 0 {
+		return Profile{}, fmt.Errorf("unknown keys: %s", strings.Join(unknown, ", "))
+	}
+	p, errs := fp.profile(name)
+	return p, errors.Join(errs...)
+}
+
+// SaveRaw writes data, which Parse made c from, as the config file as it
+// is, comments and layout kept, as `knapsack config edit` saves it.
+func (s *Store) SaveRaw(data []byte, c *Config) error {
+	return s.write(data, c.hasSecrets())
 }
 
 // unknownKeys names each undecoded key once. An unknown table such as
@@ -128,19 +170,27 @@ func fromFile(fc *fileConfig) (*Config, error) {
 	}
 
 	for _, name := range slices.Sorted(maps.Keys(fc.Profiles)) {
-		fp := fc.Profiles[name]
-		p := Profile{Path: fp.Path, Flavor: flavor.Flavor(fp.Flavor)}
-		for _, s := range fp.Addons {
-			r, err := ref.Parse(s)
-			if err != nil {
-				errs = append(errs, fmt.Errorf("profile %q: %w", name, err))
-				continue
-			}
-			p.Addons = append(p.Addons, r)
-		}
+		p, refErrs := fc.Profiles[name].profile(name)
+		errs = append(errs, refErrs...)
 		c.Profiles[name] = p
 	}
 	return c, errors.Join(errs...)
+}
+
+// profile converts the decoded TOML of profile name, parsing its refs.
+// Flavors and paths are left to Validate.
+func (fp fileProfile) profile(name string) (Profile, []error) {
+	p := Profile{Path: fp.Path, Flavor: flavor.Flavor(fp.Flavor)}
+	var errs []error
+	for _, s := range fp.Addons {
+		r, err := ref.Parse(s)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("profile %q: %w", name, err))
+			continue
+		}
+		p.Addons = append(p.Addons, r)
+	}
+	return p, errs
 }
 
 // Save validates c and atomically writes it. The file is written readable
@@ -152,15 +202,20 @@ func (s *Store) Save(c *Config) error {
 	}
 	var buf bytes.Buffer
 	encode(&buf, c)
+	return s.write(buf.Bytes(), c.hasSecrets())
+}
 
+// write atomically writes data as the config file, readable only by the
+// user when it holds secrets, creating the config directory if needed.
+func (s *Store) write(data []byte, secrets bool) error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
 		return fmt.Errorf("save config: %w", err)
 	}
 	perm := fs.FileMode(0o644)
-	if c.hasSecrets() {
+	if secrets {
 		perm = 0o600
 	}
-	if err := atomicfile.Write(s.path, buf.Bytes(), perm); err != nil {
+	if err := atomicfile.Write(s.path, data, perm); err != nil {
 		return fmt.Errorf("save config: %w", err)
 	}
 	return nil

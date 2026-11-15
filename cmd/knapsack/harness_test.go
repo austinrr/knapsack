@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"html"
@@ -70,6 +71,37 @@ type sandbox struct {
 	// terminal is set.
 	stdin    string
 	terminal bool
+	// edits are what the fake editor does, one per time it's opened: each
+	// gets the file's text and returns what's saved. Once they run out,
+	// it saves nothing, as quitting without saving does. shown is what
+	// each opening was given.
+	edits []func(string) string
+	shown []string
+	// editorFails is the opening, counting from 1, at which the fake
+	// editor fails, or 0 for none.
+	editorFails int
+}
+
+// editor is the fake editor, run in place of the user's.
+func (s *sandbox) editor(_ context.Context, editor, path string) error {
+	if editor != "test-editor" {
+		s.t.Errorf("editor = %q, want $KNAPSACK_EDITOR's", editor)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.shown = append(s.shown, string(data))
+	n := len(s.shown)
+	s.mu.Unlock()
+	if n == s.editorFails {
+		return errors.New("exit status 1")
+	}
+	if n > len(s.edits) {
+		return nil
+	}
+	return os.WriteFile(path, []byte(s.edits[n-1](string(data))), 0o600)
 }
 
 // bump publishes a new release, v2, of repo on the fake GitHub, or of an
@@ -439,8 +471,11 @@ func (s *sandbox) run(args ...string) result {
 		expanded[i] = strings.ReplaceAll(a, "{home}", s.home)
 	}
 	getenv := func(k string) string {
-		if k == paths.HomeEnv {
+		switch {
+		case k == paths.HomeEnv:
 			return s.home
+		case k == "KNAPSACK_EDITOR" && s.env[k] == "":
+			return "test-editor"
 		}
 		return s.env[k]
 	}
@@ -463,6 +498,7 @@ func (s *sandbox) run(args ...string) result {
 		stdin:         strings.NewReader(s.stdin),
 		stdinTerminal: s.terminal,
 		readPassword:  func(context.Context) ([]byte, error) { return []byte(s.stdin), nil },
+		runEditor:     s.editor,
 	})
 	return result{Stdout: s.normalize(stdout.String()), Stderr: s.normalize(stderr.String()), Code: code}
 }
@@ -495,6 +531,9 @@ var tildePath = regexp.MustCompile(`(^|[\s"])(~|\$HOME)/`)
 // timestamp matches the install times commands print.
 var timestamp = regexp.MustCompile(`\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ`)
 
+// editCopy is the random part of an edit's kept copy.
+var editCopy = regexp.MustCompile(`edit-\d+\.toml`)
+
 // normalize replaces the sandbox path with <home>, including its escaped
 // form in TOML and JSON, the fake GitHub's address with <github>, install
 // times with <time>, this OS and architecture with <platform>, and the
@@ -508,6 +547,7 @@ func (s *sandbox) normalize(out string) string {
 	// Hints and help show where the game usually is on this OS.
 	out = strings.ReplaceAll(out, filepath.Dir(filepath.Dir(app.ExampleClientFolder())), "<games>")
 	out = timestamp.ReplaceAllString(out, "<time>")
+	out = editCopy.ReplaceAllString(out, "edit-<n>.toml")
 	for _, h := range []string{strings.ReplaceAll(s.home, `\`, `\\`), s.home, filepath.ToSlash(s.home)} {
 		out = strings.ReplaceAll(out, h, "<home>")
 	}
@@ -578,6 +618,8 @@ type cliCase struct {
 	// terminal is set.
 	stdin    string
 	terminal bool
+	// edits are what the fake editor does for args, as sandbox.edits.
+	edits []func(string) string
 }
 
 func runCases(t *testing.T, cases []cliCase) {
@@ -601,7 +643,7 @@ func runCases(t *testing.T, cases []cliCase) {
 			}
 			s.interactive = s.interactive || tc.interactive
 			s.notReleased = tc.notReleased
-			s.stdin, s.terminal = tc.stdin, tc.terminal
+			s.stdin, s.terminal, s.edits = tc.stdin, tc.terminal, tc.edits
 			checkGolden(t, tc.name, s.run(tc.args...))
 		})
 	}

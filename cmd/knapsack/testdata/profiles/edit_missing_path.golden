@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: edit cancelled: <home>/wow/_gone_/Interface/AddOns is not a directory
+hint: your edit is kept in <home>/config/edit-<n>.toml
