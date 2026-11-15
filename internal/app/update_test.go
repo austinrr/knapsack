@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 
 	"github.com/austinrr/knapsack/internal/app"
 	"github.com/austinrr/knapsack/internal/ref"
@@ -348,7 +349,7 @@ func TestCheck(t *testing.T) {
 	stateBefore := e.loadState(t)
 	e.rec.events = nil
 
-	plans, err := e.app.Check(context.Background(), app.Selector{})
+	plans, err := e.app.Check(context.Background(), app.Selector{}, app.CheckOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -414,7 +415,7 @@ func TestCheckSeveralProfiles(t *testing.T) {
 	e.addProfile(t, "second")
 	e.setConfigAddons(t, "second", r)
 
-	plans, err := e.app.Check(context.Background(), app.Selector{Profiles: []string{e.profile, "second"}})
+	plans, err := e.app.Check(context.Background(), app.Selector{Profiles: []string{e.profile, "second"}}, app.CheckOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -424,6 +425,37 @@ func TestCheckSeveralProfiles(t *testing.T) {
 	}
 	if diff := cmp.Diff([]string{"forever none", "second install"}, got); diff != "" {
 		t.Errorf("plans (-want +got):\n%s", diff)
+	}
+}
+
+// A Watcher sees each profile's plans, those to resolve as checking, then
+// each as Check returns it.
+func TestCheckWatch(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	e.src.publish(t, "o/details", "Details")
+	r := mustRef(t, "github:o/details")
+	e.mustAdd(t, r)
+	e.addProfile(t, "second")
+	e.setConfigAddons(t, "second", r)
+
+	w := newWatcher[app.Plan]()
+	plans, err := e.app.Check(context.Background(), app.Selector{Profiles: []string{e.profile, "second"}}, app.CheckOptions{Watch: w})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var listed []string
+	for _, rows := range w.listed {
+		for _, p := range rows {
+			listed = append(listed, p.Profile+" "+string(p.Action)+" "+p.Installed)
+		}
+	}
+	if diff := cmp.Diff([]string{"forever checking v1", "second checking "}, listed); diff != "" {
+		t.Errorf("listed (-want +got):\n%s", diff)
+	}
+	want := map[string]map[int]app.Plan{e.profile: {0: plans[0]}, "second": {0: plans[1]}}
+	if diff := cmp.Diff(want, w.finished, cmpopts.EquateErrors()); diff != "" {
+		t.Errorf("finished (-want +got):\n%s", diff)
 	}
 }
 
@@ -452,7 +484,7 @@ func TestCheckMalformedPublishedSum(t *testing.T) {
 	e.mustAdd(t, mustRef(t, "github:o/details"))
 	e.src.sums["o/details"] = "not-a-digest"
 
-	plans, err := e.app.Check(context.Background(), app.Selector{})
+	plans, err := e.app.Check(context.Background(), app.Selector{}, app.CheckOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -478,7 +510,7 @@ func TestBulkEventsCarryName(t *testing.T) {
 	e.setConfigAddons(t, e.profile)
 	e.rec.events = nil
 
-	if _, err := e.app.Check(context.Background(), app.Selector{Addons: []string{"nope"}}); err != nil {
+	if _, err := e.app.Check(context.Background(), app.Selector{Addons: []string{"nope"}}, app.CheckOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := e.app.Update(context.Background(), app.Selector{Addons: []string{"old"}}, app.UpdateOptions{Prune: true}); err != nil {

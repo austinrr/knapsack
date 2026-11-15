@@ -162,7 +162,8 @@ type SelfUpdated struct {
 }
 
 // SelfUpdate replaces the running binary with the newest release's, after
-// verifying the archive's SHA-256 (DESIGN.md §8.4). It refuses for a
+// verifying the archive's SHA-256 (DESIGN.md §8.4). It reports finding the
+// release and downloading it, with Ref the knapsack repository. It refuses for a
 // binary it shouldn't replace: a dev build, a go install build, or one a
 // package manager installed, saying how to update those instead.
 func (a *App) SelfUpdate(ctx context.Context, b Build) (SelfUpdated, error) {
@@ -175,13 +176,15 @@ func (a *App) SelfUpdate(ctx context.Context, b Build) (SelfUpdated, error) {
 		return SelfUpdated{}, &UserError{Msg: "knapsack was installed by " + pm, Hint: "update it with " + pm}
 	}
 
+	self := ref.Ref{Source: ref.GitHub, ID: SelfRepo}
+	a.report(Event{Kind: EventResolving, Ref: self})
 	version, assets, err := a.releases.LatestAssets(ctx, SelfRepo)
 	if err != nil {
 		err = fmt.Errorf("find the newest knapsack release: %w", err)
 		if errors.Is(err, source.ErrNotFound) {
 			return SelfUpdated{}, err // explain's hint is about addon refs
 		}
-		return SelfUpdated{}, explain(err, ref.Ref{Source: ref.GitHub, ID: SelfRepo})
+		return SelfUpdated{}, explain(err, self)
 	}
 	res := SelfUpdated{From: b.Version, To: version}
 	if !selfupdate.Newer(version, b.Version) {
@@ -203,7 +206,10 @@ func (a *App) SelfUpdate(ctx context.Context, b Build) (SelfUpdated, error) {
 		return res, fmt.Errorf("knapsack %s: GitHub has no checksum for %s, so it can't be verified", version, name)
 	}
 
-	path, _, err := httpx.Download(ctx, a.http, asset.URL, nil, a.paths.CacheDir, asset.SHA256, nil)
+	a.report(Event{Kind: EventDownloading, Ref: self, Version: version})
+	path, _, err := httpx.Download(ctx, a.http, asset.URL, nil, a.paths.CacheDir, asset.SHA256, func(done, total int64) {
+		a.report(Event{Kind: EventProgress, Ref: self, Version: version, Done: done, Total: total})
+	})
 	if err != nil {
 		return res, err
 	}

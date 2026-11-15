@@ -206,8 +206,15 @@ on errors, like kubectl diff. Prune candidates count as pending only with
 			if err != nil {
 				return err
 			}
-			plans, err := c.app.Check(cmd.Context(), sel)
-			c.stopProgress()
+			var opts app.CheckOptions
+			if output != "json" {
+				// On a terminal, the table shows before checking is done.
+				if live := startLiveTable(c, cmd, liveCheck(sc.all, output == "wide")); live != nil {
+					opts.Watch = live
+				}
+			}
+			plans, err := c.app.Check(cmd.Context(), sel, opts)
+			c.stopProgress() // erases the live table, for the finished one
 			var failed []error
 			pending := false
 			for _, p := range plans {
@@ -220,7 +227,7 @@ on errors, like kubectl diff. Prune candidates count as pending only with
 					// Plain update leaves these alone, so without --prune
 					// they'd keep check failing after every update.
 					pending = pending || prune
-				case app.PlanNone:
+				case app.PlanNone, app.PlanChecking: // Check never returns checking
 				}
 			}
 			w := cmd.OutOrStdout()

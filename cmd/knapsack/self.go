@@ -82,7 +82,17 @@ func startUpdateCheck(ctx context.Context, root *cobra.Command, args []string, c
 	}()
 	return func() {
 		defer cancel()
-		if latest, ok := <-found; ok {
+		var latest app.Latest
+		var ok bool
+		select {
+		case latest, ok = <-found:
+		default:
+			// Still checking after the command: say why it hasn't exited.
+			st := startStatus(e.stderr, c.verbose, e.getenv, "Checking for a newer knapsack release")
+			latest, ok = <-found
+			st.stop()
+		}
+		if ok {
 			// Nowhere to report a failed write to stderr.
 			_, _ = fmt.Fprintf(e.stderr, "knapsack %s is available (you have %s); %s.\n", latest.Version, b.Version, app.UpdateHint(b))
 		}
@@ -111,12 +121,14 @@ func checkFromVersion(cmd *cobra.Command, c *cli) {
 	}
 	ctx, cancel := context.WithTimeout(cmd.Context(), versionTimeout)
 	defer cancel()
+	w := cmd.ErrOrStderr()
 	a, err := newSelfApp(c.env)
 	var latest app.Latest
 	if err == nil {
+		st := startStatus(w, c.verbose, c.env.getenv, "Checking for a newer release")
 		latest, err = a.LatestVersion(ctx, b, 0)
+		st.stop()
 	}
-	w := cmd.ErrOrStderr()
 	switch {
 	case err != nil && c.verbose:
 		_, _ = fmt.Fprintf(w, "couldn't check for a newer release: %v\n", err)
@@ -140,7 +152,13 @@ time, and says so on stderr. Set ` + noNotifierEnv + ` to stop that.`,
 		Args:    noArgs,
 		PreRunE: c.buildNetApp,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// The release is found, then downloaded, with nothing to show
+			// meanwhile but a status.
+			if st := startStatus(cmd.ErrOrStderr(), c.verbose, c.env.getenv, "Looking for the newest knapsack release"); st != nil {
+				c.progress.swap(st).stop()
+			}
 			res, err := c.app.SelfUpdate(cmd.Context(), c.selfBuild())
+			c.stopProgress()
 			if err != nil {
 				return err
 			}

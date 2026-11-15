@@ -310,7 +310,7 @@ add one with add --force to have Knapsack manage it.`,
 				if !sc.all {
 					header = profileNote(sel.Profiles[0])
 				}
-				if live := c.startLiveList(cmd, header, sc.all, output == "wide"); live != nil {
+				if live := startLiveTable(c, cmd, liveList(header, sc.all, output == "wide")); live != nil {
 					opts.Watch = live
 				}
 			}

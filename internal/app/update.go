@@ -164,6 +164,10 @@ const (
 	PlanFailed  PlanAction = "failed"  // couldn't tell; Err says why
 )
 
+// PlanChecking is only for Watcher.Listed: the addon is being resolved.
+// Check's result never has it.
+const PlanChecking PlanAction = "checking"
+
 // Plan is what update would do to one addon, as Check reports it.
 type Plan struct {
 	Profile string
@@ -189,20 +193,30 @@ func (p Plan) DisplayName() string { return displayName(p.Title, p.Ref, p.Name) 
 // addon whose source publishes no SHA-256 is downloaded, only to compare
 // it. Prune candidates are reported whether or not update would prune.
 // Like Update, plans are returned even when err is set.
-func (a *App) Check(ctx context.Context, sel Selector) ([]Plan, error) {
+func (a *App) Check(ctx context.Context, sel Selector, opts CheckOptions) ([]Plan, error) {
 	var plans []Plan
 	err := a.eachProfile(ctx, sel.Profiles, readOnly, func(s *session) error {
-		plans = append(plans, a.checkSession(ctx, s, targets(s, sel.Addons))...)
+		ps, at := a.planSession(s, targets(s, sel.Addons))
+		var done func(int)
+		if w := opts.Watch; w != nil {
+			shown := slices.Clone(ps)
+			for _, i := range at {
+				shown[i].Action = PlanChecking
+			}
+			w.Listed(shown)
+			done = func(i int) { w.Finished(s.name, i, ps[i]) }
+		}
+		a.resolvePlans(ctx, s, ps, at, done)
+		plans = append(plans, ps...)
 		return nil
 	})
 	return plans, err
 }
 
-// checkSession is Check for one profile's targets, in their order.
-func (a *App) checkSession(ctx context.Context, s *session, ts []target) []Plan {
-	plans, at := a.planSession(s, ts)
-	a.resolvePlans(ctx, s, plans, at, nil)
-	return plans
+// CheckOptions configure Check.
+type CheckOptions struct {
+	// Watch, if not nil, sees each profile's plans as they're resolved.
+	Watch Watcher[Plan]
 }
 
 // planSession is the part of Check that needs no network: a plan for each

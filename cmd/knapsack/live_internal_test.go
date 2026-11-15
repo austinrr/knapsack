@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 
@@ -13,12 +14,17 @@ import (
 	"github.com/austinrr/knapsack/internal/ref"
 )
 
-// newTestLive returns a liveList drawing into a buffer, as on a terminal
-// of width by height, without the spinner's ticker.
-func newTestLive(width, height int) (*liveList, *bytes.Buffer, *bytes.Buffer) {
+// testSpinner turns predictably, whatever the OS.
+var testSpinner = spinner{frames: []string{"*", "+"}}
+
+// newTestLive returns list's live table drawing into a buffer, as on a
+// terminal of width by height, without the spinner's ticker.
+func newTestLive(width, height int) (*liveTable[app.Installed], *bytes.Buffer, *bytes.Buffer) {
 	var out, errOut bytes.Buffer
 	size := func() (int, int, error) { return width, height, nil }
-	return newLiveList(&out, &errOut, size, "Profile retail:", false, false, []string{"*", "+"}), &out, &errOut
+	t := newLiveTable(&out, &errOut, size, liveList("Profile retail:", false, false))
+	t.spin = testSpinner
+	return t, &out, &errOut
 }
 
 func addon(t *testing.T, id string, status app.Status) app.Installed {
@@ -48,7 +54,7 @@ func TestLiveListRedraws(t *testing.T) {
 	}
 
 	out.Reset()
-	l.Checked("retail", 1, addon(t, "b", app.StatusUpToDate))
+	l.Finished("retail", 1, addon(t, "b", app.StatusUpToDate))
 	if got := out.String(); !strings.HasPrefix(got, "\r\x1b[4A") || !strings.Contains(got, "b      up to date  v1") || !strings.Contains(got, "a      * checking") {
 		t.Errorf("redraw = %q, want the cursor moved up over 4 lines and b up to date", got)
 	}
@@ -65,9 +71,9 @@ func TestLiveListRedraws(t *testing.T) {
 // to its row by the profile and the index in what it listed.
 func TestLiveListProfiles(t *testing.T) {
 	t.Parallel()
-	l, _, _ := newTestLive(80, 24)
-	l.all = true
-	l.header = ""
+	var out bytes.Buffer
+	size := func() (int, int, error) { return 80, 24, nil }
+	l := newLiveTable(&out, &out, size, liveList("", true, false))
 	classic := addon(t, "c", app.StatusChecking)
 	classic.Profile = "classic"
 	l.Listed([]app.Installed{addon(t, "a", app.StatusChecking)})
@@ -75,9 +81,12 @@ func TestLiveListProfiles(t *testing.T) {
 	l.Listed([]app.Installed{classic})
 	done := classic
 	done.Status = app.StatusUpdateAvailable
-	l.Checked("classic", 0, done)
+	l.Finished("classic", 0, done)
 	if l.rows[0].Status != app.StatusChecking || l.rows[1].Status != app.StatusUpdateAvailable {
 		t.Errorf("rows = %+v, want classic's check on its own row", l.rows)
+	}
+	if !strings.Contains(out.String(), "PROFILE") {
+		t.Errorf("drew %q, want a PROFILE column", out.String())
 	}
 }
 
@@ -146,4 +155,87 @@ func TestLiveListSizeError(t *testing.T) {
 	if strings.Count(out.String(), "\n") != 3 {
 		t.Errorf("drew %q, want the header, column names and row", out.String())
 	}
+}
+
+// check's live table shows the action as checking for the addons being
+// resolved, and the spinner turns only while one is.
+func TestLiveCheck(t *testing.T) {
+	t.Parallel()
+	var out bytes.Buffer
+	size := func() (int, int, error) { return 80, 24, nil }
+	l := newLiveTable(&out, &out, size, liveCheck(false, false))
+	l.spin = testSpinner
+	a := addon(t, "a", "")
+	plan := app.Plan{Profile: "retail", Ref: a.Ref, Title: "a", Installed: "v1", Action: app.PlanChecking}
+	l.Listed([]app.Plan{plan})
+	if !strings.Contains(out.String(), "a      v1         -          * checking") {
+		t.Errorf("drew %q, want a being checked", out.String())
+	}
+	out.Reset()
+	l.turn()
+	if !strings.Contains(out.String(), "+ checking") {
+		t.Errorf("turn drew %q, want the next frame", out.String())
+	}
+	plan.Action, plan.Available = app.PlanUpgrade, "v2"
+	l.Finished("retail", 0, plan)
+	out.Reset()
+	l.turn()
+	if out.Len() != 0 {
+		t.Errorf("turn drew %q with nothing waiting", out.String())
+	}
+}
+
+// A status shows only once statusShowAfter has passed, then turns, and
+// stop erases it.
+func TestStatus(t *testing.T) {
+	t.Parallel()
+	var out bytes.Buffer
+	clock := time.Unix(0, 0)
+	s := newStatus(&out, "Checking", func() time.Time { return clock })
+	s.spin = testSpinner
+	s.turn()
+	s.set("Still checking")
+	if out.Len() != 0 {
+		t.Errorf("drew %q before statusShowAfter", out.String())
+	}
+	clock = clock.Add(statusShowAfter)
+	s.turn()
+	if got := out.String(); got != "\r+ Still checking" {
+		t.Errorf("drew %q", got)
+	}
+	out.Reset()
+	s.Event(app.Event{Kind: app.EventDownloading, Version: "v0.2.0"})
+	s.Event(app.Event{Kind: app.EventProgress, Version: "v0.2.0", Done: 1 << 20, Total: 2 << 20})
+	if got := out.String(); !strings.HasSuffix(got, "\r+ Downloading knapsack v0.2.0, 1.0 MiB of 2.0 MiB") {
+		t.Errorf("drew %q, want the download's progress", got)
+	}
+	out.Reset()
+	s.stop()
+	s.stop()
+	s.turn() // a tick after stop draws nothing
+	if got := out.String(); got != "\r"+spaces("+ Downloading knapsack v0.2.0, 1.0 MiB of 2.0 MiB")+"\r" {
+		t.Errorf("stop wrote %q, want the line erased", got)
+	}
+
+	var nilStatus *status // no terminal
+	nilStatus.set("x")
+	nilStatus.Event(app.Event{Kind: app.EventResolving})
+	nilStatus.stop()
+}
+
+// The ticker calls its function until stop, which can be called twice.
+func TestTicker(t *testing.T) {
+	t.Parallel()
+	calls := make(chan struct{}, 10)
+	tk := startTicker(time.Millisecond, func() {
+		select {
+		case calls <- struct{}{}:
+		default:
+		}
+	})
+	<-calls
+	tk.stop()
+	tk.stop()
+	var none *ticker
+	none.stop()
 }

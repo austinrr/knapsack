@@ -38,7 +38,7 @@ const (
 	StatusUnmanaged       Status = "unmanaged"        // a folder in AddOns no addon owns
 )
 
-// StatusChecking is only for ListWatcher.Listed: the addon is being
+// StatusChecking is only for Watcher.Listed: the addon is being
 // checked. List's result never has it.
 const StatusChecking Status = "checking"
 
@@ -93,22 +93,24 @@ type ListOptions struct {
 	// Check resolves each addon as Check does, so statuses say whether
 	// it's up to date. It needs the network and the App's sources.
 	Check bool
-	// Watch, if not nil, sees each profile's addons as they're checked,
-	// so a terminal can show them before checking is done. It's used
-	// only with Check.
-	Watch ListWatcher
+	// Watch, if not nil, sees each profile's addons as they're checked.
+	// It's used only with Check.
+	Watch Watcher[Installed]
 }
 
-// ListWatcher sees List's addons before they're checked, and each as its
-// check finishes. Profiles are listed one after another, each in full
-// before the next.
-type ListWatcher interface {
-	// Listed is a profile's addons, in the order List returns them. Those
-	// still to be checked have StatusChecking.
-	Listed(addons []Installed)
-	// Checked is the addon at index i of the profile's Listed addons, now
-	// checked. It's called from several goroutines at once.
-	Checked(profile string, i int, in Installed)
+// Watcher sees a use case's rows for each profile before the slow part,
+// the network, is done, and then each row as it's finished, so a terminal
+// can show them meanwhile. List's rows are Installed, and Check's are
+// Plans. Profiles are listed one after another, each in full before the
+// next.
+type Watcher[T any] interface {
+	// Listed is a profile's rows, in the order the use case returns
+	// them. Those still to be finished say so: StatusChecking, or
+	// PlanChecking.
+	Listed(rows []T)
+	// Finished is the row at index i of the profile's Listed rows, now
+	// final. It's called from several goroutines at once.
+	Finished(profile string, i int, row T)
 }
 
 // Listing is what List reports.
@@ -161,7 +163,7 @@ func (a *App) List(ctx context.Context, sel Selector, opts ListOptions) (Listing
 
 // checkListed checks the addons listed for one profile, which start with
 // one for each plan, telling watch, if not nil, as each finishes.
-func (a *App) checkListed(ctx context.Context, s *session, addons []Installed, plans []Plan, at []int, watch ListWatcher) {
+func (a *App) checkListed(ctx context.Context, s *session, addons []Installed, plans []Plan, at []int, watch Watcher[Installed]) {
 	if watch != nil {
 		shown := slices.Clone(addons)
 		for _, i := range at {
@@ -173,7 +175,7 @@ func (a *App) checkListed(ctx context.Context, s *session, addons []Installed, p
 		// Each addon is set by only its own check, so they don't race.
 		addons[i].withPlan(plans[i])
 		if watch != nil {
-			watch.Checked(s.name, i, addons[i])
+			watch.Finished(s.name, i, addons[i])
 		}
 	})
 }
@@ -224,6 +226,8 @@ func (in *Installed) withPlan(p Plan) {
 		in.Status = StatusUpdateAvailable
 	case PlanInstall, PlanPrune:
 		// Not installed or not in config either way.
+	case PlanChecking:
+		// Only a Watcher sees it, never withPlan.
 	}
 }
 

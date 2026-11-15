@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"github.com/austinrr/knapsack/internal/app"
 )
@@ -23,10 +22,19 @@ type reporter interface {
 // terminal, else plain lines. --verbose always gets lines, since it shows
 // every step.
 func newReporter(w io.Writer, verbose bool, getenv func(string) string) reporter {
-	if !verbose && isTerminal(w) && getenv("TERM") != "dumb" {
-		return &barReporter{w: w, now: time.Now, addons: map[string]*addonProgress{}}
+	if canAnimate(w, verbose, getenv) {
+		r := newBarReporter(w, time.Now)
+		r.animate = true
+		return r
 	}
 	return &lineReporter{w: w, verbose: verbose}
+}
+
+// canAnimate reports whether w can show a spinner, the progress bar or
+// list's live table: a terminal, but not with --verbose, which prints
+// every step as a line, or TERM=dumb.
+func canAnimate(w io.Writer, verbose bool, getenv func(string) string) bool {
+	return !verbose && isTerminal(w) && getenv("TERM") != "dumb"
 }
 
 // warning is how a Warned event is printed.
@@ -104,23 +112,28 @@ func (r *lineReporter) Event(e app.Event) {
 
 func (r *lineReporter) stop() {}
 
-// barReporter shows one status line on a terminal, redrawn in place with a
-// carriage return:
+// barReporter shows one status line on a terminal, redrawn in place, with
+// a spinner that turns while anything is in progress:
 //
-//	2 done · 1 resolving · 3 downloading, 1.2 of 4.5 MiB
+//	⠹ 2 done · 1 resolving · 3 downloading, 1.2 of 4.5 MiB
 //
-// One line needs no cursor movement, so it works in any terminal,
-// including the old Windows console. Warnings are printed above it. It
-// redraws at most every redrawEvery, so a fast download doesn't flood the
-// terminal.
+// Warnings are printed above it. Events redraw it at most every
+// redrawEvery, so a fast download doesn't flood the terminal.
 type barReporter struct {
-	mu     sync.Mutex
-	w      io.Writer
-	now    func() time.Time
-	last   time.Time // when the line was last drawn
-	shown  int       // columns of text on screen, to erase it
-	addons map[string]*addonProgress
-	order  []string // keys in addons, in the order first seen
+	mu      sync.Mutex
+	line    oneLine
+	spin    spinner
+	now     func() time.Time
+	last    time.Time // when the line was last drawn
+	addons  map[string]*addonProgress
+	order   []string // keys in addons, in the order first seen
+	animate bool     // turn the spinner on a ticker, from the first event
+	tick    *ticker
+	stopped bool
+}
+
+func newBarReporter(w io.Writer, now func() time.Time) *barReporter {
+	return &barReporter{line: oneLine{w: w}, spin: newSpinner(), now: now, addons: map[string]*addonProgress{}}
 }
 
 // addonProgress is where one addon is.
@@ -142,6 +155,16 @@ const redrawEvery = 100 * time.Millisecond
 func (r *barReporter) Event(e app.Event) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.stopped {
+		// Results are printing; a warning still mustn't be lost.
+		if e.Kind == app.EventWarned {
+			_, _ = fmt.Fprintln(r.line.w, warning(e))
+		}
+		return
+	}
+	if r.animate && r.tick == nil {
+		r.tick = startTicker(spinEvery, r.turn)
+	}
 	key := e.Profile + " " + e.Ref.String()
 	if e.Ref.ID == "" {
 		key = e.Profile + " " + e.Name
@@ -163,16 +186,36 @@ func (r *barReporter) Event(e app.Event) {
 			return
 		}
 	case app.EventWarned:
-		r.erase()
-		_, _ = fmt.Fprintln(r.w, warning(e))
+		r.line.erase()
+		_, _ = fmt.Fprintln(r.line.w, warning(e))
 	case app.EventInstalled, app.EventRemoved, app.EventSkipped, app.EventChecked, app.EventFailed:
 		a.stage = stageDone
 	}
 	r.draw()
 }
 
-// line describes every addon seen so far.
-func (r *barReporter) line() string {
+// turn advances the spinner while anything is in progress.
+func (r *barReporter) turn() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.stopped || !r.busy() {
+		return
+	}
+	r.spin.next()
+	r.draw()
+}
+
+func (r *barReporter) busy() bool {
+	for _, a := range r.addons {
+		if a.stage != stageDone {
+			return true
+		}
+	}
+	return false
+}
+
+// text describes every addon seen so far, after the spinner.
+func (r *barReporter) text() string {
 	var done, resolving, downloading int
 	var got, want int64
 	known := true
@@ -204,35 +247,25 @@ func (r *barReporter) line() string {
 		}
 		parts = append(parts, fmt.Sprintf("%d downloading, %s", downloading, bytes))
 	}
-	return strings.Join(parts, " · ")
+	return r.spin.String() + " " + strings.Join(parts, " · ")
 }
 
-// draw writes the line over the previous one, padding with spaces to
-// cover a longer one.
 func (r *barReporter) draw() {
-	line := r.line()
-	// Measured in runes, not bytes: "·" is two bytes but one column.
-	width := utf8.RuneCountInString(line)
-	pad := ""
-	if n := r.shown - width; n > 0 {
-		pad = strings.Repeat(" ", n)
-	}
-	_, _ = fmt.Fprint(r.w, "\r"+line+pad)
-	r.shown, r.last = width, r.now()
+	r.line.draw(r.text())
+	r.last = r.now()
 }
 
-// erase clears the line and leaves the cursor at its start.
-func (r *barReporter) erase() {
-	if r.shown > 0 {
-		_, _ = fmt.Fprint(r.w, "\r"+strings.Repeat(" ", r.shown)+"\r")
-		r.shown = 0
-	}
-}
-
+// stop erases the bar and stops the spinner. It's safe to call more than
+// once.
 func (r *barReporter) stop() {
 	r.mu.Lock()
+	tick := r.tick
+	r.stopped = true
+	r.mu.Unlock()
+	tick.stop() // outside mu, since a turn in progress takes it
+	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.erase()
+	r.line.erase()
 }
 
 // formatBytes shows a size in KiB or MiB with one decimal, as progress
