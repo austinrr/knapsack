@@ -5,9 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
-	"os/exec"
+	"os/signal"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -34,18 +36,18 @@ func editorCommand(getenv func(string) string) string {
 }
 
 // runEditor runs editor on path, on the terminal, and waits for it. The
-// editor is run by the shell, as kubectl and git run it, so it can carry
-// arguments ("code --wait") or be a quoted path with spaces.
+// editor is run by the shell (editorCmd), as kubectl and git run it, so it
+// can carry arguments ("code --wait") or be a quoted path with spaces.
+//
+// Ctrl-C in the editor reaches Knapsack too, which shares its terminal, as
+// it does vi's insert mode, constantly. So while the editor runs, Knapsack
+// ignores it, as git does, and ctx is never what stops the editor: only
+// the editor decides when it's done.
 func runEditor(ctx context.Context, editor, path string) error {
-	// The command is the user's own $EDITOR, which is meant to run: gosec's
-	// G204 can't tell that from a tainted one. The path is ours, and on
-	// Unix is passed as an argument, not in the script.
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		cmd = exec.CommandContext(ctx, "cmd", "/C", editor+` "`+path+`"`) //nolint:gosec // G204: the user's $EDITOR, as above
-	} else {
-		cmd = exec.CommandContext(ctx, "sh", "-c", editor+` "$1"`, "sh", path) //nolint:gosec // G204: the user's $EDITOR, as above
-	}
+	interrupts := make(chan os.Signal, 1)
+	signal.Notify(interrupts, os.Interrupt) // caught, so not fatal, and dropped
+	defer signal.Stop(interrupts)
+	cmd := editorCmd(context.WithoutCancel(ctx), editor, path)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("editor %q: %w", editor, err)
@@ -60,12 +62,14 @@ func runEditor(ctx context.Context, editor, path string) error {
 const noteMark = "#| "
 
 // edit opens text in the user's editor, after notes, the lines that say
-// what's being edited, and passes what's saved to save. When save finds
+// what's being edited, and passes what's saved to save, with a context
+// that a Ctrl-C typed in the editor didn't cancel. When save finds
 // it invalid (app.ErrInvalidEdit), the editor opens again with the error
 // above the text, as kubectl edit does, until it's saved as valid, or
 // left unchanged, which cancels. On any other failure, the text is kept
 // in a file whose path the error gives, so nothing typed is lost.
-func (c *cli) edit(cmd *cobra.Command, notes []string, text []byte, save func(edited []byte) error) (saved bool, err error) {
+func (c *cli) edit(cmd *cobra.Command, notes []string, text []byte, save func(ctx context.Context, edited []byte) error) (saved bool, err error) {
+	ctx := context.WithoutCancel(cmd.Context())
 	dir, err := c.app.EditDir()
 	if err != nil {
 		return false, fmt.Errorf("edit: %w", err)
@@ -90,8 +94,12 @@ func (c *cli) edit(cmd *cobra.Command, notes []string, text []byte, save func(ed
 		if err := os.WriteFile(path, shown, 0o600); err != nil {
 			return false, fmt.Errorf("edit: %w", err)
 		}
-		if err := c.env.runEditor(cmd.Context(), editor, path); err != nil {
-			return false, err
+		if err := c.env.runEditor(ctx, editor, path); err != nil {
+			if lastErr == nil {
+				return false, err // nothing typed but the original
+			}
+			keep = true
+			return false, fmt.Errorf("%w (your edit is kept in %s)", err, path)
 		}
 		got, err := os.ReadFile(path)
 		if err != nil {
@@ -109,7 +117,7 @@ func (c *cli) edit(cmd *cobra.Command, notes []string, text []byte, save func(ed
 			return false, nil
 		}
 		text = withoutNotes(got)
-		err = save(text)
+		err = save(ctx, text)
 		switch {
 		case err == nil:
 			return true, nil
@@ -180,9 +188,9 @@ should have, and update makes it so.`,
 				fmt.Sprintf("Editing profile %q. Save and quit to apply; quit without saving to cancel.", name),
 				"Lines starting with #| are dropped.",
 			}
-			saved, err := c.edit(cmd, notes, original, func(edited []byte) error {
+			saved, err := c.edit(cmd, notes, original, func(ctx context.Context, edited []byte) error {
 				var err error
-				res, err = c.app.SaveProfileEdit(cmd.Context(), name, original, edited)
+				res, err = c.app.SaveProfileEdit(ctx, name, original, edited)
 				return err
 			})
 			if err != nil {
@@ -234,8 +242,10 @@ of Knapsack. The editor is $KNAPSACK_EDITOR, $VISUAL or $EDITOR, else vi
 Save and quit to apply; quit without saving to cancel. If what's saved
 isn't valid, the editor opens again with the error at the top. The file
 is saved as you wrote it, comments included, though commands that change
-config later rewrite it in a fixed layout. API keys are shown as they're
-stored: the copy being edited is readable only by you, and removed once
+config later rewrite it in a fixed layout. A profile taken out is deleted
+as knapsack profiles delete deletes it, and one renamed keeps its record
+of what's installed. API keys are shown as they're stored: the copy being
+edited, next to config.toml, is readable only by you, and removed once
 saved.`,
 		Example: "  knapsack config edit",
 		Args:    noArgs,
@@ -244,24 +254,30 @@ saved.`,
 			if err != nil {
 				return err
 			}
-			changed := false
+			var res app.ConfigEditResult
 			notes := []string{
 				"Editing config.toml. Save and quit to apply; quit without saving to cancel.",
 				"Lines starting with #| are dropped; other comments are kept.",
 			}
-			saved, err := c.edit(cmd, notes, original, func(edited []byte) error {
+			saved, err := c.edit(cmd, notes, original, func(ctx context.Context, edited []byte) error {
 				var err error
-				changed, err = c.app.SaveConfigEdit(cmd.Context(), original, edited)
+				res, err = c.app.SaveConfigEdit(ctx, original, edited)
 				return err
 			})
 			if err != nil {
 				return err
 			}
 			out := &printer{w: cmd.OutOrStdout()}
-			if saved && changed {
-				out.printf("Saved config.toml.\n")
-			} else {
+			if !saved || !res.Changed {
 				out.printf("config.toml unchanged.\n")
+				return out.err
+			}
+			out.printf("Saved config.toml.\n")
+			for _, old := range slices.Sorted(maps.Keys(res.Renamed)) {
+				out.printf("Renamed profile %q to %q, with its record of what's installed.\n", old, res.Renamed[old])
+			}
+			for _, name := range res.Deleted {
+				out.printf("Deleted profile %q, and its record of what's installed; addon files are untouched.\n", name)
 			}
 			return out.err
 		},

@@ -96,10 +96,10 @@ func TestProfilesEditCancelKeepsEdit(t *testing.T) {
 	s.mustRun(addForever...)
 	s.edits = []func(string) string{replace(`flavor = "forever"`, `flavor = "forevr"`)}
 	r := s.run("profiles", "edit", "forever")
-	if r.Code != exitError || !strings.Contains(r.Stderr, "edit cancelled") || !strings.Contains(r.Stderr, "hint: your edit is kept in <home>/cache/edit-") {
+	if r.Code != exitError || !strings.Contains(r.Stderr, "edit cancelled") || !strings.Contains(r.Stderr, "hint: your edit is kept in <home>/config/edit-") {
 		t.Fatalf("result:\n%s", r)
 	}
-	kept, _ := filepath.Glob(filepath.Join(s.home, "cache", "edit-*.toml"))
+	kept, _ := filepath.Glob(filepath.Join(s.home, "config", "edit-*.toml"))
 	if len(kept) != 1 {
 		t.Fatalf("kept copies: %q, want one", kept)
 	}
@@ -115,7 +115,7 @@ func TestEditCleansUp(t *testing.T) {
 	s.mustRun(addForever...)
 	s.edits = []func(string) string{replace(`flavor = "forever"`, `flavor = "forever"`+"\n")}
 	s.mustRun("profiles", "edit", "forever")
-	if kept, _ := filepath.Glob(filepath.Join(s.home, "cache", "edit-*.toml")); len(kept) != 0 {
+	if kept, _ := filepath.Glob(filepath.Join(s.home, "config", "edit-*.toml")); len(kept) != 0 {
 		t.Errorf("left behind: %q", kept)
 	}
 }
@@ -159,5 +159,80 @@ func TestConfigEditKeepsComments(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(s.home, "config", "config.toml"))
 	if err != nil || !strings.HasPrefix(string(data), "# my settings\n") || strings.Contains(string(data), "#|") {
 		t.Errorf("config = %q, %v; want it as written, without notes", data, err)
+	}
+}
+
+// A profile's folder is checked only when the edit changes it, so one
+// whose folder is missing for now can still have its addons edited; a
+// changed one may be written with ~ and as the client folder.
+func TestProfilesEditPaths(t *testing.T) {
+	t.Parallel()
+	s := newSandbox(t)
+	s.mustRun(addForever...)
+	if err := os.RemoveAll(filepath.Join(s.home, "wow", "_forever_")); err != nil {
+		t.Fatal(err)
+	}
+	s.edits = []func(string) string{replace("addons = []", `addons = ["github:austinrr/details-mirror"]`)}
+	s.mustRun("profiles", "edit", "forever")
+	s.shown = nil
+	s.edits = []func(string) string{func(text string) string {
+		_, rest, _ := strings.Cut(text, `path = "`)
+		path, _, _ := strings.Cut(rest, `"`)
+		return strings.Replace(text, path, "~/wow/_retail_", 1)
+	}, replace(`flavor = "forever"`, `flavor = "retail"`)}
+	s.env = map[string]string{"HOME": s.home}
+	r := s.run("profiles", "edit", "forever")
+	if r.Code != exitOK || len(s.shown) != 2 || !strings.Contains(s.shown[1], "doesn't match the path") {
+		t.Fatalf("result:\n%s\nopenings: %q", r, s.shown)
+	}
+	data, _ := os.ReadFile(filepath.Join(s.home, "config", "config.toml"))
+	if want := filepath.Join(s.home, "wow", "_retail_", "Interface", "AddOns"); !strings.Contains(string(data), want) {
+		t.Errorf("config:\n%s\nwant the path completed to %s", data, want)
+	}
+}
+
+// A failing editor after an invalid try keeps what was typed.
+func TestEditEditorFailsKeepsEdit(t *testing.T) {
+	t.Parallel()
+	s := newSandbox(t)
+	s.mustRun(addForever...)
+	s.edits = []func(string) string{replace(`flavor = "forever"`, `flavor = "forevr"`)}
+	s.editorFails = 2 // the second opening, as with vim's :cq
+	r := s.run("profiles", "edit", "forever")
+	if r.Code != exitError || !strings.Contains(r.Stderr, "your edit is kept in") {
+		t.Fatalf("result:\n%s", r)
+	}
+	if kept, _ := filepath.Glob(filepath.Join(s.home, "config", "edit-*.toml")); len(kept) != 1 {
+		t.Errorf("kept copies: %q, want one", kept)
+	}
+}
+
+// config edit deletes a profile taken out as profiles delete would, state
+// and all, and moves a renamed one's state with it.
+func TestConfigEditProfiles(t *testing.T) {
+	t.Parallel()
+	s := newSandbox(t)
+	s.mustRun(addForever...)
+	s.mustRun(addBaganator...)
+	s.mustRun(addRetail...)
+	s.mustRun("add", "-p", "retail", "github:austinrr/retail-only")
+	s.edits = []func(string) string{func(text string) string {
+		text = strings.Replace(text, "[profiles.forever]", "[profiles.main]", 1)
+		text = strings.Replace(text, `current_profile = "forever"`, `current_profile = "main"`, 1)
+		i := strings.Index(text, "[profiles.retail]")
+		return text[:i]
+	}}
+	r := s.run("config", "edit")
+	if r.Code != exitOK || !strings.Contains(r.Stdout, `Renamed profile "forever" to "main"`) || !strings.Contains(r.Stdout, `Deleted profile "retail"`) {
+		t.Fatalf("result:\n%s", r)
+	}
+	states := filepath.Join(s.home, "config", "state")
+	for name, want := range map[string]bool{"forever": false, "main": true, "retail": false} {
+		if _, err := os.Stat(filepath.Join(states, name+".toml")); (err == nil) != want {
+			t.Errorf("state for %s: %v, want it there: %v", name, err, want)
+		}
+	}
+	if l := s.run("list", "--no-check"); !strings.Contains(l.Stdout, "Baganator") {
+		t.Errorf("main's addons after the rename:\n%s", l)
 	}
 }

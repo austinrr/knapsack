@@ -106,8 +106,9 @@ func Parse(data []byte) (*Config, error) {
 }
 
 // ParseProfile reads one profile's settings as TOML, as MarshalProfile
-// writes them, for profile name. It's validated as the profile alone;
-// Validate on the whole config checks it against the others.
+// writes them, for profile name: its keys and refs. The rest, such as
+// whether its path is absolute, is left for Validate on the config it's
+// put in, once the caller has made the path what it should be.
 func ParseProfile(name string, data []byte) (Profile, error) {
 	var fp fileProfile
 	md, err := toml.NewDecoder(bytes.NewReader(data)).Decode(&fp)
@@ -118,19 +119,12 @@ func ParseProfile(name string, data []byte) (Profile, error) {
 		return Profile{}, fmt.Errorf("unknown keys: %s", strings.Join(unknown, ", "))
 	}
 	p, errs := fp.profile(name)
-	if err := errors.Join(append(errs, p.validate(name)...)...); err != nil {
-		return Profile{}, err
-	}
-	return p, nil
+	return p, errors.Join(errs...)
 }
 
-// SaveRaw validates data as Parse does and writes it as it is, comments
-// and layout kept, as `knapsack config edit` saves the file.
-func (s *Store) SaveRaw(data []byte) error {
-	c, err := Parse(data)
-	if err != nil {
-		return err
-	}
+// SaveRaw writes data, which Parse made c from, as the config file as it
+// is, comments and layout kept, as `knapsack config edit` saves it.
+func (s *Store) SaveRaw(data []byte, c *Config) error {
 	return s.write(data, c.hasSecrets())
 }
 

@@ -16,8 +16,7 @@ type Paths struct {
 	ConfigFile string
 	// StateDir holds one state file and one lock file per profile.
 	StateDir string
-	// CacheDir holds downloads in progress, and copies being edited, kept
-	// when an edit fails. It's always safe to delete.
+	// CacheDir holds downloads in progress. It's always safe to delete.
 	CacheDir string
 }
 

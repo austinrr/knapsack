@@ -2,4 +2,4 @@
 # stdout:
 # stderr:
 error: edit cancelled: flavor retail doesn't match the path, which is in _forever_ (forever)
-hint: your edit is kept in <home>/cache/edit-<n>.toml
+hint: your edit is kept in <home>/config/edit-<n>.toml

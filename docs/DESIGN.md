@@ -1191,12 +1191,24 @@ forever: 1 upgrade · retail: 1 install
   client folder). Invalid, the editor opens again with the error at the
   top. Unchanged, the edit is cancelled. Editing is declarative: addons
   added or taken out are installed by `update` and uninstalled by
-  `update --prune`, which a note after saving says. No lock is held
+  `update --prune`, which a note after saving says. A profile's path and
+  flavor are checked only when the edit changes them, so a profile whose
+  folder is missing for now (one for the other OS, in a shared config)
+  can still have its addons edited; a changed path may use `~` and a
+  client folder, as `--path` does. `config edit` deletes a profile taken
+  out of the file as `profiles delete` does, with its state, and moves the
+  state of one renamed (its folder, under a new name). No lock is held
   while the editor is open; instead, saving refuses if the profile or
-  file changed meanwhile, as `kubectl edit` refuses a stale object. The
-  copy is in the cache folder, readable only by the user, and kept when
-  an edit fails or is cancelled after an error, with its path in the
-  hint; otherwise it's removed.
+  file changed meanwhile, as `kubectl edit` refuses a stale object, and
+  saving takes the locks a change to those profiles would, so nothing is
+  edited under a running `update`. Ctrl-C reaches Knapsack from the
+  editor too, so it's ignored while the editor runs, as git ignores it:
+  the editor alone decides when it's done. On Windows the editor runs
+  through `cmd.exe /S /C`, given the command line as it is, since cmd.exe
+  doesn't parse Go's quoting. The copy is next to `config.toml`, which it
+  may hold all of, readable only by the user, and kept when an edit fails,
+  or is cancelled or the editor fails after an invalid try, with its path
+  in the hint; otherwise it's removed.
 - **`profiles delete`** removes the profile and its state file. It never
   touches addon files on disk. If it was the current profile, none is current
   afterwards; Knapsack doesn't guess another.

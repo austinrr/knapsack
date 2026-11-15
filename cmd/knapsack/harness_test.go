@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"html"
@@ -76,6 +77,9 @@ type sandbox struct {
 	// each opening was given.
 	edits []func(string) string
 	shown []string
+	// editorFails is the opening, counting from 1, at which the fake
+	// editor fails, or 0 for none.
+	editorFails int
 }
 
 // editor is the fake editor, run in place of the user's.
@@ -91,6 +95,9 @@ func (s *sandbox) editor(_ context.Context, editor, path string) error {
 	s.shown = append(s.shown, string(data))
 	n := len(s.shown)
 	s.mu.Unlock()
+	if n == s.editorFails {
+		return errors.New("exit status 1")
+	}
 	if n > len(s.edits) {
 		return nil
 	}
