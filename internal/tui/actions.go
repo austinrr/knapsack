@@ -189,7 +189,7 @@ func (m *model) runRemove(refs []ref.Ref) tea.Cmd {
 // so its events are dropped.
 func (m *model) event(e app.Event) {
 	if e.Profile != m.profile || e.Ref == (ref.Ref{}) || m.running == nil ||
-		m.running.kind != jobUpdate && m.running.kind != jobRemove {
+		m.running.kind != jobUpdate && m.running.kind != jobRemove && m.running.kind != jobAdd {
 		return
 	}
 	switch e.Kind {
@@ -221,10 +221,7 @@ func (m *model) applyResults(msg doneMsg) tea.Cmd {
 		return nil
 	}
 	profile, results, err := msg.profile, msg.results, msg.err
-	verb := "update"
-	if msg.kind == jobRemove {
-		verb = "remove"
-	}
+	verb := map[jobKind]string{jobUpdate: "update", jobRemove: "remove", jobAdd: "add"}[msg.kind]
 	k := m.knownFor(profile)
 	counts := map[app.Action]int{}
 	for _, res := range results {
@@ -268,7 +265,7 @@ func (m *model) applyResults(msg doneMsg) tea.Cmd {
 func resultSummary(profile string, counts map[app.Action]int, verb string) string {
 	var parts []string
 	for _, a := range []app.Action{app.ActionUpgraded, app.ActionInstalled, app.ActionAdopted,
-		app.ActionRemoved, app.ActionUpToDate, app.ActionNotInConfig, app.ActionFailed} {
+		app.ActionRemoved, app.ActionUpToDate, app.ActionUnchanged, app.ActionNotInConfig, app.ActionFailed} {
 		if n := counts[a]; n > 0 {
 			parts = append(parts, fmt.Sprintf("%d %s", n, a))
 		}

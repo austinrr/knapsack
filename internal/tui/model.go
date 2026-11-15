@@ -47,6 +47,7 @@ const (
 	jobInfo
 	jobUpdate
 	jobRemove
+	jobAdd
 )
 
 // jobDoneMsg is a job's result, delivered when it finishes.
@@ -132,6 +133,12 @@ type model struct {
 	warnings map[ref.Ref][]string // from installs this session
 	plan     *planModal
 	confirm  *confirmModal
+	add      *addModal
+
+	// openURL opens a page in the browser; blink is whether text cursors
+	// blink. Tests replace the one and turn off the other.
+	openURL func(context.Context, string) error
+	blink   bool
 
 	cursor, offset int
 	filter         textinput.Model
@@ -165,6 +172,8 @@ func newModel(ctx context.Context, a backend, opts Options, b *bus, rep *reporte
 		marks:     map[ref.Ref]bool{},
 		stages:    map[ref.Ref]stage{},
 		warnings:  map[ref.Ref][]string{},
+		openURL:   openBrowser,
+		blink:     true,
 		now:       time.Now,
 		spin:      spin,
 		tickEvery: spinEvery,
@@ -292,10 +301,34 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.filter.SetWidth(max(1, m.width-3))
+		if m.add != nil {
+			m.add.text.SetWidth(max(20, m.width-6))
+		}
 		m.scroll()
 		return m, nil
 	case tea.KeyPressMsg:
 		return m, m.key(msg)
+	case tea.PasteMsg:
+		// Pasted text goes where it's typed: the add dialog or the filter.
+		switch {
+		case m.add != nil:
+			return m, m.addInput(msg)
+		case m.filtering:
+			var cmd tea.Cmd
+			m.filter, cmd = m.filter.Update(msg)
+			m.query = m.filter.Value()
+			m.cursor, m.offset = 0, 0
+			m.scroll()
+			return m, cmd
+		}
+		return m, nil
+	case openedMsg:
+		if msg.err != nil {
+			m.err = msg.err
+		} else {
+			m.flash = "Opened " + msg.what + " in the browser."
+		}
+		return m, nil
 	case tickMsg:
 		m.frame++
 		m.ticking = false
@@ -474,6 +507,8 @@ func (m *model) key(k tea.KeyPressMsg) tea.Cmd {
 		return m.planKey(s)
 	case m.confirm != nil:
 		return m.confirmKey(s)
+	case m.add != nil:
+		return m.addKey(k)
 	case m.filtering:
 		switch s {
 		case "ctrl+c":
@@ -509,14 +544,26 @@ func (m *model) key(k tea.KeyPressMsg) tea.Cmd {
 			m.describing, m.details = false, nil
 			m.dropQueued(jobInfo)
 			return nil
-		case "u", "ctrl+d":
+		case "u", "ctrl+d", "o", "r":
 			for _, r := range m.visible() {
-				if r.Ref == m.describeRef {
-					if s == "u" {
-						return m.update([]row{r})
-					}
-					return m.askRemove([]row{r})
+				if r.Ref != m.describeRef {
+					continue
 				}
+				switch s {
+				case "u":
+					return m.update([]row{r})
+				case "ctrl+d":
+					return m.askRemove([]row{r})
+				case "o":
+					return m.openPage(r.name+"'s page", r.Ref.URL())
+				}
+				// r: the report link of the error describe shows.
+				for _, err := range []error{r.Err, m.infoErr} {
+					if u := app.ReportURL(err, m.opts.Running); u != "" {
+						return m.openPage("the report", u)
+					}
+				}
+				m.flash = "There's no report link: only a source's website answering unexpectedly has one."
 			}
 			return nil
 		}
@@ -558,6 +605,17 @@ func (m *model) addonsKey(s string) (tea.Cmd, bool) {
 		return m.updateAll(), true
 	case "ctrl+d":
 		return m.askRemove(m.targets()), true
+	case "a":
+		if !m.loaded || m.noProfiles || m.loadErr != nil {
+			return nil, true
+		}
+		return m.openAdd(), true
+	case "o":
+		if len(rows) > 0 {
+			r := rows[m.cursor]
+			return m.openPage(r.name+"'s page", r.Ref.URL()), true
+		}
+		return nil, true
 	case "/":
 		m.filtering = true
 		m.filter.SetValue(m.query)

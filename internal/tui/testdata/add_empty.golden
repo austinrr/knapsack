@@ -1,0 +1,24 @@
+ Profile: forever                                                    [1] addons
+ Path:    C:\Program Files (x86)\World of W…\_forever_\Interface\AddOns  ? help
+┌──────────────────────────────── add(forever) ────────────────────────────────┐
+│ Refs or links to add to forever, one per line:                               │
+│                                                                              │
+│ ┃   1 github:owner/repo, or a GitHub, CurseForge or Wago link                │
+│ ┃                                                                            │
+│ ┃                                                                            │
+│ ┃                                                                            │
+│ ┃                                                                            │
+│                                                                              │
+│ [ ] Force: take over folders no addon owns                                   │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ ctrl+s add  tab force box  esc cancel           5 addons · 1 update · 1 failed

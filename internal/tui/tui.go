@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/austinrr/knapsack/internal/app"
+	"github.com/austinrr/knapsack/internal/ref"
 )
 
 // Options are what the TUI needs from main, which builds the App
@@ -35,6 +36,7 @@ type backend interface {
 	Info(ctx context.Context, profile, name string) (app.Details, error)
 	Update(ctx context.Context, sel app.Selector, opts app.UpdateOptions) ([]app.Result, error)
 	Remove(ctx context.Context, profile string, names []string) ([]app.Result, error)
+	Add(ctx context.Context, profile string, refs []ref.Ref, force bool) ([]app.Result, error)
 }
 
 // Run runs the TUI until the user quits or ctx is cancelled.

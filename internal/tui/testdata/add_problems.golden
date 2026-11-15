@@ -1,0 +1,24 @@
+ Profile: forever                                                    [1] addons
+ Path:    C:\Program Files (x86)\World of W…\_forever_\Interface\AddOns  ? help
+┌──────────────────────────────── add(forever) ────────────────────────────────┐
+│ Refs or links to add to forever, one per line:                               │
+│                                                                              │
+│ ┃   1 https://github.com/kemayo/silverdragon                                 │
+│ ┃   2 baganator                                                              │
+│ ┃   3                                                                        │
+│ ┃                                                                            │
+│ ┃                                                                            │
+│ ✗ line 2: invalid addon ref "baganator": want <source>:<id> or a URL, e.g.   │
+│ github:owner/repo                                                            │
+│                                                                              │
+│ [ ] Force: take over folders no addon owns                                   │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ ctrl+s add  tab force box  esc cancel           5 addons · 1 update · 1 failed

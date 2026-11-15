@@ -1457,7 +1457,7 @@ they don't fit, with a last line saying how many more there are.
 | `u` | Update this addon |
 | `ctrl-d` | Remove it, after a confirm, then close describe |
 | `o` | Open its page |
-| `r` | Open the report link, when there is one |
+| `r` | Open the report link, when there is one; otherwise the status line says only a website answering unexpectedly has one |
 
 **Profiles**: NAME (`(*)` for the current one), FLAVOR, ADDONS (how many
 in config) and PATH, from `Profiles`. No update counts: they'd need the
@@ -1597,11 +1597,13 @@ There's no check on a timer.
   updating`. A Force box sets `UpdateOptions.Force`. `enter` runs
   `Update`, which resolves everything again, so the plan never acts on
   stale answers.
-- **Add**: a text area, one ref or URL per line, so a list can be pasted.
-  Each line is parsed with `ref.Parse` on `ctrl-s`; if any fails, the
-  dialog stays open with those lines marked and their errors, and nothing
-  runs, as a malformed ref is a usage error in the CLI (§8.6). A Force box
-  sets `Add`'s `force`.
+- **Add**: a text area with line numbers, one ref or URL per line, so a
+  list can be pasted (a paste goes to the dialog, or to the filter while
+  it's open). Each line is parsed with `ref.Parse` on `ctrl-s`; if any
+  fails, the dialog stays open, says which lines and why (`line 2:
+  invalid addon ref …`), and nothing runs, as a malformed ref is a usage
+  error in the CLI (§8.6). `tab` moves to the Force box, which sets
+  `Add`'s `force`. An empty profile says `a` adds one.
 - **Set key**: `textinput` in password mode, so the key is never drawn.
   `app` validates it as `set-key` does (§8.4). The key is cleared from the
   model once the job is sent, and never appears in a message, the status
@@ -1625,7 +1627,10 @@ and `--prune` flags, and the TUI asks instead.
   it returns, and shows its result or error in the status line.
 - **Browser.** `o` and `r` open a URL with the OS's handler (`open`,
   `xdg-open`, `rundll32 url.dll,FileProtocolHandler`), in a small file per
-  OS. A ref's page comes from `ref.Ref.URL`.
+  OS, without waiting for it or letting it write on the terminal, and
+  without cancelling it on quit, so `o` then `q` still opens the page. A
+  ref's page comes from `ref.Ref.URL`; one that won't open is an error in
+  the status line.
 - **Ctrl-C** arrives as a key, since the terminal is in raw mode. With no
   job that changes anything, it quits, from anywhere, the filter
   included. With one, it asks, and Ctrl-C again answers yes: that
