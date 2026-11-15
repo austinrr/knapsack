@@ -98,7 +98,7 @@ GitHub SDKs (go-github), git libraries, ORMs/SQLite.
 | Tool | Use |
 |---|---|
 | `gofmt` / `goimports` | Formatting (enforced through golangci-lint formatters) |
-| `golangci-lint` v2 | Linting (config in §11). Installed as a binary, as its docs recommend |
+| `golangci-lint` v2 | Linting (config in §11). Pinned as a `tool` in its own module, `tools/lint/go.mod`, so its dependencies are the ones its release was built with. `make lint` runs it, locally and in CI |
 | `govulncheck` | Dependency vulnerability scan. Pinned as a `tool` dependency in `go.mod` |
 | `goreleaser` | Cross-platform release builds. Pinned as a `tool` in its own module, `tools/go.mod`, so its hundreds of dependencies and newer Go requirement stay out of Knapsack's `go.mod` (and off `go install` users). Run with `go -C tools tool -n goreleaser` |
 | `git-cliff` | Changelog and next-version calculation from conventional-commit PR titles. Runs in CI only |
