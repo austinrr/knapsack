@@ -377,7 +377,12 @@ func (s *sandbox) serveFakeGitHub(w http.ResponseWriter, r *http.Request) {
 	}
 	if repo, ok := strings.CutPrefix(r.URL.Path, "/signed/"); ok {
 		repo = strings.TrimSuffix(repo, ".zip")
-		_, _ = w.Write(fakeZip(fakeReleases[repo], s.version(repo)))
+		folders, ok := fakeReleases[repo]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write(fakeZip(folders, s.version(repo)))
 		return
 	}
 	if repo, ok := strings.CutSuffix(strings.TrimPrefix(r.URL.Path, "/repos/"), "/releases/assets/1"); ok {

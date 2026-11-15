@@ -99,7 +99,7 @@ func (s *Source) Resolve(ctx context.Context, id string, f flavor.Flavor) (sourc
 // sees the token. httpx.Download drops it from the redirect.
 func (s *Source) withToken(apiURL string) (dl string, header http.Header, ok bool) {
 	u, err := url.Parse(apiURL)
-	if s.token == "" || err != nil || s.origin == "" || httpx.Origin(u) != s.origin {
+	if s.token == "" || err != nil || u.Scheme == "" || u.Host == "" || httpx.Origin(u) != s.origin {
 		return "", nil, false
 	}
 	return apiURL, http.Header{

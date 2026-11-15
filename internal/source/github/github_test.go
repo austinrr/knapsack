@@ -326,6 +326,7 @@ func TestResolveDownloadWithToken(t *testing.T) {
 		{"token", "secret", "$API/repos/o/r/releases/assets/7", true},
 		{"no token", "", "$API/repos/o/r/releases/assets/7", false},
 		{"asset elsewhere", "secret", "https://api.example.com/repos/o/r/releases/assets/7", false},
+		{"no asset URL", "secret", "", false},
 	} {
 		s, _ := newSource(t, tt.token, h)
 		api = strings.ReplaceAll(tt.assetURL, "$API", s.baseURL)

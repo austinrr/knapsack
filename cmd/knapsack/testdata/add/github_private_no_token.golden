@@ -2,4 +2,4 @@
 # stdout:
 # stderr:
 error: github austinrr/private-addon: no such repository, or it has no releases: not found
-hint: check the ref; a repository with no releases yet counts as not found, as does a private one without a token that can read it (set GITHUB_TOKEN, or log in with `gh auth login`)
+hint: check the ref; a repository with no releases yet counts as not found, as does a private one the token can't read. Knapsack uses GITHUB_TOKEN, then GH_TOKEN, then `gh auth token`; `knapsack sources list` shows which

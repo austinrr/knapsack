@@ -833,7 +833,10 @@ command carries on.
    `httpx.Download` drops the token from the redirect, which goes to
    another origin, and the token goes only to the API's own origin. With
    a token, public assets download the same way; without one, from
-   `browser_download_url` as before.
+   `browser_download_url` as before. The download is then an API request
+   too, one of the token's 5,000 an hour, so a refused download gets the
+   source error a refused lookup would (401 unauthorized, 404 not found,
+   429 or a spent 403 rate limited), and its hint.
 5. A 404 is `ErrNotFound` (GitHub also answers 404 for a repo with no
    releases, and for a private one without a token that can read it,
    which the hint says), 401 is `ErrUnauthorized`, and 429, or 403 with no requests left

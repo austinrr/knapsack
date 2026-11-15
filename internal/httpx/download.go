@@ -30,6 +30,8 @@ var (
 type StatusError struct {
 	URL        string
 	StatusCode int
+	// Header is the response's, such as a rate limit's.
+	Header http.Header
 }
 
 func (e *StatusError) Error() string {
@@ -103,7 +105,7 @@ func download(ctx context.Context, c *http.Client, url string, header http.Heade
 	}
 	defer func() { _ = resp.Body.Close() }() // read-only; nothing to flush
 	if resp.StatusCode != http.StatusOK {
-		return "", "", &StatusError{URL: url, StatusCode: resp.StatusCode}
+		return "", "", &StatusError{URL: url, StatusCode: resp.StatusCode, Header: resp.Header}
 	}
 	if resp.ContentLength > lim.size {
 		return "", "", fmt.Errorf("download %s: %w (%d bytes)", url, ErrTooLarge, resp.ContentLength)

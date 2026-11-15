@@ -2,7 +2,9 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"slices"
 	"strings"
@@ -257,10 +259,31 @@ func (a *App) fetch(ctx context.Context, s *session, r ref.Ref, mode fetchMode) 
 		a.report(Event{Kind: EventProgress, Profile: s.name, Ref: r, Version: rel.Version, Done: done, Total: total})
 	}
 	f.path, f.sum, f.err = httpx.Download(ctx, a.http, rel.DownloadURL, rel.Header, a.paths.CacheDir, rel.SHA256, progress)
+	f.err = downloadError(f.err)
 	if f.err == nil && had {
 		f.current = f.sum == installed.SHA256
 	}
 	return f
+}
+
+// downloadError gives a download the source refused the source error it
+// means, so it gets the hint a refused lookup would: a download can be
+// the source's API too, as a GitHub asset with a token is.
+func downloadError(err error) error {
+	var se *httpx.StatusError
+	if !errors.As(err, &se) {
+		return err
+	}
+	switch code := se.StatusCode; {
+	case code == http.StatusUnauthorized:
+		return fmt.Errorf("%w: %w", err, source.ErrUnauthorized)
+	case code == http.StatusNotFound:
+		return fmt.Errorf("%w: %w", err, source.ErrNotFound)
+	case code == http.StatusTooManyRequests,
+		code == http.StatusForbidden && (se.Header.Get("X-RateLimit-Remaining") == "0" || se.Header.Get("Retry-After") != ""):
+		return fmt.Errorf("%w: %w", err, source.ErrRateLimited)
+	}
+	return err
 }
 
 // installAll fetches refs in parallel, then installs them one at a time,
