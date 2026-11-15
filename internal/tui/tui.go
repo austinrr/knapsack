@@ -33,6 +33,8 @@ type backend interface {
 	Profiles(ctx context.Context) ([]app.ProfileInfo, error)
 	List(ctx context.Context, sel app.Selector, opts app.ListOptions) (app.Listing, error)
 	Info(ctx context.Context, profile, name string) (app.Details, error)
+	Update(ctx context.Context, sel app.Selector, opts app.UpdateOptions) ([]app.Result, error)
+	Remove(ctx context.Context, profile string, names []string) ([]app.Result, error)
 }
 
 // Run runs the TUI until the user quits or ctx is cancelled.
@@ -40,7 +42,8 @@ func Run(ctx context.Context, opts Options) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	b := &bus{}
-	m := newModel(ctx, opts.NewApp(app.NopReporter{}), opts, b)
+	rep := newReporter(b)
+	m := newModel(ctx, opts.NewApp(rep), opts, b, rep)
 	p := tea.NewProgram(m, tea.WithContext(ctx))
 	b.set(p.Send)
 	_, err := p.Run()

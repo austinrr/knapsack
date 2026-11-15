@@ -18,10 +18,15 @@ type row struct {
 
 // visible is the rows shown: the profile's rows with what's known laid
 // over them, narrowed by the filter.
-func (m *model) visible() []row {
+func (m *model) visible() []row { return m.rowsMatching(m.query) }
+
+// allRows is every row, whatever the filter shows.
+func (m *model) allRows() []row { return m.rowsMatching("") }
+
+func (m *model) rowsMatching(query string) []row {
 	k := m.known[m.profile]
 	names := uniqueNames(m.rows)
-	q := strings.ToLower(m.query)
+	q := strings.ToLower(query)
 	var out []row
 	for i, in := range m.rows {
 		if kn, ok := k[in.Ref]; ok {

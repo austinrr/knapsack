@@ -1387,8 +1387,10 @@ does. Like the CLI, it never decides anything itself: every action is one
   with the current one bracketed and highlighted, and `? help`.
 - **Footer**: the current view's most-used keys on the left; `?` lists
   all of them. On the right, the status: counts after a check, the last
-  result, or an error with its hint, in red. When they don't all fit,
-  hints are left out whole, from the end.
+  result, or an error with its hint, in red. A result ("forever: 1
+  upgraded") is said until the next key, as k9s flashes it; a job's
+  error stays until the next action, so a reload can't hide it. When
+  they don't all fit, hints are left out whole, from the end.
 - **A newer Knapsack release** is said after quitting, by the same
   notice as any command's (§8.4), since the daily check runs while the
   TUI does; the TUI doesn't say it again inside.
@@ -1433,11 +1435,11 @@ add).
 |---|---|
 | `enter` | Describe the addon |
 | `a` | Add dialog (§9.5) |
-| `u` | Update the marked addons, or the cursor's when none are |
+| `u` | Update the marked addons, or the cursor's when none are: at once when each simply has a newer release, else through the plan. Addons known to be up to date are left alone, without the network; the status line says `c` checks again |
 | `U` | Update all: the plan modal (§9.5) first |
 | `ctrl-d` | Remove the marked addons, or the cursor's, after a confirm listing their folders |
 | `c` | Check again: forget what's known and ask every source (§9.4) |
-| `space` | Mark or unmark the row (`●`) |
+| `space` | Mark or unmark the row (`●`). Marks on rows the filter hides still count; the remove confirm lists every addon it removes |
 | `ctrl-\` | Clear marks |
 | `o` | Open the addon's page in the browser |
 | `e` | Edit the profile in the editor, as `profiles edit` does (§9.6) |
@@ -1536,8 +1538,10 @@ lives in one place.
 
 **Jobs.** Every `app` call runs in a `tea.Cmd`, never in `Update`.
 The same work isn't queued twice: `c` while a check is running or
-queued does nothing, and opening describe on another addon, or closing
-it, drops a queued `Info`.
+queued does nothing, an addon already in an update or remove is left
+out of the next one, and opening describe on another addon, or closing
+it, drops a queued `Info`. A job ending clears only its own rows'
+stages, so one still queued keeps showing `queued`.
 They run **one at a time**, in the order started, because profile locks
 are file locks: a second lock on a profile from the same process fails
 as `in use by another knapsack process`, just as from another one
@@ -1553,7 +1557,12 @@ running at that moment would fail. It reloads, from config, state and
 AddOns, without the network, after each job, after the editor closes,
 on switching profile or view, and on `c`.
 
-**Reporter.** `tui`'s `app.Reporter` sends each event to the program
+**Reporter.** A row's stage (queued, resolving, downloading with
+bytes, installing, removing) comes from the events of the update or
+remove running; a check reports the same steps, but its rows say
+`checking` instead, so its events are dropped. When a job ends, the
+status line says what it did, as the CLI's summary does: `forever: 1
+upgraded, 1 failed`. `tui`'s `app.Reporter` sends each event to the program
 (`Program.Send`, safe from any goroutine). `httpx` reports progress on
 every read, so `EventProgress` is coalesced: the reporter keeps the
 latest per addon and sends them on a 100 ms tick, as the CLI's bar

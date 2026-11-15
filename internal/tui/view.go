@@ -131,7 +131,8 @@ func (m *model) box(height int) []string {
 // scroll when they don't fit (bodyOffset); the table scrolls by its
 // cursor instead.
 func (m *model) scrollable() bool {
-	return m.help || m.describing && m.loaded && !m.noProfiles && m.loadErr == nil
+	return m.help || m.plan != nil || m.confirm != nil ||
+		m.describing && m.loaded && !m.noProfiles && m.loadErr == nil
 }
 
 // bodyHeight is how many lines the box holds inside its borders.
@@ -173,6 +174,21 @@ func (m *model) content(width, height int) (string, []string) {
 				", then open knapsack tui again.")
 	case m.loadErr != nil:
 		return accentStyle.Render("addons"), errorLines(width, m.loadErr, m.opts.Running)
+	case m.plan != nil:
+		lines, _ := m.planLines(width)
+		return accentStyle.Render("update") + "(" + m.profile + ")", lines
+	case m.confirm != nil:
+		lines := wrap(width, warnStyle.Render(m.confirm.question), "")
+		for _, p := range m.confirm.lines {
+			for i, l := range wrap(width-4, p) {
+				indent := "  "
+				if i > 0 {
+					indent = "    " // a paragraph's own lines, under its name
+				}
+				lines = append(lines, indent+l)
+			}
+		}
+		return accentStyle.Render(m.confirm.title) + "(" + m.profile + ")", lines
 	case m.describing:
 		return m.describe(width)
 	}
@@ -193,7 +209,11 @@ func (m *model) table(width, height int) (string, []string) {
 	if len(m.rows) == 0 {
 		msg := "No addons in " + m.profile + "."
 		if m.hidden > 0 {
-			msg += fmt.Sprintf(" %s in AddOns weren't installed by Knapsack.", count(m.hidden, "folder"))
+			verb := "weren't"
+			if m.hidden == 1 {
+				verb = "wasn't"
+			}
+			msg += fmt.Sprintf(" %s in AddOns %s installed by Knapsack.", count(m.hidden, "folder"), verb)
 		}
 		return title, wrap(width, msg, "", "Add one with "+boldStyle.Render("knapsack add <ref or URL>")+".")
 	}
@@ -219,35 +239,57 @@ func (m *model) table(width, height int) (string, []string) {
 		for j, c := range cells[i] {
 			widths[j] = max(widths[j], ansi.StringWidth(c))
 		}
+		// A row in a job shows its stage instead, spanning both columns
+		// without widening either.
+		if st, ok := m.stages[r.Ref]; ok {
+			cells[i][2], cells[i][3] = "", m.spinner()+" "+st.String()
+		}
 	}
 	// NAME gives way when the rest don't fit, down to minName; past that,
 	// the columns on the right are cut instead, since the name matters
 	// most.
 	const gap, minName = 3, 16
+	// Each line starts with a mark column: ● for a marked row.
+	width -= 2
 	rest := 0
 	for _, w := range widths[1:] {
 		rest += w + gap
 	}
 	widths[0] = max(min(widths[0], minName), min(widths[0], width-rest))
 
-	line := func(cs []string, style func(j int, s string) string) string {
-		parts := make([]string, len(cs))
-		for j, c := range cs {
-			c = ansi.Truncate(c, widths[j], "…")
-			parts[j] = style(j, pad(c, widths[j]))
+	// A row in a job spans AVAILABLE and STATUS, so its stage needn't
+	// widen either.
+	spanned := widths[2] + gap + widths[3]
+	line := func(mark string, cs []string, style func(j int, s string) string) string {
+		parts := make([]string, 0, len(cs))
+		for j := 0; j < len(cs); j++ {
+			w := widths[j]
+			if j == 2 && cs[2] == "" && ansi.StringWidth(cs[3]) > widths[3] {
+				parts = append(parts, style(3, pad(ansi.Truncate(cs[3], spanned, "…"), spanned)))
+				j++
+				continue
+			}
+			parts = append(parts, style(j, pad(ansi.Truncate(cs[j], w, "…"), w)))
 		}
-		return ansi.Truncate(strings.Join(parts, strings.Repeat(" ", gap)), width, "…")
+		return mark + ansi.Truncate(strings.Join(parts, strings.Repeat(" ", gap)), width, "…")
 	}
-	lines := []string{line(headers, func(_ int, s string) string { return boldStyle.Render(s) })}
+	lines := []string{line("  ", headers, func(_ int, s string) string { return boldStyle.Render(s) })}
 	page := height - 1
 	for i := m.offset; i < len(all) && i < m.offset+page; i++ {
 		r := all[i]
+		mark := "  "
+		if m.marks[r.Ref] {
+			mark = accentStyle.Render("●") + " "
+		}
 		if i == m.cursor {
-			lines = append(lines, cursorStyle.Render(pad(line(cells[i], plain), width)))
+			lines = append(lines, mark+cursorStyle.Render(pad(ansi.Strip(line("", cells[i], plain)), width)))
 			continue
 		}
-		lines = append(lines, line(cells[i], func(j int, s string) string {
+		lines = append(lines, line(mark, cells[i], func(j int, s string) string {
 			if j == 3 {
+				if _, busy := m.stages[r.Ref]; busy {
+					return faintStyle.Render(s)
+				}
 				if st, ok := statusStyles[r.Status]; ok {
 					return st.Render(s)
 				}
@@ -307,7 +349,13 @@ func (m *model) describe(width int) (string, []string) {
 	if st, ok := statusStyles[r.Status]; ok {
 		status = st.Render(glyph(r.Status) + " " + status)
 	}
+	if st, ok := m.stages[r.Ref]; ok {
+		status = faintStyle.Render(m.spinner() + " " + st.String())
+	}
 	field("Status", status)
+	for _, w := range m.warnings[r.Ref] {
+		lines = append(lines, strings.Repeat(" ", 12)+warnStyle.Render("warning: ")+w)
+	}
 	// Why the check or Info failed comes first, under the status it
 	// explains, so a long list of folders never pushes it out of view.
 	for _, err := range []error{r.Err, m.infoErr} {
@@ -367,11 +415,18 @@ func (m *model) helpLines(width int) []string {
 	}
 	lines := section("Addons",
 		key{"enter", "describe the addon"},
+		key{"u", "update the marked addons, or this one"},
+		key{"U", "update all: shows the plan first"},
+		key{"ctrl+d", "remove the marked addons, or this one"},
+		key{"space", "mark or unmark the addon"},
+		key{"ctrl+\\", "clear marks"},
 		key{"c", "check every addon again"},
 		key{"/", "filter by name, ref or source"},
 		key{"esc", "clear the filter"},
 	)
 	lines = append(lines, section("Describe",
+		key{"u", "update this addon"},
+		key{"ctrl+d", "remove it"},
 		key{"esc", "back to addons"},
 		key{"j k", "scroll, when it doesn't fit"},
 	)...)
@@ -401,10 +456,15 @@ func (m *model) footer() string {
 		keys = []string{"q", "quit"}
 	case m.loadErr != nil:
 		keys = []string{"c", "try again", "q", "quit"}
+	case m.plan != nil:
+		keys = []string{"enter", "update", "space", "check box", "j k", "move", "esc", "cancel"}
+	case m.confirm != nil:
+		keys = []string{"y", m.confirm.yes, "n", "cancel"}
 	case m.describing:
-		keys = []string{"esc", "back", "j k", "scroll", "q", "quit"}
+		keys = []string{"u", "update", "ctrl+d", "remove", "esc", "back", "j k", "scroll"}
 	default:
-		keys = []string{"enter", "describe", "c", "check", "/", "filter", "?", "help", "q", "quit"}
+		keys = []string{"u", "update", "U", "update all", "enter", "describe", "ctrl+d", "remove",
+			"space", "mark", "c", "check", "/", "filter", "?", "help"}
 	}
 	// The status comes first; hints that don't fit beside it are left
 	// out whole, from the end, since ? lists them all anyway.
@@ -440,6 +500,8 @@ func (m *model) status() string {
 		return ""
 	case m.running != nil && m.running.kind != jobCheck && len(m.checking) == 0:
 		return faintStyle.Render(m.spinner() + " " + m.running.name)
+	case m.flash != "":
+		return m.flash
 	}
 	return faintStyle.Render(m.summary(m.visible()))
 }

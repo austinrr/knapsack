@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -34,6 +37,68 @@ type fake struct {
 	checkErr error
 	infoErr  error
 	calls    []string
+	// rep is the TUI's reporter, which Update reports to as the App's
+	// does; failed are the addons Update fails, with why.
+	rep       *reporter
+	failed    map[ref.Ref]error
+	updateErr error // Update fails as a whole
+}
+
+// Update installs each named addon at the version its check found,
+// reporting each step, and changes the rows as the App's state would.
+func (f *fake) Update(_ context.Context, sel app.Selector, opts app.UpdateOptions) ([]app.Result, error) {
+	p := sel.Profiles[0]
+	f.calls = append(f.calls, fmt.Sprintf("update %s %v prune=%v force=%v", p, sel.Addons, opts.Prune, opts.Force))
+	if f.updateErr != nil {
+		return nil, f.updateErr
+	}
+	var out []app.Result
+	for _, name := range sel.Addons {
+		r, _ := ref.Parse(name)
+		i := slices.IndexFunc(f.local, func(in app.Installed) bool { return in.Ref == r })
+		res := app.Result{Profile: p, Name: name, Ref: r}
+		f.rep.Event(app.Event{Kind: app.EventResolving, Profile: p, Ref: r})
+		switch {
+		case f.failed[r] != nil:
+			res.Action, res.Err = app.ActionFailed, f.failed[r]
+			f.rep.Event(app.Event{Kind: app.EventFailed, Profile: p, Ref: r, Err: res.Err})
+		case f.local[i].Status == app.StatusNotInConfig:
+			res.Action = app.ActionRemoved
+			f.local = slices.Delete(f.local, i, i+1)
+			f.checked = slices.DeleteFunc(f.checked, func(in app.Installed) bool { return in.Ref == r })
+			f.rep.Event(app.Event{Kind: app.EventRemoved, Profile: p, Ref: r})
+		default:
+			version := "1.0"
+			if c := slices.IndexFunc(f.checked, func(in app.Installed) bool { return in.Ref == r }); c >= 0 && f.checked[c].Available != "" {
+				version = f.checked[c].Available
+			}
+			res.Action, res.Version = app.ActionUpgraded, version
+			if f.local[i].Status == app.StatusMissing {
+				res.Action = app.ActionInstalled
+				f.local[i].Status = app.StatusInstalled
+			}
+			f.local[i].Version = version
+			f.rep.Event(app.Event{Kind: app.EventDownloading, Profile: p, Ref: r})
+			f.rep.Event(app.Event{Kind: app.EventProgress, Profile: p, Ref: r, Done: 1 << 20, Total: 2 << 20})
+			f.rep.Event(app.Event{Kind: app.EventInstalled, Profile: p, Ref: r, Version: version})
+		}
+		out = append(out, res)
+	}
+	return out, nil
+}
+
+// Remove uninstalls each named addon.
+func (f *fake) Remove(_ context.Context, profile string, names []string) ([]app.Result, error) {
+	f.calls = append(f.calls, fmt.Sprintf("remove %s %v", profile, names))
+	var out []app.Result
+	for _, name := range names {
+		r, _ := ref.Parse(name)
+		f.local = slices.DeleteFunc(f.local, func(in app.Installed) bool { return in.Ref == r })
+		f.checked = slices.DeleteFunc(f.checked, func(in app.Installed) bool { return in.Ref == r })
+		f.rep.Event(app.Event{Kind: app.EventRemoved, Profile: profile, Ref: r})
+		out = append(out, app.Result{Profile: profile, Name: name, Ref: r, Action: app.ActionRemoved})
+	}
+	return out, nil
 }
 
 func (f *fake) CurrentProfile(context.Context) (string, error) {
@@ -62,10 +127,17 @@ func (f *fake) List(_ context.Context, sel app.Selector, opts app.ListOptions) (
 		pending[i] = r
 	}
 	opts.Watch.Listed(pending)
+	// A check reports each addon's steps, as the App's does.
+	for _, r := range pending {
+		if r.Status == app.StatusChecking {
+			f.rep.Event(app.Event{Kind: app.EventResolving, Profile: p, Ref: r.Ref})
+		}
+	}
 	if f.checkErr != nil {
 		return app.Listing{}, f.checkErr
 	}
 	for i, r := range f.checked {
+		f.rep.Event(app.Event{Kind: app.EventChecked, Profile: p, Ref: r.Ref})
 		opts.Watch.Finished(p, i, r)
 	}
 	return app.Listing{Addons: f.checked, Hidden: f.hidden}, nil
@@ -102,10 +174,15 @@ func newHarness(t *testing.T, f *fake, opts Options) *harness {
 	if opts.Running == "" {
 		opts.Running = "v0.0.0-test on testos/testarch"
 	}
-	h.m = newModel(context.Background(), f, opts, b)
+	f.rep = newReporter(b)
+	h.m = newModel(context.Background(), f, opts, b, f.rep)
 	h.m.tickEvery = 0
 	h.m.spin = spinnerDots // the same frames on every OS
 	h.m.now = func() time.Time { return now }
+	// The filter's cursor blink sleeps; the harness runs commands at once.
+	st := h.m.filter.Styles()
+	st.Cursor.Blink = false
+	h.m.filter.SetStyles(st)
 	h.send(tea.WindowSizeMsg{Width: 80, Height: 24})
 	h.run(h.m.Init())
 	return h
@@ -128,6 +205,30 @@ func (h *harness) run(cmd tea.Cmd) {
 	}
 	if _, ok := msg.(tea.QuitMsg); ok {
 		h.quit = true
+		return
+	}
+	sent := h.sent
+	h.sent = nil
+	for _, s := range sent {
+		h.send(s)
+	}
+	if msg != nil {
+		h.send(msg)
+	}
+}
+
+// step runs the first held command and delivers its result, holding any
+// commands that follows from it: the next job, say.
+func (h *harness) step() {
+	h.t.Helper()
+	if len(h.pending) == 0 {
+		h.t.Fatal("no command to step")
+	}
+	c := h.pending[0]
+	h.pending = h.pending[1:]
+	msg := c()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		h.pending = append(append([]tea.Cmd(nil), batch...), h.pending...)
 		return
 	}
 	sent := h.sent
@@ -169,6 +270,12 @@ func (h *harness) keys(keys ...string) {
 			msg = tea.KeyPressMsg{Code: tea.KeyBackspace}
 		case "ctrl+c":
 			msg = tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}
+		case "ctrl+d":
+			msg = tea.KeyPressMsg{Code: 'd', Mod: tea.ModCtrl}
+		case `ctrl+\`:
+			msg = tea.KeyPressMsg{Code: '\\', Mod: tea.ModCtrl}
+		case "space":
+			msg = tea.KeyPressMsg{Code: ' ', Text: " "}
 		default:
 			r := []rune(k)[0]
 			msg = tea.KeyPressMsg{Code: r, Text: k}
@@ -649,5 +756,374 @@ func TestInfoNotQueuedTwice(t *testing.T) {
 	want := []string{"list forever", "check forever", "info forever " + plater.String()}
 	if diff := cmp.Diff(want, f.calls); diff != "" {
 		t.Errorf("calls (-want +got):\n%s", diff)
+	}
+}
+
+// u on an addon with an update installs it at once, with no plan; then
+// what's known says it's up to date, and the profile is read again.
+func TestUpdateOne(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	h := newHarness(t, f, Options{})
+	f.calls = nil
+	h.keys("u")
+	want := []string{
+		"update forever [" + baganator.String() + "] prune=false force=false",
+		"list forever",
+	}
+	if diff := cmp.Diff(want, f.calls); diff != "" {
+		t.Errorf("calls (-want +got):\n%s", diff)
+	}
+	h.golden("updated_one")
+}
+
+// An addon known to be up to date isn't updated: u says so, and c checks
+// again.
+func TestUpdateUpToDate(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	h := newHarness(t, f, Options{})
+	f.calls = nil
+	h.keys("j", "u")
+	if len(f.calls) != 0 {
+		t.Errorf("calls = %v, want none", f.calls)
+	}
+	if want := "Details! is up to date; c checks again."; h.m.flash != want {
+		t.Errorf("flash = %q, want %q", h.m.flash, want)
+	}
+}
+
+// U shows the plan, from what's known; a prune box and Force can be
+// checked, and enter updates exactly what the plan lists.
+func TestUpdateAll(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	h := newHarness(t, f, Options{})
+	// U plans for every addon, not only those the filter shows.
+	h.keys("/", "b", "a", "g", "enter")
+	f.calls = nil
+	h.keys("U")
+	h.golden("plan")
+	h.keys("space", "j", "space")
+	h.golden("plan_checked")
+	h.keys("enter")
+	want := []string{
+		fmt.Sprintf("update forever [%s %s %s %s] prune=true force=true", baganator, plater, leatrix, weak),
+		"list forever",
+	}
+	if diff := cmp.Diff(want, f.calls); diff != "" {
+		t.Errorf("calls (-want +got):\n%s", diff)
+	}
+	h.keys("esc") // the filter
+	h.golden("updated_all")
+}
+
+// Unchecked, a prune candidate isn't named, so it stays installed, as
+// update without --prune leaves it; esc runs nothing.
+func TestUpdatePlanNoPrune(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	h := newHarness(t, f, Options{})
+	f.calls = nil
+	h.keys("U", "esc")
+	if len(f.calls) != 0 || h.m.plan != nil {
+		t.Fatalf("esc: calls %v, plan open %v; want neither", f.calls, h.m.plan != nil)
+	}
+	h.keys("U", "enter")
+	want := fmt.Sprintf("update forever [%s %s %s] prune=false force=false", baganator, plater, leatrix)
+	if len(f.calls) == 0 || f.calls[0] != want {
+		t.Errorf("calls = %v, want %q first", f.calls, want)
+	}
+}
+
+// Marked rows that aren't all simply outdated go through the plan, which
+// lists only them. Marks are cleared once the update starts.
+func TestUpdateMarked(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	h := newHarness(t, f, Options{})
+	f.calls = nil
+	h.keys("space", "j", "j", "space")
+	h.golden("marked")
+	h.keys("u")
+	if h.m.plan == nil || len(h.m.plan.items) != 2 {
+		t.Fatalf("plan = %+v, want Baganator's upgrade and Leatrix's install", h.m.plan)
+	}
+	h.keys("enter")
+	if want := fmt.Sprintf("update forever [%s %s] prune=false force=false", baganator, leatrix); f.calls[0] != want {
+		t.Errorf("calls[0] = %q, want %q", f.calls[0], want)
+	}
+	if len(h.m.marks) != 0 {
+		t.Errorf("marks after updating = %v, want none", h.m.marks)
+	}
+	h.keys("space", "space", `ctrl+\`)
+	if len(h.m.marks) != 0 {
+		t.Errorf("marks after ctrl+\\ = %v, want none", h.m.marks)
+	}
+}
+
+// An addon that fails to update shows why in describe.
+func TestUpdateFailed(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	f.failed = map[ref.Ref]error{baganator: &app.UserError{
+		Msg:  "github austinrr/baganator-mirror: rate limited",
+		Hint: "set GITHUB_TOKEN, or log in with `gh auth login`",
+	}}
+	h := newHarness(t, f, Options{})
+	h.keys("u")
+	if want := "forever: 1 failed"; h.m.flash != want {
+		t.Errorf("flash = %q, want %q", h.m.flash, want)
+	}
+	h.keys("enter")
+	h.golden("update_failed_describe")
+}
+
+// ctrl+d asks first, naming the folders it deletes; n cancels, y removes.
+// From describe, removing goes back to the table.
+func TestRemove(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	h := newHarness(t, f, Options{})
+	f.calls = nil
+	h.keys("ctrl+d")
+	h.golden("confirm_remove")
+	h.keys("n")
+	if len(f.calls) != 0 || h.m.confirm != nil {
+		t.Fatalf("n: calls %v, question open %v; want neither", f.calls, h.m.confirm != nil)
+	}
+	h.keys("enter", "ctrl+d", "y")
+	want := []string{"info forever " + baganator.String(), "remove forever [" + baganator.String() + "]", "list forever"}
+	if diff := cmp.Diff(want, f.calls); diff != "" {
+		t.Errorf("calls (-want +got):\n%s", diff)
+	}
+	if h.m.describing {
+		t.Error("still describing a removed addon")
+	}
+	if _, ok := h.m.known["forever"][baganator]; ok {
+		t.Error("what was known about the removed addon wasn't forgotten")
+	}
+	h.golden("removed")
+}
+
+// A row in a job shows its stage, with download progress taken from the
+// reporter on the spinner's tick, the latest only.
+func TestProgress(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	h := newHarness(t, f, Options{})
+	h.m.running = &job{kind: jobUpdate, name: "updating", writes: true}
+	h.m.stages[leatrix] = stage{what: "queued"}
+	h.send(eventMsg{app.Event{Kind: app.EventResolving, Profile: "forever", Ref: plater}})
+	h.send(eventMsg{app.Event{Kind: app.EventDownloading, Profile: "forever", Ref: baganator}})
+	for _, done := range []int64{100 << 10, 900 << 10, 1258291} {
+		f.rep.Event(app.Event{Kind: app.EventProgress, Profile: "forever", Ref: baganator, Done: done, Total: 4718592})
+	}
+	h.send(tickMsg{})
+	h.golden("progress")
+	f.rep.Event(app.Event{Kind: app.EventProgress, Profile: "forever", Ref: baganator, Done: 4718592, Total: 4718592})
+	h.send(tickMsg{})
+	if got := h.m.stages[baganator].String(); got != "installing" {
+		t.Errorf("stage once downloaded = %q, want installing", got)
+	}
+}
+
+// The reporter is used from many goroutines at once: progress is
+// coalesced to the latest for each addon, and any other event for an
+// addon drops its pending progress and is sent at once.
+func TestReporterCoalesces(t *testing.T) {
+	t.Parallel()
+	var mu sync.Mutex
+	var sent []tea.Msg
+	b := &bus{}
+	b.set(func(msg tea.Msg) { mu.Lock(); sent = append(sent, msg); mu.Unlock() })
+	r := newReporter(b)
+	refs := []ref.Ref{baganator, details, plater}
+	var wg sync.WaitGroup
+	for _, x := range refs {
+		for n := range 50 {
+			wg.Go(func() {
+				r.Event(app.Event{Kind: app.EventProgress, Profile: "forever", Ref: x, Done: int64(n), Total: 100})
+			})
+		}
+	}
+	wg.Wait()
+	r.Event(app.Event{Kind: app.EventInstalled, Profile: "forever", Ref: plater})
+	got := r.drain()
+	if len(got) != 2 {
+		t.Fatalf("drained %d events, want the latest for Baganator and Details!", len(got))
+	}
+	for _, e := range got {
+		if e.Kind != app.EventProgress || e.Ref == plater {
+			t.Errorf("drained %+v, want only progress, none for Plater", e)
+		}
+	}
+	if len(r.drain()) != 0 {
+		t.Error("a second drain returned progress again")
+	}
+	if len(sent) != 1 || sent[0].(eventMsg).Kind != app.EventInstalled {
+		t.Errorf("sent %v, want only Plater's Installed", sent)
+	}
+}
+
+func TestStageString(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		s    stage
+		want string
+	}{
+		{stage{what: "resolving"}, "resolving"},
+		{stage{what: "downloading"}, "downloading"},
+		{stage{what: "downloading", done: 1258291, total: 4718592}, "downloading 1.2 of 4.5 MiB"},
+		{stage{what: "downloading", done: 900 << 10, total: 4718592}, "downloading 900.0 KiB of 4.5 MiB"},
+		{stage{what: "downloading", done: 512, total: -1}, "downloading 512 B"},
+		{stage{what: "downloading", done: 4718592, total: 4718592}, "installing"},
+	} {
+		if got := tt.s.String(); got != tt.want {
+			t.Errorf("%+v = %q, want %q", tt.s, got, tt.want)
+		}
+	}
+}
+
+// An update that fails as a whole keeps its error in the status line
+// after the reload, and doesn't claim there was nothing to update.
+func TestUpdateErrorKept(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	f.updateErr = &app.UserError{
+		Msg:  `profile "forever" is in use by another knapsack process`,
+		Hint: "wait for it to finish",
+	}
+	h := newHarness(t, f, Options{})
+	h.keys("u")
+	if h.m.err == nil || h.m.flash != "" {
+		t.Fatalf("after the reload: err %v, flash %q; want the error and no flash", h.m.err, h.m.flash)
+	}
+	if got := ansi.Strip(h.m.status()); !strings.Contains(got, "in use by another knapsack process") {
+		t.Errorf("status = %q, want the error", got)
+	}
+	// The next action clears it.
+	f.updateErr = nil
+	h.keys("u")
+	if h.m.err != nil {
+		t.Errorf("err after updating again = %v, want none", h.m.err)
+	}
+}
+
+// One job ending leaves the stages of the next, still queued.
+func TestQueuedStageKept(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, sample(), Options{})
+	h.hold = true
+	h.keys("u")                // Baganator's update, running
+	h.keys("j", "ctrl+d", "y") // Details!'s remove, queued behind it
+	if got := h.m.stages[details].what; got != "removing" {
+		t.Fatalf("Details! stage = %q, want removing", got)
+	}
+	h.step() // the update finishes
+	if _, ok := h.m.stages[baganator]; ok {
+		t.Error("Baganator still shows a stage after its update")
+	}
+	if got := h.m.stages[details].what; got != "removing" {
+		t.Errorf("Details! stage after the update = %q, want removing still", got)
+	}
+}
+
+// A row already in a job isn't queued again.
+func TestNotQueuedTwice(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	h := newHarness(t, f, Options{})
+	f.calls = nil
+	h.hold = true
+	h.keys("u", "u", "ctrl+d")
+	if h.m.confirm != nil {
+		t.Error("ctrl+d asked to remove an addon that's updating")
+	}
+	if want := "Already in progress."; h.m.flash != want {
+		t.Errorf("flash = %q, want %q", h.m.flash, want)
+	}
+	h.release()
+	if diff := cmp.Diff([]string{"update forever [" + baganator.String() + "] prune=false force=false", "list forever"}, f.calls); diff != "" {
+		t.Errorf("calls (-want +got):\n%s", diff)
+	}
+}
+
+// Drawing the remove confirm in a narrow window doesn't shorten its list
+// of folders for a wider one.
+func TestConfirmKeepsLines(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	f.local[0].Folders = []string{"Baganator", "Baganator_Categories", "Baganator_Sorting", "Baganator_Themes"}
+	f.checked[0].Folders = f.local[0].Folders
+	h := newHarness(t, f, Options{})
+	h.keys("ctrl+d")
+	before := slices.Clone(h.m.confirm.lines)
+	h.send(tea.WindowSizeMsg{Width: minWidth, Height: minHeight})
+	h.m.render()
+	h.send(tea.WindowSizeMsg{Width: 80, Height: 24})
+	if diff := cmp.Diff(before, h.m.confirm.lines); diff != "" {
+		t.Errorf("confirm lines changed by drawing (-before +after):\n%s", diff)
+	}
+	h.golden("confirm_remove_folders")
+}
+
+// Marks on rows the filter hides still count: ctrl+d asks about the
+// marked addon, not the row under the cursor.
+func TestMarksHiddenByFilter(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, sample(), Options{})
+	h.keys("space", "/", "p", "l", "a", "t", "enter", "ctrl+d")
+	if h.m.confirm == nil || !strings.Contains(h.m.confirm.question, "Baganator") {
+		t.Fatalf("confirm = %+v, want it to ask about the marked Baganator", h.m.confirm)
+	}
+}
+
+// Updating the addon being described reads its details again.
+func TestDescribeRefreshedAfterUpdate(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	h := newHarness(t, f, Options{})
+	h.keys("enter")
+	f.calls = nil
+	h.keys("u")
+	want := []string{
+		"update forever [" + baganator.String() + "] prune=false force=false",
+		"list forever",
+		"info forever " + baganator.String(),
+	}
+	if diff := cmp.Diff(want, f.calls); diff != "" {
+		t.Errorf("calls (-want +got):\n%s", diff)
+	}
+}
+
+// An addon's warnings are its last install's: a new update starts afresh.
+func TestWarningsReset(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, sample(), Options{})
+	h.m.running = &job{kind: jobUpdate, writes: true}
+	warn := func(msg string) {
+		h.send(eventMsg{app.Event{Kind: app.EventWarned, Profile: "forever", Ref: baganator, Message: msg}})
+	}
+	warn("built for an older Interface")
+	h.send(eventMsg{app.Event{Kind: app.EventResolving, Profile: "forever", Ref: baganator}})
+	warn("missing dependency Syndicator")
+	if diff := cmp.Diff([]string{"missing dependency Syndicator"}, h.m.warnings[baganator]); diff != "" {
+		t.Errorf("warnings (-want +got):\n%s", diff)
+	}
+}
+
+// What an action did is said until the next key; then the counts are
+// back.
+func TestFlashUntilNextKey(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, sample(), Options{})
+	h.keys("u")
+	if h.m.flash == "" {
+		t.Fatal("no flash after updating")
+	}
+	h.keys("j")
+	if h.m.flash != "" {
+		t.Errorf("flash after j = %q, want none", h.m.flash)
 	}
 }
