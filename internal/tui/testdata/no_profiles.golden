@@ -1,11 +1,11 @@
- Profile: —                                                          [1] addons
+ Profile: —                                              1 addons  [2] profiles
  Path:    —                                                              ? help
-┌─────────────────────────────────── addons ───────────────────────────────────┐
+┌──────────────────────────────── profiles[0] ─────────────────────────────────┐
 │ No profiles yet.                                                             │
 │                                                                              │
-│ Make one for each game client with knapsack profiles create --auto, or by    │
-│ path with knapsack profiles create --path <AddOns>, then open knapsack tui   │
-│ again.                                                                       │
+│ Press A to find World of Warcraft and make a profile for each game client,   │
+│ or n to make one by path.                                                    │
+│                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -21,4 +21,4 @@
 │                                                                              │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
- q quit
+ A find the game  n new  ? help  q quit

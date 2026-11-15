@@ -1,0 +1,24 @@
+ Profile: forever                                        1 addons  [2] profiles
+ Path:    C:\Program Files (x86)\World of W…\_forever_\Interface\AddOns  ? help
+┌──────────────────────────────── new profile ─────────────────────────────────┐
+│ A new profile, for one game client's AddOns folder:                          │
+│                                                                              │
+│ Path:    /games/wow                                                          │
+│ Name:    classic                                                             │
+│ Flavor:  optional: worked out from the path                                  │
+│                                                                              │
+│ error: /games/wow is the game folder, with _retail_, _classic_ in it         │
+│ hint: pass one client folder: --path "/games/wow/_retail_"                   │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ enter save  tab next field  esc cancel          5 addons · 1 update · 1 failed

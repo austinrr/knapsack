@@ -18,6 +18,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/austinrr/knapsack/internal/app"
+	"github.com/austinrr/knapsack/internal/flavor"
 	"github.com/austinrr/knapsack/internal/ref"
 	"github.com/austinrr/knapsack/internal/source"
 )
@@ -43,6 +44,8 @@ type fake struct {
 	rep       *reporter
 	failed    map[ref.Ref]error
 	updateErr error // Update fails as a whole
+	setErr    error // SetProfile fails
+	auto      app.AutoProfilesResult
 }
 
 // Update installs each named addon at the version its check found,
@@ -109,6 +112,72 @@ func (f *fake) Add(_ context.Context, profile string, refs []ref.Ref, force bool
 		out = append(out, res)
 	}
 	return out, nil
+}
+
+// UseProfile makes name current.
+func (f *fake) UseProfile(_ context.Context, name string) error {
+	f.calls = append(f.calls, "use "+name)
+	for i := range f.profiles {
+		f.profiles[i].Current = f.profiles[i].Name == name
+	}
+	f.current = name
+	return nil
+}
+
+// SetProfile makes a profile, current if it's the first, or changes one;
+// setErr fails it.
+func (f *fake) SetProfile(_ context.Context, req app.SetProfileRequest) (app.SetProfileResult, error) {
+	f.calls = append(f.calls, fmt.Sprintf("set name=%q path=%q flavor=%q must=%d", req.Name, req.Path, req.Flavor, req.Must))
+	if f.setErr != nil {
+		return app.SetProfileResult{}, f.setErr
+	}
+	name := req.Name
+	if name == "" {
+		name = "retail"
+	}
+	for i, p := range f.profiles {
+		if p.Name == name {
+			if req.Path != "" {
+				f.profiles[i].Path = req.Path
+			}
+			if req.Flavor != "" {
+				f.profiles[i].Flavor = flavor.Flavor(req.Flavor)
+			}
+			return app.SetProfileResult{Profile: f.profiles[i], Changed: true}, nil
+		}
+	}
+	p := app.ProfileInfo{Name: name, Path: req.Path, Flavor: "retail", Current: len(f.profiles) == 0}
+	f.profiles = append(f.profiles, p)
+	if p.Current {
+		f.current = name
+	}
+	return app.SetProfileResult{Profile: p, Created: true, Changed: true, MadeCurrent: p.Current}, nil
+}
+
+// AutoProfiles reports auto and makes the profiles it says it created.
+func (f *fake) AutoProfiles(context.Context, string) (app.AutoProfilesResult, error) {
+	f.calls = append(f.calls, "auto")
+	for _, p := range f.auto.Profiles {
+		if p.Result.Created {
+			f.profiles = append(f.profiles, p.Result.Profile)
+			if p.Result.MadeCurrent {
+				f.current = p.Result.Profile.Name
+			}
+		}
+	}
+	return f.auto, nil
+}
+
+// DeleteProfile deletes name; none is current after deleting the current
+// one.
+func (f *fake) DeleteProfile(_ context.Context, name string) (app.DeleteProfileResult, error) {
+	f.calls = append(f.calls, "delete "+name)
+	f.profiles = slices.DeleteFunc(f.profiles, func(p app.ProfileInfo) bool { return p.Name == name })
+	res := app.DeleteProfileResult{WasCurrent: f.current == name}
+	if res.WasCurrent {
+		f.current = ""
+	}
+	return res, nil
 }
 
 // Remove uninstalls each named addon.
@@ -208,6 +277,9 @@ func newHarness(t *testing.T, f *fake, opts Options) *harness {
 	h.m.spin = spinnerDots // the same frames on every OS
 	h.m.now = func() time.Time { return now }
 	h.m.blink = false
+	h.m.exec = func(c tea.ExecCommand, fn tea.ExecCallback) tea.Cmd {
+		return func() tea.Msg { return fn(c.Run()) }
+	}
 	h.m.openURL = func(_ context.Context, url string) error {
 		if h.openErr != nil {
 			return h.openErr
@@ -314,6 +386,8 @@ func (h *harness) keys(keys ...string) {
 			msg = tea.KeyPressMsg{Code: ' ', Text: " "}
 		case "tab":
 			msg = tea.KeyPressMsg{Code: tea.KeyTab}
+		case "shift+tab":
+			msg = tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
 		case "ctrl+s":
 			msg = tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl}
 		default:
@@ -1365,5 +1439,178 @@ func TestPasteRouting(t *testing.T) {
 	h.send(tea.PasteMsg{Content: "more"})
 	if got := h.m.add.text.Value(); got != "github:a/b" {
 		t.Errorf("text after a paste at the quit question = %q, want it unchanged", got)
+	}
+}
+
+// twoProfiles is sample with a second profile, retail, besides the
+// current one.
+func twoProfiles() *fake {
+	f := sample()
+	f.profiles = append(f.profiles, app.ProfileInfo{
+		Name: "retail", Flavor: "retail", Addons: []ref.Ref{baganator},
+		Path: "/home/me/Games/battlenet/drive_c/Program Files (x86)/World of Warcraft/_retail_/Interface/AddOns",
+	})
+	f.profiles[0].Flavor = "forever"
+	f.profiles[0].Addons = []ref.Ref{baganator, details, plater, leatrix}
+	return f
+}
+
+// tab, 2 and 1 switch views; the profiles view lists each profile, the
+// current one marked.
+func TestProfilesView(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, twoProfiles(), Options{Home: "/home/me"})
+	h.keys("tab")
+	h.golden("profiles")
+	h.keys("1")
+	if h.m.view != viewAddons {
+		t.Errorf("view after 1 = %d, want addons", h.m.view)
+	}
+	h.keys("2", "?")
+	h.golden("profiles_help")
+	h.keys("esc", "shift+tab")
+	if h.m.view != viewAddons {
+		t.Errorf("view after shift+tab = %d, want addons", h.m.view)
+	}
+}
+
+// enter uses the profile: it's made current, and its addons are shown,
+// read and checked afresh.
+func TestUseProfile(t *testing.T) {
+	t.Parallel()
+	f := twoProfiles()
+	h := newHarness(t, f, Options{})
+	f.calls = nil
+	h.keys("space", "2", "j", "enter")
+	if diff := cmp.Diff([]string{"use retail", "list retail", "check retail"}, f.calls); diff != "" {
+		t.Errorf("calls (-want +got):\n%s", diff)
+	}
+	if h.m.view != viewAddons || h.m.profile != "retail" || len(h.m.marks) != 0 {
+		t.Errorf("view %d, profile %q, marks %v; want retail's addons, unmarked", h.m.view, h.m.profile, h.m.marks)
+	}
+}
+
+// n makes a profile by path; an error stays in the form, with its hint,
+// to fix and save again.
+func TestNewProfile(t *testing.T) {
+	t.Parallel()
+	f := twoProfiles()
+	f.setErr = &app.UserError{
+		Msg:  `/games/wow is the game folder, with _retail_, _classic_ in it`,
+		Hint: `pass one client folder: --path "/games/wow/_retail_"`,
+	}
+	h := newHarness(t, f, Options{})
+	f.calls = nil
+	h.keys("2", "n")
+	h.golden("profile_new")
+	h.keys("enter")
+	if h.m.form == nil || h.m.form.err == nil || len(f.calls) != 0 {
+		t.Fatalf("an empty path was sent: calls %v", f.calls)
+	}
+	h.send(tea.PasteMsg{Content: "/games/wow"})
+	h.keys("tab", "c", "l", "a", "s", "s", "i", "c", "enter")
+	h.golden("profile_error")
+	f.setErr = nil
+	h.keys("enter")
+	want := []string{
+		`set name="classic" path="/games/wow" flavor="" must=1`,
+		`set name="classic" path="/games/wow" flavor="" must=1`,
+	}
+	if diff := cmp.Diff(want, f.calls); diff != "" {
+		t.Errorf("calls (-want +got):\n%s", diff)
+	}
+	if h.m.form != nil || h.m.flash != "Created profile classic." {
+		t.Errorf("form open %v, flash %q", h.m.form != nil, h.m.flash)
+	}
+}
+
+// s changes a profile, sending only the fields that changed; unchanged,
+// it sends nothing.
+func TestSetProfile(t *testing.T) {
+	t.Parallel()
+	f := twoProfiles()
+	h := newHarness(t, f, Options{})
+	f.calls = nil
+	h.keys("2", "s", "enter")
+	if len(f.calls) != 0 || h.m.flash != "Profile forever unchanged." {
+		t.Errorf("unchanged: calls %v, flash %q", f.calls, h.m.flash)
+	}
+	h.keys("s", "tab")
+	h.m.form.fields[1].SetValue("classic")
+	h.keys("enter")
+	if diff := cmp.Diff([]string{`set name="forever" path="" flavor="classic" must=2`, "list forever"}, f.calls); diff != "" {
+		t.Errorf("calls (-want +got):\n%s", diff)
+	}
+}
+
+// With no profiles, the TUI opens on the profiles view, where A finds the
+// game; the profile made current is then shown.
+func TestNoProfilesAuto(t *testing.T) {
+	t.Parallel()
+	retail := app.ProfileInfo{Name: "retail", Flavor: "retail", Path: "/Applications/World of Warcraft/_retail_/Interface/AddOns", Current: true}
+	f := &fake{auto: app.AutoProfilesResult{Profiles: []app.AutoProfile{
+		{Game: "/Applications/World of Warcraft", Client: "_retail_", Result: app.SetProfileResult{Profile: retail, Created: true, Changed: true, MadeCurrent: true}},
+		{Game: "/Applications/World of Warcraft", Client: "_ptr_", Skip: app.SkipNoAddOns},
+	}}}
+	h := newHarness(t, f, Options{})
+	if h.m.view != viewProfiles {
+		t.Fatalf("view = %d, want profiles", h.m.view)
+	}
+	h.golden("no_profiles")
+	h.keys("A")
+	h.golden("auto")
+	h.keys("enter")
+	if h.m.profile != "retail" || !h.m.loaded {
+		t.Errorf("profile %q, loaded %v; want retail's addons read", h.m.profile, h.m.loaded)
+	}
+}
+
+// ctrl+d deletes a profile after a confirm saying its addon files stay;
+// deleting the current one leaves none current.
+func TestDeleteProfile(t *testing.T) {
+	t.Parallel()
+	f := twoProfiles()
+	h := newHarness(t, f, Options{})
+	f.calls = nil
+	h.keys("2", "ctrl+d")
+	h.golden("profile_delete")
+	h.keys("y")
+	if len(f.calls) == 0 || f.calls[0] != "delete forever" {
+		t.Fatalf("calls = %v, want delete forever first", f.calls)
+	}
+	if h.m.profile != "" || len(h.m.profiles) != 1 {
+		t.Errorf("profile %q, %d profiles; want none shown and retail left", h.m.profile, len(h.m.profiles))
+	}
+	if _, ok := h.m.known["forever"]; ok {
+		t.Error("what was known about the deleted profile was kept")
+	}
+}
+
+// e hands the terminal to the editor, from either view; afterwards the
+// profile is read again, and the status line says what to run for the
+// addons the edit added.
+func TestEditProfile(t *testing.T) {
+	t.Parallel()
+	f := twoProfiles()
+	var edited []string
+	opts := Options{Edit: func(_ context.Context, name string) (bool, app.ProfileEditResult, error) {
+		edited = append(edited, name)
+		return true, app.ProfileEditResult{Changed: true, Added: []ref.Ref{weak}}, nil
+	}}
+	h := newHarness(t, f, opts)
+	f.calls = nil
+	h.keys("e")
+	if diff := cmp.Diff([]string{"forever"}, edited); diff != "" {
+		t.Errorf("edited (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"list forever"}, f.calls); diff != "" {
+		t.Errorf("calls (-want +got):\n%s", diff)
+	}
+	if want := "Saved profile forever. 1 addon added: U installs them."; h.m.flash != want {
+		t.Errorf("flash = %q, want %q", h.m.flash, want)
+	}
+	h.keys("2", "j", "e")
+	if len(edited) != 2 || edited[1] != "retail" {
+		t.Errorf("edited = %v, want retail second", edited)
 	}
 }

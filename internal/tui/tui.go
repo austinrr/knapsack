@@ -25,6 +25,10 @@ type Options struct {
 	// Running is the Knapsack running, "v0.2.0 on linux/amd64", for an
 	// error's report link (app.ReportURL).
 	Running string
+	// Edit runs the CLI's edit loop on a profile (profiles edit, DESIGN.md
+	// §8.4), on the terminal, which the TUI has given up meanwhile.
+	// saved is false when the edit was cancelled.
+	Edit func(ctx context.Context, profile string) (saved bool, res app.ProfileEditResult, err error)
 }
 
 // backend is what the TUI calls on the App, so tests can use a fake.
@@ -37,11 +41,19 @@ type backend interface {
 	Update(ctx context.Context, sel app.Selector, opts app.UpdateOptions) ([]app.Result, error)
 	Remove(ctx context.Context, profile string, names []string) ([]app.Result, error)
 	Add(ctx context.Context, profile string, refs []ref.Ref, force bool) ([]app.Result, error)
+	UseProfile(ctx context.Context, name string) error
+	SetProfile(ctx context.Context, req app.SetProfileRequest) (app.SetProfileResult, error)
+	AutoProfiles(ctx context.Context, game string) (app.AutoProfilesResult, error)
+	DeleteProfile(ctx context.Context, name string) (app.DeleteProfileResult, error)
 }
 
-// Run runs the TUI until the user quits or ctx is cancelled.
+// Run runs the TUI until the user quits. ctx's values are used, but not
+// its cancellation: main cancels it on SIGINT, which, while the TUI has the
+// terminal in raw mode, only reaches it from outside, and which a Ctrl-C
+// typed in the editor sends too. Bubble Tea handles SIGINT and SIGTERM
+// itself, and ignores them while the editor has the terminal.
 func Run(ctx context.Context, opts Options) error {
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	defer cancel()
 	b := &bus{}
 	rep := newReporter(b)
@@ -49,9 +61,9 @@ func Run(ctx context.Context, opts Options) error {
 	p := tea.NewProgram(m, tea.WithContext(ctx))
 	b.set(p.Send)
 	_, err := p.Run()
-	if errors.Is(err, tea.ErrProgramKilled) && ctx.Err() != nil {
-		// Killed by ctx: a signal, which says why better than Bubble Tea.
-		return ctx.Err()
+	if errors.Is(err, tea.ErrInterrupted) {
+		// A SIGINT from outside, which says it better than Bubble Tea.
+		return context.Canceled
 	}
 	return err
 }
