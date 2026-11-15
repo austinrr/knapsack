@@ -45,6 +45,8 @@ const (
 	jobLoad
 	jobCheck
 	jobInfo
+	jobUpdate
+	jobRemove
 )
 
 // jobDoneMsg is a job's result, delivered when it finishes.
@@ -95,6 +97,7 @@ type model struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	a      backend
+	rep    *reporter
 	opts   Options
 	bus    *bus
 	now    func() time.Time
@@ -119,8 +122,16 @@ type model struct {
 	known    map[string]map[ref.Ref]known
 	checking map[ref.Ref]bool
 	checked  map[string]bool // profiles checked this session
-	// err is why the last job failed, for the status line.
-	err error
+	// err is why the last job failed, and flash what the last action
+	// did, for the status line.
+	err   error
+	flash string
+
+	marks    map[ref.Ref]bool     // rows marked with space
+	stages   map[ref.Ref]stage    // where each addon is in a job
+	warnings map[ref.Ref][]string // from installs this session
+	plan     *planModal
+	confirm  *confirmModal
 
 	cursor, offset int
 	filter         textinput.Model
@@ -141,7 +152,7 @@ type model struct {
 	running *job
 }
 
-func newModel(ctx context.Context, a backend, opts Options, b *bus) *model {
+func newModel(ctx context.Context, a backend, opts Options, b *bus, rep *reporter) *model {
 	spin := spinnerDots
 	if runtime.GOOS == "windows" {
 		spin = spinnerASCII
@@ -150,7 +161,10 @@ func newModel(ctx context.Context, a backend, opts Options, b *bus) *model {
 	f.Prompt = "/"
 	ctx, cancel := context.WithCancel(ctx)
 	return &model{
-		ctx: ctx, cancel: cancel, a: a, opts: opts, bus: b,
+		ctx: ctx, cancel: cancel, a: a, rep: rep, opts: opts, bus: b,
+		marks:     map[ref.Ref]bool{},
+		stages:    map[ref.Ref]stage{},
+		warnings:  map[ref.Ref][]string{},
 		now:       time.Now,
 		spin:      spin,
 		tickEvery: spinEvery,
@@ -211,7 +225,9 @@ func (m *model) dropQueued(kind jobKind) {
 }
 
 // busy is whether anything is in progress, which the spinner shows.
-func (m *model) busy() bool { return m.running != nil || len(m.checking) > 0 }
+func (m *model) busy() bool {
+	return m.running != nil || len(m.checking) > 0 || len(m.stages) > 0
+}
 
 func (m *model) startTick() tea.Cmd {
 	if m.ticking || m.tickEvery == 0 {
@@ -283,6 +299,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		m.frame++
 		m.ticking = false
+		for _, e := range m.rep.drain() {
+			m.event(e)
+		}
 		if m.busy() {
 			return m, m.startTick()
 		}
@@ -297,6 +316,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		return m, tea.Batch(cmd, m.next())
+	case eventMsg:
+		m.event(msg.Event)
+		return m, nil
 	case listedMsg:
 		if msg.profile == m.profile {
 			m.rows = msg.rows
@@ -355,6 +377,18 @@ func (m *model) result(msg tea.Msg) tea.Cmd {
 			}
 			m.scroll()
 		}
+	case updatedMsg:
+		return m.applyResults(msg.profile, msg.results, msg.err, "update")
+	case removedMsg:
+		if msg.profile == m.profile && len(msg.results) > 0 {
+			// Describing an addon just removed goes back to the table.
+			for _, res := range msg.results {
+				if res.Action == app.ActionRemoved && res.Ref == m.describeRef {
+					m.describing = false
+				}
+			}
+		}
+		return m.applyResults(msg.profile, msg.results, msg.err, "remove")
 	case infoMsg:
 		if msg.profile == m.profile && msg.ref == m.describeRef {
 			// Failed, the TOC's fields are just unknown.
@@ -386,6 +420,16 @@ func (m *model) forgetGone() {
 			delete(k, r)
 		}
 	}
+	for r := range m.marks {
+		if !in[r] {
+			delete(m.marks, r)
+		}
+	}
+	for r := range m.warnings {
+		if !in[r] {
+			delete(m.warnings, r)
+		}
+	}
 }
 
 // recheck forgets what's known about the profile and checks it again,
@@ -398,6 +442,7 @@ func (m *model) recheck() tea.Cmd {
 	if m.pending(jobCheck, m.profile) {
 		return nil // pressing c again doesn't queue another
 	}
+	m.flash = ""
 	delete(m.known, m.profile)
 	m.checked[m.profile] = true
 	return tea.Batch(m.enqueue(m.loadJob()), m.enqueue(m.checkJob()))
@@ -424,6 +469,10 @@ func (m *model) key(k tea.KeyPressMsg) tea.Cmd {
 			m.confirmQuit = false
 		}
 		return nil
+	case m.plan != nil:
+		return m.planKey(s)
+	case m.confirm != nil:
+		return m.confirmKey(s)
 	case m.filtering:
 		switch s {
 		case "ctrl+c":
@@ -454,9 +503,20 @@ func (m *model) key(k tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 	case m.describing:
-		if s == "esc" {
+		switch s {
+		case "esc":
 			m.describing, m.details = false, nil
 			m.dropQueued(jobInfo)
+			return nil
+		case "u", "ctrl+d":
+			for _, r := range m.visible() {
+				if r.Ref == m.describeRef {
+					if s == "u" {
+						return m.update([]row{r})
+					}
+					return m.askRemove([]row{r})
+				}
+			}
 			return nil
 		}
 		if m.scrollBody(s) {
@@ -485,6 +545,18 @@ func (m *model) addonsKey(s string) (tea.Cmd, bool) {
 		return m.enqueue(m.infoJob(r)), true
 	case "c":
 		return m.recheck(), true
+	case "space":
+		m.toggleMark()
+		return nil, true
+	case "ctrl+\\":
+		clear(m.marks)
+		return nil, true
+	case "u":
+		return m.update(m.targets()), true
+	case "U":
+		return m.updateAll(), true
+	case "ctrl+d":
+		return m.askRemove(m.targets()), true
 	case "/":
 		m.filtering = true
 		m.filter.SetValue(m.query)

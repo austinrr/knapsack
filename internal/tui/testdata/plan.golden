@@ -1,0 +1,24 @@
+ Profile: forever                                                    [1] addons
+ Path:    C:\Program Files (x86)\World of W…\_forever_\Interface\AddOns  ? help
+┌────────────────────────────── update(forever) ───────────────────────────────┐
+│ Upgrade                                                                      │
+│   Baganator     851 → 854                                                    │
+│                                                                              │
+│ Install                                                                      │
+│   leatrix-maps  — → newest release                                           │
+│                                                                              │
+│ Checked when updating                                                        │
+│   Plater        610                                                          │
+│                                                                              │
+│ Not in config: left installed, unless checked to uninstall                   │
+│   [ ] WeakAuras     5.17.1                                                   │
+│                                                                              │
+│ [ ] Force: replace folders no addon owns                                     │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ enter update  space check box  j k move  esc cancel         1 addon · 1 update

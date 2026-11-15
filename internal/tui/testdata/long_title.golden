@@ -1,15 +1,15 @@
  Profile: classic-era-hardcore-test-copy         [1] addons
  Path:    /games/wow/_classic_era_/Interface/AddOns  ? help
 ┌─────── addons(classic-era-hardcore-test-copy)[5] ────────┐
-│ NAME               VERSION   AVAILABLE   STATUS        … │
-│ Baganator, the …   851       854         ↑ update avail… │
-│ Details!           11.2.0    11.2.0      ✓ up to date  … │
-│ Plater             610       —           ✗ unknown     … │
-│ leatrix-maps       —         —           ○ not installe… │
-│ WeakAuras          5.17.1    —           ! not in confi… │
+│   NAME               VERSION   AVAILABLE   STATUS      … │
+│   Baganator, the …   851       854         ↑ update ava… │
+│   Details!           11.2.0    11.2.0      ✓ up to date… │
+│   Plater             610       —           ✗ unknown   … │
+│   leatrix-maps       —         —           ○ not instal… │
+│   WeakAuras          5.17.1    —           ! not in con… │
 │                                                          │
 │                                                          │
 │                                                          │
 │                                                          │
 └──────────────────────────────────────────────────────────┘
- enter describe  c check     5 addons · 1 update · 1 failed
+ u update  U update all      5 addons · 1 update · 1 failed

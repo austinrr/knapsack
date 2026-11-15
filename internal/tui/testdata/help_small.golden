@@ -3,13 +3,13 @@
 ┌────────────────────────── help ──────────────────────────┐
 │ Addons                                                   │
 │   enter           describe the addon                     │
+│   u               update the marked addons, or this one  │
+│   U               update all: shows the plan first       │
+│   ctrl+d          remove the marked addons, or this one  │
+│   space           mark or unmark the addon               │
+│   ctrl+\          clear marks                            │
 │   c               check every addon again                │
 │   /               filter by name, ref or source          │
-│   esc             clear the filter                       │
-│                                                          │
-│ Describe                                                 │
-│   esc             back to addons                         │
-│   j k             scroll, when it doesn't fit            │
-│ ↓ 8 more · j k to scroll                                 │
+│ ↓ 15 more · j k to scroll                                │
 └──────────────────────────────────────────────────────────┘
  esc close  j k scroll       5 addons · 1 update · 1 failed
