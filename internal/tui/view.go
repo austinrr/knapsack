@@ -179,7 +179,16 @@ func (m *model) content(width, height int) (string, []string) {
 		return accentStyle.Render("update") + "(" + m.profile + ")", lines
 	case m.confirm != nil:
 		lines := wrap(width, warnStyle.Render(m.confirm.question), "")
-		return accentStyle.Render(m.confirm.title) + "(" + m.profile + ")", append(lines, wrapLines(width, m.confirm.lines)...)
+		for _, p := range m.confirm.lines {
+			for i, l := range wrap(width-4, p) {
+				indent := "  "
+				if i > 0 {
+					indent = "    " // a paragraph's own lines, under its name
+				}
+				lines = append(lines, indent+l)
+			}
+		}
+		return accentStyle.Render(m.confirm.title) + "(" + m.profile + ")", lines
 	case m.describing:
 		return m.describe(width)
 	}
@@ -240,6 +249,8 @@ func (m *model) table(width, height int) (string, []string) {
 	// the columns on the right are cut instead, since the name matters
 	// most.
 	const gap, minName = 3, 16
+	// Each line starts with a mark column: ● for a marked row.
+	width -= 2
 	rest := 0
 	for _, w := range widths[1:] {
 		rest += w + gap
@@ -249,8 +260,6 @@ func (m *model) table(width, height int) (string, []string) {
 	// A row in a job spans AVAILABLE and STATUS, so its stage needn't
 	// widen either.
 	spanned := widths[2] + gap + widths[3]
-	// Each line starts with a mark column: ● for a marked row.
-	width -= 2
 	line := func(mark string, cs []string, style func(j int, s string) string) string {
 		parts := make([]string, 0, len(cs))
 		for j := 0; j < len(cs); j++ {

@@ -355,7 +355,7 @@ func (m *model) result(msg tea.Msg) tea.Cmd {
 			m.rows, m.hidden = nil, 0
 			return nil
 		}
-		m.err = nil
+		// m.err stays: it's a job's, until the next action (DESIGN.md §9.1).
 		m.profile, m.path = msg.profile, msg.path
 		m.rows, m.hidden = msg.listing.Addons, msg.listing.Hidden
 		m.forgetGone()
@@ -377,10 +377,8 @@ func (m *model) result(msg tea.Msg) tea.Cmd {
 			}
 			m.scroll()
 		}
-	case updatedMsg:
-		return m.applyResults(msg.profile, msg.results, msg.err, "update")
-	case removedMsg:
-		if msg.profile == m.profile && len(msg.results) > 0 {
+	case doneMsg:
+		if msg.kind == jobRemove && msg.profile == m.profile {
 			// Describing an addon just removed goes back to the table.
 			for _, res := range msg.results {
 				if res.Action == app.ActionRemoved && res.Ref == m.describeRef {
@@ -388,7 +386,7 @@ func (m *model) result(msg tea.Msg) tea.Cmd {
 				}
 			}
 		}
-		return m.applyResults(msg.profile, msg.results, msg.err, "remove")
+		return m.applyResults(msg)
 	case infoMsg:
 		if msg.profile == m.profile && msg.ref == m.describeRef {
 			// Failed, the TOC's fields are just unknown.
@@ -442,7 +440,7 @@ func (m *model) recheck() tea.Cmd {
 	if m.pending(jobCheck, m.profile) {
 		return nil // pressing c again doesn't queue another
 	}
-	m.flash = ""
+	m.flash, m.err = "", nil
 	delete(m.known, m.profile)
 	m.checked[m.profile] = true
 	return tea.Batch(m.enqueue(m.loadJob()), m.enqueue(m.checkJob()))
@@ -453,6 +451,9 @@ func (m *model) recheck() tea.Cmd {
 // type q and digits (DESIGN.md §9.3).
 func (m *model) key(k tea.KeyPressMsg) tea.Cmd {
 	s := k.String()
+	// What the last action did is said until the next key, as k9s
+	// flashes it; the counts come back after.
+	m.flash = ""
 	switch {
 	case m.quitting:
 		// Waiting for a cancelled job to roll back; another Ctrl-C quits

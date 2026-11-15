@@ -12,26 +12,23 @@ import (
 	"github.com/austinrr/knapsack/internal/ref"
 )
 
-// updatedMsg is what Update did, addon by addon.
-type updatedMsg struct {
+// doneMsg is what an Update or Remove did, addon by addon; refs are the
+// addons it was given, whose rows showed its stages.
+type doneMsg struct {
+	kind    jobKind
 	profile string
-	results []app.Result
-	err     error
-}
-
-// removedMsg is what Remove did.
-type removedMsg struct {
-	profile string
+	refs    []ref.Ref
 	results []app.Result
 	err     error
 }
 
 // targets are the rows an action acts on: the marked ones, or the
 // cursor's when none are (DESIGN.md §9.2).
+// Marks on rows the filter hides count too: they're still marked, and
+// the remove confirm lists every one.
 func (m *model) targets() []row {
-	rows := m.visible()
 	var marked []row
-	for _, r := range rows {
+	for _, r := range m.allRows() {
 		if m.marks[r.Ref] {
 			marked = append(marked, r)
 		}
@@ -39,10 +36,26 @@ func (m *model) targets() []row {
 	if len(marked) > 0 {
 		return marked
 	}
+	rows := m.visible()
 	if len(rows) == 0 {
 		return nil
 	}
 	return []row{rows[m.cursor]}
+}
+
+// notBusy leaves out rows already in a job, so pressing a key twice
+// doesn't queue the same work twice. With none left, it says so.
+func (m *model) notBusy(rows []row) []row {
+	var out []row
+	for _, r := range rows {
+		if _, busy := m.stages[r.Ref]; !busy {
+			out = append(out, r)
+		}
+	}
+	if len(out) == 0 && len(rows) > 0 {
+		m.flash = "Already in progress."
+	}
+	return out
 }
 
 // toggleMark marks or unmarks the cursor's row, then moves down, so space
@@ -67,7 +80,7 @@ func (m *model) toggleMark() {
 // rest. An addon known to be up to date is left alone, without asking
 // the network again.
 func (m *model) update(rows []row) tea.Cmd {
-	if len(rows) == 0 {
+	if rows = m.notBusy(rows); len(rows) == 0 {
 		return nil
 	}
 	simple, current := true, 0
@@ -102,11 +115,7 @@ func (m *model) update(rows []row) tea.Cmd {
 // updateAll opens the plan for every addon in the profile, not only those
 // the filter shows.
 func (m *model) updateAll() tea.Cmd {
-	saved := m.query
-	m.query = ""
-	rows := m.visible()
-	m.query = saved
-	return m.openPlan(rows)
+	return m.openPlan(m.notBusy(m.allRows()))
 }
 
 // runUpdate queues Update for the named addons.
@@ -118,18 +127,18 @@ func (m *model) runUpdate(refs []ref.Ref, opts app.UpdateOptions) tea.Cmd {
 		m.stages[r] = stage{what: "queued"}
 	}
 	m.marks = map[ref.Ref]bool{}
-	m.flash = ""
+	m.flash, m.err = "", nil
 	return m.enqueue(job{kind: jobUpdate, profile: profile, name: "updating", writes: true,
 		run: func(ctx context.Context) tea.Msg {
 			res, err := a.Update(ctx, app.Selector{Profiles: []string{profile}, Addons: names}, opts)
-			return updatedMsg{profile: profile, results: res, err: err}
+			return doneMsg{kind: jobUpdate, profile: profile, refs: refs, results: res, err: err}
 		}})
 }
 
 // askRemove asks before removing the targets, naming the folders that
 // will be deleted.
 func (m *model) askRemove(rows []row) tea.Cmd {
-	if len(rows) == 0 {
+	if rows = m.notBusy(rows); len(rows) == 0 {
 		return nil
 	}
 	refs := make([]ref.Ref, len(rows))
@@ -141,7 +150,7 @@ func (m *model) askRemove(rows []row) tea.Cmd {
 		if len(r.Folders) > 0 {
 			folders = "deletes " + strings.Join(r.Folders, ", ")
 		}
-		lines = append(lines, "  "+boldStyle.Render(r.name)+"  "+faintStyle.Render(folders))
+		lines = append(lines, boldStyle.Render(r.name)+"  "+faintStyle.Render(folders))
 	}
 	what := names[0]
 	if len(rows) > 1 {
@@ -167,11 +176,11 @@ func (m *model) runRemove(refs []ref.Ref) tea.Cmd {
 		m.stages[r] = stage{what: "removing"}
 	}
 	m.marks = map[ref.Ref]bool{}
-	m.flash = ""
+	m.flash, m.err = "", nil
 	return m.enqueue(job{kind: jobRemove, profile: profile, name: "removing", writes: true,
 		run: func(ctx context.Context) tea.Msg {
 			res, err := a.Remove(ctx, profile, names)
-			return removedMsg{profile: profile, results: res, err: err}
+			return doneMsg{kind: jobRemove, profile: profile, refs: refs, results: res, err: err}
 		}})
 }
 
@@ -186,6 +195,7 @@ func (m *model) event(e app.Event) {
 	switch e.Kind {
 	case app.EventResolving:
 		m.stages[e.Ref] = stage{what: "resolving"}
+		delete(m.warnings, e.Ref) // a new install's warnings replace the last's
 	case app.EventDownloading:
 		m.stages[e.Ref] = stage{what: "downloading"}
 	case app.EventProgress:
@@ -200,11 +210,20 @@ func (m *model) event(e app.Event) {
 
 // applyResults records what a job did to each addon, says so in the
 // status line, and reloads the profile, whose versions and folders it
-// changed.
-func (m *model) applyResults(profile string, results []app.Result, err error, verb string) tea.Cmd {
-	clear(m.stages)
-	if profile != m.profile {
+// changed, and the details describe shows, if they're of an addon it
+// changed. Only the job's own rows stop showing stages: a job still
+// queued keeps its "queued".
+func (m *model) applyResults(msg doneMsg) tea.Cmd {
+	for _, r := range msg.refs {
+		delete(m.stages, r)
+	}
+	if msg.profile != m.profile {
 		return nil
+	}
+	profile, results, err := msg.profile, msg.results, msg.err
+	verb := "update"
+	if msg.kind == jobRemove {
+		verb = "remove"
 	}
 	k := m.knownFor(profile)
 	counts := map[app.Action]int{}
@@ -226,9 +245,22 @@ func (m *model) applyResults(profile string, results []app.Result, err error, ve
 		case app.ActionUnchanged, app.ActionNotInConfig:
 		}
 	}
+	// A job that failed as a whole, such as on a lock another process
+	// holds, says why; "nothing to update" would hide it.
 	m.err = err
-	m.flash = resultSummary(profile, counts, verb)
-	return m.enqueue(m.loadJob())
+	if err == nil || len(results) > 0 {
+		m.flash = resultSummary(profile, counts, verb)
+	}
+	cmd := m.enqueue(m.loadJob())
+	if m.describing {
+		for _, res := range results {
+			if res.Ref == m.describeRef && res.Action != app.ActionRemoved {
+				m.details, m.infoErr = nil, nil
+				return tea.Batch(cmd, m.enqueue(m.infoJob(m.describeRef)))
+			}
+		}
+	}
+	return cmd
 }
 
 // resultSummary says what a job did, as the CLI's summary line does:
@@ -251,9 +283,11 @@ func resultSummary(profile string, counts map[app.Action]int, verb string) strin
 // §9.5).
 type confirmModal struct {
 	title, question string
-	lines           []string
-	yes             string // what y does: "remove"
-	onYes           func() tea.Cmd
+	// lines are paragraphs, wrapped to the window when drawn, so a list
+	// of folders to be deleted is never cut short.
+	lines []string
+	yes   string // what y does: "remove"
+	onYes func() tea.Cmd
 }
 
 func (m *model) confirmKey(s string) tea.Cmd {
@@ -455,10 +489,12 @@ func (m *model) followPlanCursor() {
 	m.bodyOffset = max(0, min(m.bodyOffset, m.maxBodyOffset()))
 }
 
-// wrapLines cuts each line to width.
+// wrapLines cuts each line to width, in a copy, so a narrow window
+// never shortens what a modal keeps.
 func wrapLines(width int, lines []string) []string {
+	out := make([]string, len(lines))
 	for i, l := range lines {
-		lines[i] = ansi.Truncate(l, width, "…")
+		out[i] = ansi.Truncate(l, width, "…")
 	}
-	return lines
+	return out
 }

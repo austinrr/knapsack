@@ -39,8 +39,9 @@ type fake struct {
 	calls    []string
 	// rep is the TUI's reporter, which Update reports to as the App's
 	// does; failed are the addons Update fails, with why.
-	rep    *reporter
-	failed map[ref.Ref]error
+	rep       *reporter
+	failed    map[ref.Ref]error
+	updateErr error // Update fails as a whole
 }
 
 // Update installs each named addon at the version its check found,
@@ -48,6 +49,9 @@ type fake struct {
 func (f *fake) Update(_ context.Context, sel app.Selector, opts app.UpdateOptions) ([]app.Result, error) {
 	p := sel.Profiles[0]
 	f.calls = append(f.calls, fmt.Sprintf("update %s %v prune=%v force=%v", p, sel.Addons, opts.Prune, opts.Force))
+	if f.updateErr != nil {
+		return nil, f.updateErr
+	}
 	var out []app.Result
 	for _, name := range sel.Addons {
 		r, _ := ref.Parse(name)
@@ -201,6 +205,30 @@ func (h *harness) run(cmd tea.Cmd) {
 	}
 	if _, ok := msg.(tea.QuitMsg); ok {
 		h.quit = true
+		return
+	}
+	sent := h.sent
+	h.sent = nil
+	for _, s := range sent {
+		h.send(s)
+	}
+	if msg != nil {
+		h.send(msg)
+	}
+}
+
+// step runs the first held command and delivers its result, holding any
+// commands that follows from it: the next job, say.
+func (h *harness) step() {
+	h.t.Helper()
+	if len(h.pending) == 0 {
+		h.t.Fatal("no command to step")
+	}
+	c := h.pending[0]
+	h.pending = h.pending[1:]
+	msg := c()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		h.pending = append(append([]tea.Cmd(nil), batch...), h.pending...)
 		return
 	}
 	sent := h.sent
@@ -954,5 +982,148 @@ func TestStageString(t *testing.T) {
 		if got := tt.s.String(); got != tt.want {
 			t.Errorf("%+v = %q, want %q", tt.s, got, tt.want)
 		}
+	}
+}
+
+// An update that fails as a whole keeps its error in the status line
+// after the reload, and doesn't claim there was nothing to update.
+func TestUpdateErrorKept(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	f.updateErr = &app.UserError{
+		Msg:  `profile "forever" is in use by another knapsack process`,
+		Hint: "wait for it to finish",
+	}
+	h := newHarness(t, f, Options{})
+	h.keys("u")
+	if h.m.err == nil || h.m.flash != "" {
+		t.Fatalf("after the reload: err %v, flash %q; want the error and no flash", h.m.err, h.m.flash)
+	}
+	if got := ansi.Strip(h.m.status()); !strings.Contains(got, "in use by another knapsack process") {
+		t.Errorf("status = %q, want the error", got)
+	}
+	// The next action clears it.
+	f.updateErr = nil
+	h.keys("u")
+	if h.m.err != nil {
+		t.Errorf("err after updating again = %v, want none", h.m.err)
+	}
+}
+
+// One job ending leaves the stages of the next, still queued.
+func TestQueuedStageKept(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, sample(), Options{})
+	h.hold = true
+	h.keys("u")                // Baganator's update, running
+	h.keys("j", "ctrl+d", "y") // Details!'s remove, queued behind it
+	if got := h.m.stages[details].what; got != "removing" {
+		t.Fatalf("Details! stage = %q, want removing", got)
+	}
+	h.step() // the update finishes
+	if _, ok := h.m.stages[baganator]; ok {
+		t.Error("Baganator still shows a stage after its update")
+	}
+	if got := h.m.stages[details].what; got != "removing" {
+		t.Errorf("Details! stage after the update = %q, want removing still", got)
+	}
+}
+
+// A row already in a job isn't queued again.
+func TestNotQueuedTwice(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	h := newHarness(t, f, Options{})
+	f.calls = nil
+	h.hold = true
+	h.keys("u", "u", "ctrl+d")
+	if h.m.confirm != nil {
+		t.Error("ctrl+d asked to remove an addon that's updating")
+	}
+	if want := "Already in progress."; h.m.flash != want {
+		t.Errorf("flash = %q, want %q", h.m.flash, want)
+	}
+	h.release()
+	if diff := cmp.Diff([]string{"update forever [" + baganator.String() + "] prune=false force=false", "list forever"}, f.calls); diff != "" {
+		t.Errorf("calls (-want +got):\n%s", diff)
+	}
+}
+
+// Drawing the remove confirm in a narrow window doesn't shorten its list
+// of folders for a wider one.
+func TestConfirmKeepsLines(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	f.local[0].Folders = []string{"Baganator", "Baganator_Categories", "Baganator_Sorting", "Baganator_Themes"}
+	f.checked[0].Folders = f.local[0].Folders
+	h := newHarness(t, f, Options{})
+	h.keys("ctrl+d")
+	before := slices.Clone(h.m.confirm.lines)
+	h.send(tea.WindowSizeMsg{Width: minWidth, Height: minHeight})
+	h.m.render()
+	h.send(tea.WindowSizeMsg{Width: 80, Height: 24})
+	if diff := cmp.Diff(before, h.m.confirm.lines); diff != "" {
+		t.Errorf("confirm lines changed by drawing (-before +after):\n%s", diff)
+	}
+	h.golden("confirm_remove_folders")
+}
+
+// Marks on rows the filter hides still count: ctrl+d asks about the
+// marked addon, not the row under the cursor.
+func TestMarksHiddenByFilter(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, sample(), Options{})
+	h.keys("space", "/", "p", "l", "a", "t", "enter", "ctrl+d")
+	if h.m.confirm == nil || !strings.Contains(h.m.confirm.question, "Baganator") {
+		t.Fatalf("confirm = %+v, want it to ask about the marked Baganator", h.m.confirm)
+	}
+}
+
+// Updating the addon being described reads its details again.
+func TestDescribeRefreshedAfterUpdate(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	h := newHarness(t, f, Options{})
+	h.keys("enter")
+	f.calls = nil
+	h.keys("u")
+	want := []string{
+		"update forever [" + baganator.String() + "] prune=false force=false",
+		"list forever",
+		"info forever " + baganator.String(),
+	}
+	if diff := cmp.Diff(want, f.calls); diff != "" {
+		t.Errorf("calls (-want +got):\n%s", diff)
+	}
+}
+
+// An addon's warnings are its last install's: a new update starts afresh.
+func TestWarningsReset(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, sample(), Options{})
+	h.m.running = &job{kind: jobUpdate, writes: true}
+	warn := func(msg string) {
+		h.send(eventMsg{app.Event{Kind: app.EventWarned, Profile: "forever", Ref: baganator, Message: msg}})
+	}
+	warn("built for an older Interface")
+	h.send(eventMsg{app.Event{Kind: app.EventResolving, Profile: "forever", Ref: baganator}})
+	warn("missing dependency Syndicator")
+	if diff := cmp.Diff([]string{"missing dependency Syndicator"}, h.m.warnings[baganator]); diff != "" {
+		t.Errorf("warnings (-want +got):\n%s", diff)
+	}
+}
+
+// What an action did is said until the next key; then the counts are
+// back.
+func TestFlashUntilNextKey(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, sample(), Options{})
+	h.keys("u")
+	if h.m.flash == "" {
+		t.Fatal("no flash after updating")
+	}
+	h.keys("j")
+	if h.m.flash != "" {
+		t.Errorf("flash after j = %q, want none", h.m.flash)
 	}
 }

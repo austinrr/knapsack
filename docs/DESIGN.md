@@ -1387,8 +1387,10 @@ does. Like the CLI, it never decides anything itself: every action is one
   with the current one bracketed and highlighted, and `? help`.
 - **Footer**: the current view's most-used keys on the left; `?` lists
   all of them. On the right, the status: counts after a check, the last
-  result, or an error with its hint, in red. When they don't all fit,
-  hints are left out whole, from the end.
+  result, or an error with its hint, in red. A result ("forever: 1
+  upgraded") is said until the next key, as k9s flashes it; a job's
+  error stays until the next action, so a reload can't hide it. When
+  they don't all fit, hints are left out whole, from the end.
 - **A newer Knapsack release** is said after quitting, by the same
   notice as any command's (§8.4), since the daily check runs while the
   TUI does; the TUI doesn't say it again inside.
@@ -1437,7 +1439,7 @@ add).
 | `U` | Update all: the plan modal (§9.5) first |
 | `ctrl-d` | Remove the marked addons, or the cursor's, after a confirm listing their folders |
 | `c` | Check again: forget what's known and ask every source (§9.4) |
-| `space` | Mark or unmark the row (`●`) |
+| `space` | Mark or unmark the row (`●`). Marks on rows the filter hides still count; the remove confirm lists every addon it removes |
 | `ctrl-\` | Clear marks |
 | `o` | Open the addon's page in the browser |
 | `e` | Edit the profile in the editor, as `profiles edit` does (§9.6) |
@@ -1536,8 +1538,10 @@ lives in one place.
 
 **Jobs.** Every `app` call runs in a `tea.Cmd`, never in `Update`.
 The same work isn't queued twice: `c` while a check is running or
-queued does nothing, and opening describe on another addon, or closing
-it, drops a queued `Info`.
+queued does nothing, an addon already in an update or remove is left
+out of the next one, and opening describe on another addon, or closing
+it, drops a queued `Info`. A job ending clears only its own rows'
+stages, so one still queued keeps showing `queued`.
 They run **one at a time**, in the order started, because profile locks
 are file locks: a second lock on a profile from the same process fails
 as `in use by another knapsack process`, just as from another one
