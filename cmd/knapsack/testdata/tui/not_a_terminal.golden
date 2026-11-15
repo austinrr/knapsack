@@ -1,0 +1,5 @@
+# exit: 2
+# stdout:
+# stderr:
+error: knapsack tui needs a terminal
+hint: run it in a terminal; in a script, use `knapsack list`, `check` or `update`

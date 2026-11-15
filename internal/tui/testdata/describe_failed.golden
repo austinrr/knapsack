@@ -1,0 +1,24 @@
+ Profile: forever                                                    [1] addons
+ Path:    C:\Program Files (x86)\World of W…\_forever_\Interface\AddOns  ? help
+┌────────────────────────── describe(forever/Plater) ──────────────────────────┐
+│ Title:      Plater                                                           │
+│ Ref:        wago:plater                                                      │
+│ Status:     ✗ unknown                                                        │
+│             error: wago plater: rate limited                                 │
+│             hint: wait a minute and press c to check again                   │
+│ Author:     —                                                                │
+│ Notes:      —                                                                │
+│ Version:    610                                                              │
+│ Installed:  2026-11-13 10:00 UTC (2d ago)                                    │
+│ Interface:  —                                                                │
+│ Folders:    Plater                                                           │
+│ Source:     https://addons.wago.io/addons/plater                             │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ esc back  j k scroll  q quit                    5 addons · 1 update · 1 failed

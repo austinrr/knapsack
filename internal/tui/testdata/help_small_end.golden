@@ -1,0 +1,15 @@
+ Profile: forever                                [1] addons
+ Path:    C:\Program Fi…\_forever_\Interface\AddOns  ? help
+┌────────────────────────── help ──────────────────────────┐
+│   esc             back to addons                         │
+│   j k             scroll, when it doesn't fit            │
+│                                                          │
+│ Everywhere                                               │
+│   j k  ↓ ↑        move                                   │
+│   g G             top, bottom                            │
+│   ctrl+f ctrl+b   page down, up                          │
+│   ?               this help; esc closes it               │
+│   q  ctrl+c       quit                                   │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+ esc close  j k scroll       5 addons · 1 update · 1 failed

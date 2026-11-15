@@ -1,0 +1,24 @@
+ Profile: forever                                                    [1] addons
+ Path:    C:\Program Files (x86)\World of W…\_forever_\Interface\AddOns  ? help
+┌───────────────────────────── addons(forever)[5] ─────────────────────────────┐
+│ NAME           VERSION   AVAILABLE   STATUS            SOURCE                │
+│ Baganator      851                     installed       github                │
+│ Details!       11.2.0                  installed       wago                  │
+│ Plater         610                     installed       wago                  │
+│ leatrix-maps   —         —           ○ not installed   github                │
+│ WeakAuras      5.17.1    —           ! not in config   curseforge            │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ ✗ profile "forever" is in use by another knapsack process · wait for it to fin…

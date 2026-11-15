@@ -1,0 +1,24 @@
+ Profile: forever                                                    [1] addons
+ Path:    C:\Program Files (x86)\World of W…\_forever_\Interface\AddOns  ? help
+┌───────────────────────────── addons(forever)[5] ─────────────────────────────┐
+│ NAME           VERSION   AVAILABLE   STATUS               SOURCE             │
+│ Baganator      851       854         ↑ update available   github             │
+│ Details!       11.2.0    11.2.0      ✓ up to date         wago               │
+│ Plater         610       —           ✗ unknown            wago               │
+│ leatrix-maps   —         —           ○ not installed      github             │
+│ WeakAuras      5.17.1    —           ! not in config      curseforge         │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ Quit and cancel updating? y/n

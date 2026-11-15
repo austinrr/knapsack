@@ -69,18 +69,25 @@ func (c *cli) buildNetApp(cmd *cobra.Command, _ []string) error {
 }
 
 func (c *cli) build(cmd *cobra.Command, network bool) error {
-	p, err := paths.Resolve(c.env.getenv)
+	p, err := c.paths()
 	if err != nil {
 		return err
-	}
-	if c.configFile != "" {
-		if p, err = p.WithConfigFile(c.configFile); err != nil {
-			return err
-		}
 	}
 	c.progress = &relay{to: newReporter(cmd.ErrOrStderr(), c.verbose, c.env.getenv)}
 	c.app = newApp(c.env, p, network, c.progress)
 	return nil
+}
+
+// paths are Knapsack's locations from the environment, with --config.
+func (c *cli) paths() (paths.Paths, error) {
+	p, err := paths.Resolve(c.env.getenv)
+	if err != nil {
+		return paths.Paths{}, err
+	}
+	if c.configFile != "" {
+		return p.WithConfigFile(c.configFile)
+	}
+	return p, nil
 }
 
 // newApp builds an App on p. With network, it gets an HTTP client and the
@@ -166,6 +173,7 @@ func newRootCmd(c *cli) *cobra.Command {
 		newConfigCmd(c),
 		newVersionCmd(c),
 		newSelfUpdateCmd(c),
+		newTUICmd(c),
 	)
 	return root
 }

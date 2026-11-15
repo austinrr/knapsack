@@ -18,6 +18,7 @@ Available Commands:
   remove      Uninstall addons and remove them from the profile
   self-update Update knapsack to the newest release
   sources     List addon sources and set how each is read
+  tui         Browse a profile's addons in an interactive terminal interface
   update      Upgrade outdated addons and install missing ones
   version     Print the knapsack version
 
