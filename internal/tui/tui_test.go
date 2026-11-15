@@ -94,7 +94,9 @@ func (f *fake) Add(_ context.Context, profile string, refs []ref.Ref, force bool
 	var out []app.Result
 	for _, r := range refs {
 		res := app.Result{Profile: profile, Name: r.String(), Ref: r}
-		if slices.ContainsFunc(f.local, func(in app.Installed) bool { return in.Ref == r }) {
+		if err := f.failed[r]; err != nil {
+			res.Action, res.Err = app.ActionFailed, err
+		} else if slices.ContainsFunc(f.local, func(in app.Installed) bool { return in.Ref == r }) {
 			res.Action = app.ActionUnchanged
 		} else {
 			res.Action, res.Version = app.ActionInstalled, "1.0"
@@ -1263,5 +1265,105 @@ func TestOpen(t *testing.T) {
 	h.keys("o")
 	if h.m.err == nil || !strings.Contains(h.m.err.Error(), "couldn't open") {
 		t.Errorf("err = %v, want couldn't open", h.m.err)
+	}
+}
+
+// An addon Add couldn't add opens the dialog again with only the failed
+// refs, each with why and its hint, and Force as it was.
+func TestAddFailedReopens(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	silver := ref.Ref{Source: ref.GitHub, ID: "kemayo/silverdragon"}
+	f.failed = map[ref.Ref]error{silver: &app.UserError{
+		Msg:  "github kemayo/silverdragon: folder SilverDragon in AddOns belongs to no addon",
+		Hint: "check Force to replace it with the release",
+	}}
+	h := newHarness(t, f, Options{})
+	h.keys("a")
+	h.m.add.text.SetValue("github:kemayo/silverdragon\ngithub:leatrix/leatrix-maps")
+	h.keys("ctrl+s")
+	if h.m.add == nil {
+		t.Fatal("the dialog didn't open again on the failed addon")
+	}
+	if got := h.m.add.text.Value(); got != silver.String() {
+		t.Errorf("dialog text = %q, want only the failed ref", got)
+	}
+	if h.m.add.force {
+		t.Error("Force was checked, though it wasn't before")
+	}
+	h.golden("add_failed")
+}
+
+// Adopting records an installed addon in config at the version on disk,
+// unchecked: it isn't claimed to be up to date.
+func TestAdoptedUnchecked(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, sample(), Options{})
+	h.send(jobDoneMsg{doneMsg{kind: jobAdd, profile: "forever", refs: []ref.Ref{weak},
+		results: []app.Result{{Profile: "forever", Ref: weak, Action: app.ActionAdopted, Version: "5.17.1"}}}})
+	if k, ok := h.m.known["forever"][weak]; ok {
+		t.Errorf("adopted WeakAuras known as %+v, want unchecked", k)
+	}
+}
+
+// Many problems are cut to what fits, so the Force box stays in view.
+func TestAddManyProblems(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, sample(), Options{})
+	h.keys("a")
+	var bad []string
+	for i := range 20 {
+		bad = append(bad, fmt.Sprintf("nope%d", i))
+	}
+	h.m.add.text.SetValue(strings.Join(bad, "\n"))
+	h.keys("ctrl+s")
+	h.golden("add_many_problems")
+}
+
+// The dialog is drawn while it's open, even over a reload that failed,
+// since it's what takes the keys.
+func TestAddOverLoadError(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, sample(), Options{})
+	h.keys("a")
+	h.m.loadErr = errors.New("config.toml: line 3: invalid flavor")
+	if title, _ := h.m.content(76, 19); !strings.Contains(ansi.Strip(title), "add(") {
+		t.Errorf("box title = %q, want the add dialog's", ansi.Strip(title))
+	}
+	if got := ansi.Strip(h.m.footer()); !strings.Contains(got, "ctrl+s add") {
+		t.Errorf("footer = %q, want the dialog's keys", got)
+	}
+}
+
+// A page opening replaces an earlier error with saying so.
+func TestOpenClearsError(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, sample(), Options{})
+	h.m.err = errors.New("an old check's error")
+	h.keys("o")
+	if h.m.err != nil || !strings.HasPrefix(h.m.flash, "Opened") {
+		t.Errorf("err %v, flash %q; want no error and Opened", h.m.err, h.m.flash)
+	}
+}
+
+// A paste while the quit question is asked goes nowhere; one while the
+// Force box has the focus moves it back to the text.
+func TestPasteRouting(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, sample(), Options{})
+	h.keys("a", "tab")
+	h.send(tea.PasteMsg{Content: "github:a/b"})
+	if h.m.add.onForce || h.m.add.text.Value() != "github:a/b" {
+		t.Errorf("onForce %v, text %q; want the text focused, with the paste", h.m.add.onForce, h.m.add.text.Value())
+	}
+	h.hold = true
+	h.run(h.m.enqueue(writeJob(make(chan struct{}))))
+	h.keys("ctrl+c")
+	if !h.m.confirmQuit {
+		t.Fatal("ctrl+c during a write didn't ask")
+	}
+	h.send(tea.PasteMsg{Content: "more"})
+	if got := h.m.add.text.Value(); got != "github:a/b" {
+		t.Errorf("text after a paste at the quit question = %q, want it unchanged", got)
 	}
 }

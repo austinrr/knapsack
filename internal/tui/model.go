@@ -302,30 +302,19 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		m.filter.SetWidth(max(1, m.width-3))
 		if m.add != nil {
-			m.add.text.SetWidth(max(20, m.width-6))
+			m.add.text.SetWidth(m.addWidth())
 		}
 		m.scroll()
 		return m, nil
 	case tea.KeyPressMsg:
 		return m, m.key(msg)
 	case tea.PasteMsg:
-		// Pasted text goes where it's typed: the add dialog or the filter.
-		switch {
-		case m.add != nil:
-			return m, m.addInput(msg)
-		case m.filtering:
-			var cmd tea.Cmd
-			m.filter, cmd = m.filter.Update(msg)
-			m.query = m.filter.Value()
-			m.cursor, m.offset = 0, 0
-			m.scroll()
-			return m, cmd
-		}
-		return m, nil
+		return m, m.paste(msg)
 	case openedMsg:
-		if msg.err != nil {
-			m.err = msg.err
-		} else {
+		// Opening a page is an action: it replaces the last error, as
+		// any does (DESIGN.md §9.1).
+		m.err = msg.err
+		if msg.err == nil {
 			m.flash = "Opened " + msg.what + " in the browser."
 		}
 		return m, nil
@@ -521,11 +510,7 @@ func (m *model) key(k tea.KeyPressMsg) tea.Cmd {
 			m.filtering = false
 			m.filter.Blur()
 		default:
-			var cmd tea.Cmd
-			m.filter, cmd = m.filter.Update(k)
-			m.query = m.filter.Value()
-			m.cursor, m.offset = 0, 0
-			return cmd
+			return m.editFilter(k)
 		}
 		m.scroll()
 		return nil
@@ -576,6 +561,32 @@ func (m *model) key(k tea.KeyPressMsg) tea.Cmd {
 		}
 	}
 	return m.globalKey(s)
+}
+
+// paste puts pasted text where a key would go, in the same order key
+// tries: nowhere while a question is asked, else the add dialog or the
+// filter.
+func (m *model) paste(msg tea.PasteMsg) tea.Cmd {
+	switch {
+	case m.quitting, m.confirmQuit, m.plan != nil, m.confirm != nil:
+		return nil
+	case m.add != nil:
+		return m.addInput(msg)
+	case m.filtering:
+		return m.editFilter(msg)
+	}
+	return nil
+}
+
+// editFilter types a key or a paste into the open filter, which narrows
+// the table from its first row.
+func (m *model) editFilter(msg tea.Msg) tea.Cmd {
+	var cmd tea.Cmd
+	m.filter, cmd = m.filter.Update(msg)
+	m.query = m.filter.Value()
+	m.cursor, m.offset = 0, 0
+	m.scroll()
+	return cmd
 }
 
 // addonsKey handles the addons view's own keys.

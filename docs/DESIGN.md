@@ -1603,7 +1603,13 @@ There's no check on a timer.
   fails, the dialog stays open, says which lines and why (`line 2:
   invalid addon ref …`), and nothing runs, as a malformed ref is a usage
   error in the CLI (§8.6). `tab` moves to the Force box, which sets
-  `Add`'s `force`. An empty profile says `a` adds one.
+  `Add`'s `force`. When some don't fit, the problems shown are cut,
+  with how many more, so the Force box stays in view. An addon `Add`
+  can't add opens the dialog again with only the failed refs, each with
+  its error and hint, and Force as it was: a folder conflict's fix is a
+  tab and a space away. An addon `Add` adopts (installed already, not in
+  config) is left unchecked, since it's recorded at the version on
+  disk. An empty profile says `a` adds one.
 - **Set key**: `textinput` in password mode, so the key is never drawn.
   `app` validates it as `set-key` does (§8.4). The key is cleared from the
   model once the job is sent, and never appears in a message, the status

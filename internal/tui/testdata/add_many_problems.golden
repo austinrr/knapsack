@@ -1,0 +1,24 @@
+ Profile: forever                                                    [1] addons
+ Path:    C:\Program Files (x86)\World of W…\_forever_\Interface\AddOns  ? help
+┌──────────────────────────────── add(forever) ────────────────────────────────┐
+│ Refs or links to add to forever, one per line:                               │
+│                                                                              │
+│ ┃   1 nope0                                                                  │
+│ ┃   2 nope1                                                                  │
+│ ┃   3 nope2                                                                  │
+│ ┃   4 nope3                                                                  │
+│ ┃   5 nope4                                                                  │
+│ ✗ line 1: invalid addon ref "nope0": want <source>:<id> or a URL, e.g.       │
+│ github:owner/repo                                                            │
+│ ✗ line 2: invalid addon ref "nope1": want <source>:<id> or a URL, e.g.       │
+│ github:owner/repo                                                            │
+│ ✗ line 3: invalid addon ref "nope2": want <source>:<id> or a URL, e.g.       │
+│ github:owner/repo                                                            │
+│ ✗ line 4: invalid addon ref "nope3": want <source>:<id> or a URL, e.g.       │
+│ github:owner/repo                                                            │
+│ … and 16 more                                                                │
+│                                                                              │
+│ [ ] Force: take over folders no addon owns                                   │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ ctrl+s add  tab force box  esc cancel           5 addons · 1 update · 1 failed

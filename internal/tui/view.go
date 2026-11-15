@@ -131,7 +131,7 @@ func (m *model) box(height int) []string {
 // scroll when they don't fit (bodyOffset); the table scrolls by its
 // cursor instead.
 func (m *model) scrollable() bool {
-	return m.help || m.plan != nil || m.confirm != nil || m.add != nil ||
+	return m.help || m.plan != nil || m.confirm != nil ||
 		m.describing && m.loaded && !m.noProfiles && m.loadErr == nil
 }
 
@@ -163,6 +163,15 @@ func (m *model) content(width, height int) (string, []string) {
 	switch {
 	case m.help:
 		return accentStyle.Render("help"), m.helpLines(width)
+	// An open dialog comes first: it takes the keys, so it's what's
+	// shown, even if a reload failed meanwhile.
+	case m.add != nil:
+		return accentStyle.Render("add") + "(" + m.profile + ")", m.addLines(width, height)
+	case m.plan != nil:
+		lines, _ := m.planLines(width)
+		return accentStyle.Render("update") + "(" + m.profile + ")", lines
+	case m.confirm != nil:
+		return m.confirmContent(width)
 	case !m.loaded:
 		return accentStyle.Render("addons"), []string{faintStyle.Render(m.spinner() + " loading")}
 	case m.noProfiles:
@@ -174,27 +183,26 @@ func (m *model) content(width, height int) (string, []string) {
 				", then open knapsack tui again.")
 	case m.loadErr != nil:
 		return accentStyle.Render("addons"), errorLines(width, m.loadErr, m.opts.Running)
-	case m.add != nil:
-		return accentStyle.Render("add") + "(" + m.profile + ")", m.addLines(width)
-	case m.plan != nil:
-		lines, _ := m.planLines(width)
-		return accentStyle.Render("update") + "(" + m.profile + ")", lines
-	case m.confirm != nil:
-		lines := wrap(width, warnStyle.Render(m.confirm.question), "")
-		for _, p := range m.confirm.lines {
-			for i, l := range wrap(width-4, p) {
-				indent := "  "
-				if i > 0 {
-					indent = "    " // a paragraph's own lines, under its name
-				}
-				lines = append(lines, indent+l)
-			}
-		}
-		return accentStyle.Render(m.confirm.title) + "(" + m.profile + ")", lines
 	case m.describing:
 		return m.describe(width)
 	}
 	return m.table(width, height)
+}
+
+// confirmContent is the confirm modal: its question, then its
+// paragraphs, wrapped.
+func (m *model) confirmContent(width int) (string, []string) {
+	lines := wrap(width, warnStyle.Render(m.confirm.question), "")
+	for _, p := range m.confirm.lines {
+		for i, l := range wrap(width-4, p) {
+			indent := "  "
+			if i > 0 {
+				indent = "    " // a paragraph's own lines, under its name
+			}
+			lines = append(lines, indent+l)
+		}
+	}
+	return accentStyle.Render(m.confirm.title) + "(" + m.profile + ")", lines
 }
 
 // table is the addons view.
@@ -458,16 +466,16 @@ func (m *model) footer() string {
 	switch {
 	case m.help:
 		keys = []string{"esc", "close", "j k", "scroll"}
-	case !m.loaded || m.noProfiles:
-		keys = []string{"q", "quit"}
-	case m.loadErr != nil:
-		keys = []string{"c", "try again", "q", "quit"}
+	case m.add != nil:
+		keys = []string{"ctrl+s", "add", "tab", "force box", "esc", "cancel"}
 	case m.plan != nil:
 		keys = []string{"enter", "update", "space", "check box", "j k", "move", "esc", "cancel"}
 	case m.confirm != nil:
 		keys = []string{"y", m.confirm.yes, "n", "cancel"}
-	case m.add != nil:
-		keys = []string{"ctrl+s", "add", "tab", "force box", "esc", "cancel"}
+	case !m.loaded || m.noProfiles:
+		keys = []string{"q", "quit"}
+	case m.loadErr != nil:
+		keys = []string{"c", "try again", "q", "quit"}
 	case m.describing:
 		keys = []string{"u", "update", "ctrl+d", "remove", "o", "open", "esc", "back", "j k", "scroll"}
 	case len(m.rows) == 0:

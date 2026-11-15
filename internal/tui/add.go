@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -25,7 +26,7 @@ func (m *model) openAdd() tea.Cmd {
 	t := textarea.New()
 	t.Placeholder = "github:owner/repo, or a GitHub, CurseForge or Wago link"
 	t.SetHeight(5)
-	t.SetWidth(max(20, m.width-6))
+	t.SetWidth(m.addWidth())
 	if !m.blink {
 		st := t.Styles()
 		st.Cursor.Blink = false
@@ -36,14 +37,24 @@ func (m *model) openAdd() tea.Cmd {
 	return m.add.text.Focus()
 }
 
-// addMsg is a key or a paste, for the add dialog's text.
+// addWidth is the text area's width: the box's, less its prompt.
+func (m *model) addWidth() int { return max(1, m.width-6) }
+
+// addInput is a key or a paste for the dialog's text. A paste while the
+// Force box has the focus moves it back to the text, rather than being
+// lost.
 func (m *model) addInput(msg tea.Msg) tea.Cmd {
+	var focus tea.Cmd
 	if m.add.onForce {
-		return nil
+		if _, paste := msg.(tea.PasteMsg); !paste {
+			return nil
+		}
+		m.add.onForce = false
+		focus = m.add.text.Focus()
 	}
 	var cmd tea.Cmd
 	m.add.text, cmd = m.add.text.Update(msg)
-	return cmd
+	return tea.Batch(focus, cmd)
 }
 
 func (m *model) addKey(k tea.KeyPressMsg) tea.Cmd {
@@ -110,17 +121,58 @@ func (m *model) runAdd(refs []ref.Ref, force bool) tea.Cmd {
 	return m.enqueue(job{kind: jobAdd, profile: profile, name: "adding", writes: true,
 		run: func(ctx context.Context) tea.Msg {
 			res, err := a.Add(ctx, profile, refs, force)
-			return doneMsg{kind: jobAdd, profile: profile, refs: refs, results: res, err: err}
+			return doneMsg{kind: jobAdd, profile: profile, refs: refs, force: force, results: res, err: err}
 		}})
 }
 
-// addLines draws the dialog.
-func (m *model) addLines(width int) []string {
+// reopenAdd opens the dialog again on the addons Add couldn't add, each
+// with why and its hint, so a folder conflict's fix, Force, is a tab and
+// a space away rather than lost with the closed dialog.
+func (m *model) reopenAdd(msg doneMsg) tea.Cmd {
+	var failed []app.Result
+	for _, res := range msg.results {
+		if res.Action == app.ActionFailed {
+			failed = append(failed, res)
+		}
+	}
+	if len(failed) == 0 || m.add != nil {
+		return nil
+	}
+	cmd := m.openAdd()
+	a := m.add
+	a.force = msg.force
+	lines := make([]string, len(failed))
+	for i, res := range failed {
+		lines[i] = res.Ref.String()
+		p := res.Err.Error() // which names the addon
+		var ue *app.UserError
+		if errors.As(res.Err, &ue) && ue.Hint != "" {
+			p += " · hint: " + ue.Hint
+		}
+		a.problems = append(a.problems, p)
+	}
+	a.text.SetValue(strings.Join(lines, "\n"))
+	return cmd
+}
+
+// addLines draws the dialog in height lines: the problems are cut to
+// what fits, so the Force box below them is always in view.
+func (m *model) addLines(width, height int) []string {
 	a := m.add
 	lines := []string{"Refs or links to add to " + m.profile + ", one per line:", ""}
 	lines = append(lines, strings.Split(a.text.View(), "\n")...)
-	for _, p := range a.problems {
-		lines = append(lines, wrap(width, errorStyle.Render("✗ ")+p)...)
+	// Whole problems while they fit, keeping a line for saying how many
+	// more there are, above a blank line and the Force box.
+	room := height - len(lines) - 2
+	for i, p := range a.problems {
+		wrapped := wrap(width, errorStyle.Render("✗ ")+p)
+		last := i == len(a.problems)-1
+		if len(wrapped) > room || !last && len(wrapped) == room {
+			lines = append(lines, faintStyle.Render(fmt.Sprintf("… and %d more", len(a.problems)-i)))
+			break
+		}
+		lines = append(lines, wrapped...)
+		room -= len(wrapped)
 	}
 	box := "[ ]"
 	if a.force {
