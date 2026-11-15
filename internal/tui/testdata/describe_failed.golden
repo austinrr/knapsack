@@ -3,17 +3,17 @@
 ┌────────────────────────── describe(forever/Plater) ──────────────────────────┐
 │ Title:      Plater                                                           │
 │ Ref:        wago:plater                                                      │
+│ Status:     ✗ unknown                                                        │
+│             error: wago plater: rate limited                                 │
+│             hint: wait a minute and press c to check again                   │
 │ Author:     —                                                                │
 │ Notes:      —                                                                │
-│ Status:     ✗ unknown                                                        │
 │ Version:    610                                                              │
 │ Installed:  2026-11-13 10:00 UTC (2d ago)                                    │
 │ Interface:  —                                                                │
 │ Folders:    Plater                                                           │
 │ Source:     https://addons.wago.io/addons/plater                             │
 │                                                                              │
-│ error: wago plater: rate limited                                             │
-│ hint: wait a minute and press c to check again                               │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -21,4 +21,4 @@
 │                                                                              │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
- esc back  q quit                                5 addons · 1 update · 1 failed
+ esc back  j k scroll  q quit                    5 addons · 1 update · 1 failed

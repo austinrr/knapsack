@@ -26,6 +26,8 @@ var (
 // the order started, because profile locks are file locks: a second lock
 // from this process would fail as another process's does (DESIGN.md §9.4).
 type job struct {
+	kind    jobKind
+	profile string
 	// name says what's running, for the status line and quitting:
 	// "checking".
 	name string
@@ -33,6 +35,17 @@ type job struct {
 	writes bool
 	run    func(ctx context.Context) tea.Msg
 }
+
+// jobKind is what a job does, for the status line and for not queueing
+// the same work twice.
+type jobKind int
+
+const (
+	jobOther jobKind = iota
+	jobLoad
+	jobCheck
+	jobInfo
+)
 
 // jobDoneMsg is a job's result, delivered when it finishes.
 type jobDoneMsg struct{ msg tea.Msg }
@@ -114,7 +127,9 @@ type model struct {
 	filtering      bool   // the filter's input is open
 	query          string // the filter applied
 
-	describing  bool
+	describing bool
+	// bodyOffset is how far describe or help is scrolled.
+	bodyOffset  int
 	describeRef ref.Ref
 	details     *app.Details // nil until Info returns
 	infoErr     error        // why Info failed
@@ -169,6 +184,32 @@ func (m *model) next() tea.Cmd {
 	return tea.Batch(func() tea.Msg { return jobDoneMsg{j.run(ctx)} }, m.startTick())
 }
 
+// pending reports whether a job of kind for the profile is running or
+// queued.
+func (m *model) pending(kind jobKind, profile string) bool {
+	if m.running != nil && m.running.kind == kind && m.running.profile == profile {
+		return true
+	}
+	for _, j := range m.queue {
+		if j.kind == kind && j.profile == profile {
+			return true
+		}
+	}
+	return false
+}
+
+// dropQueued takes queued jobs of kind off the queue, as an Info whose
+// describe was closed. A running one finishes; its result is ignored.
+func (m *model) dropQueued(kind jobKind) {
+	kept := m.queue[:0]
+	for _, j := range m.queue {
+		if j.kind != kind {
+			kept = append(kept, j)
+		}
+	}
+	m.queue = kept
+}
+
 // busy is whether anything is in progress, which the spinner shows.
 func (m *model) busy() bool { return m.running != nil || len(m.checking) > 0 }
 
@@ -184,7 +225,7 @@ func (m *model) startTick() tea.Cmd {
 // rows, before any check. With no profile chosen, it's the current one.
 func (m *model) loadJob() job {
 	a, want := m.a, m.profile
-	return job{name: "loading", run: func(ctx context.Context) tea.Msg {
+	return job{kind: jobLoad, profile: want, name: "loading", run: func(ctx context.Context) tea.Msg {
 		profiles, err := a.Profiles(ctx)
 		if err != nil {
 			return loadedMsg{err: err}
@@ -214,7 +255,7 @@ func (m *model) loadJob() job {
 // does, with each row sent as it's finished.
 func (m *model) checkJob() job {
 	a, b, profile := m.a, m.bus, m.profile
-	return job{name: "checking", run: func(ctx context.Context) tea.Msg {
+	return job{kind: jobCheck, profile: profile, name: "checking", run: func(ctx context.Context) tea.Msg {
 		l, err := a.List(ctx, app.Selector{Profiles: []string{profile}},
 			app.ListOptions{Check: true, Watch: watcher{bus: b, profile: profile}})
 		return checkedMsg{profile: profile, listing: l, err: err}
@@ -224,7 +265,7 @@ func (m *model) checkJob() job {
 // infoJob reads an addon's details for describe.
 func (m *model) infoJob(r ref.Ref) job {
 	a, profile := m.a, m.profile
-	return job{name: "reading", run: func(ctx context.Context) tea.Msg {
+	return job{kind: jobInfo, profile: profile, name: "reading", run: func(ctx context.Context) tea.Msg {
 		d, err := a.Info(ctx, profile, r.String())
 		return infoMsg{profile: profile, ref: r, details: d, err: err}
 	}}
@@ -248,6 +289,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case jobDoneMsg:
 		m.running = nil
+		// The job the quit question was about is over: nothing is left
+		// to cancel.
+		m.confirmQuit = false
 		cmd := m.result(msg.msg)
 		if m.quitting {
 			return m, tea.Quit
@@ -351,6 +395,9 @@ func (m *model) recheck() tea.Cmd {
 	if m.noProfiles || m.loadErr != nil || m.profile == "" {
 		return m.enqueue(m.loadJob())
 	}
+	if m.pending(jobCheck, m.profile) {
+		return nil // pressing c again doesn't queue another
+	}
 	delete(m.known, m.profile)
 	m.checked[m.profile] = true
 	return tea.Batch(m.enqueue(m.loadJob()), m.enqueue(m.checkJob()))
@@ -362,18 +409,25 @@ func (m *model) recheck() tea.Cmd {
 func (m *model) key(k tea.KeyPressMsg) tea.Cmd {
 	s := k.String()
 	switch {
+	case m.quitting:
+		// Waiting for a cancelled job to roll back; another Ctrl-C quits
+		// at once, as the CLI's second one does (DESIGN.md §9.6).
+		if s == "ctrl+c" {
+			return tea.Quit
+		}
+		return nil
 	case m.confirmQuit:
 		switch s {
-		case "y", "Y", "enter":
+		case "y", "Y", "enter", "ctrl+c":
 			return m.quit()
-		case "ctrl+c":
-			return tea.Quit
 		case "n", "N", "esc":
 			m.confirmQuit = false
 		}
 		return nil
 	case m.filtering:
 		switch s {
+		case "ctrl+c":
+			return m.globalKey(s)
 		case "esc":
 			m.filtering, m.query = false, ""
 			m.filter.Blur()
@@ -396,9 +450,16 @@ func (m *model) key(k tea.KeyPressMsg) tea.Cmd {
 			m.help = false
 			return nil
 		}
+		if m.scrollBody(s) {
+			return nil
+		}
 	case m.describing:
 		if s == "esc" {
 			m.describing, m.details = false, nil
+			m.dropQueued(jobInfo)
+			return nil
+		}
+		if m.scrollBody(s) {
 			return nil
 		}
 	default:
@@ -419,6 +480,8 @@ func (m *model) addonsKey(s string) (tea.Cmd, bool) {
 		}
 		r := rows[m.cursor].Ref
 		m.describing, m.describeRef, m.details, m.infoErr = true, r, nil, nil
+		m.bodyOffset = 0
+		m.dropQueued(jobInfo) // only this addon's details are wanted now
 		return m.enqueue(m.infoJob(r)), true
 	case "c":
 		return m.recheck(), true
@@ -456,7 +519,7 @@ func (m *model) addonsKey(s string) (tea.Cmd, bool) {
 func (m *model) globalKey(s string) tea.Cmd {
 	switch s {
 	case "?":
-		m.help = true
+		m.help, m.bodyOffset = true, 0
 	case "q", "ctrl+c":
 		if m.running != nil && m.running.writes {
 			m.confirmQuit = true
@@ -479,6 +542,29 @@ func (m *model) quit() tea.Cmd {
 	m.queue = nil
 	m.cancel()
 	return nil
+}
+
+// scrollBody scrolls describe or help, which can be taller than the
+// box, and reports whether s was a key that does.
+func (m *model) scrollBody(s string) bool {
+	switch s {
+	case "j", "down":
+		m.bodyOffset++
+	case "k", "up":
+		m.bodyOffset--
+	case "g", "home":
+		m.bodyOffset = 0
+	case "G", "end":
+		m.bodyOffset = m.maxBodyOffset()
+	case "ctrl+f", "pgdown":
+		m.bodyOffset += m.bodyHeight()
+	case "ctrl+b", "pgup":
+		m.bodyOffset -= m.bodyHeight()
+	default:
+		return false
+	}
+	m.bodyOffset = max(0, min(m.bodyOffset, m.maxBodyOffset()))
+	return true
 }
 
 // scroll keeps the cursor on a row and in view.

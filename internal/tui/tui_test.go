@@ -182,7 +182,14 @@ func (h *harness) keys(keys ...string) {
 func (h *harness) golden(name string) {
 	h.t.Helper()
 	lines := strings.Split(ansi.Strip(h.m.render()), "\n")
+	if len(lines) > h.m.height {
+		h.t.Errorf("screen %s is %d lines, taller than the window's %d", name, len(lines), h.m.height)
+	}
 	for i, l := range lines {
+		// A line wider than the window wraps and shifts everything below.
+		if w := ansi.StringWidth(l); w > h.m.width {
+			h.t.Errorf("screen %s line %d is %d wide, wider than the window's %d: %q", name, i+1, w, h.m.width, l)
+		}
 		lines[i] = strings.TrimRight(l, " ")
 	}
 	got := strings.Join(lines, "\n") + "\n"
@@ -493,5 +500,154 @@ func TestCutMiddle(t *testing.T) {
 		if got := ansi.StringWidth(cutMiddle(tt.path, tt.width)); got > tt.width {
 			t.Errorf("cutMiddle(%q, %d) is %d wide", tt.path, tt.width, got)
 		}
+	}
+}
+
+// writeJob is a job that changes something and runs until cancelled,
+// closing stopped when it does.
+func writeJob(stopped chan struct{}) job {
+	return job{name: "updating", writes: true, run: func(ctx context.Context) tea.Msg {
+		<-ctx.Done()
+		close(stopped)
+		return nil
+	}}
+}
+
+// The job the quit question is about can finish before it's answered:
+// the question goes, rather than drawing a job that's gone.
+func TestQuitQuestionOutlivesJob(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, sample(), Options{})
+	h.hold = true
+	h.run(h.m.enqueue(job{name: "updating", writes: true, run: func(context.Context) tea.Msg { return nil }}))
+	h.keys("q")
+	if !h.m.confirmQuit {
+		t.Fatal("q during an update didn't ask")
+	}
+	h.release()
+	if h.m.confirmQuit || h.quit {
+		t.Fatalf("after the job finished: confirmQuit %v, quit %v; want neither", h.m.confirmQuit, h.quit)
+	}
+	h.golden("checked")
+}
+
+// Ctrl-C quits from the filter too, which takes every other key.
+func TestCtrlCInFilter(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, sample(), Options{})
+	h.keys("/", "w", "ctrl+c")
+	if !h.quit {
+		t.Fatal("ctrl+c in the filter didn't quit")
+	}
+}
+
+// Ctrl-C at the quit question answers yes: the job is cancelled, to roll
+// back, and the TUI waits for it. Another Ctrl-C while it waits quits at
+// once.
+func TestCtrlCQuitting(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, sample(), Options{})
+	stopped := make(chan struct{})
+	h.hold = true
+	h.run(h.m.enqueue(writeJob(stopped)))
+	h.keys("ctrl+c", "ctrl+c")
+	if h.quit || !h.m.quitting {
+		t.Fatalf("quit %v, quitting %v; want it waiting for the update", h.quit, h.m.quitting)
+	}
+	select {
+	case <-h.m.ctx.Done():
+	default:
+		t.Fatal("ctrl+c at the question didn't cancel the update")
+	}
+	h.keys("q")
+	if len(h.pending) != 1 {
+		t.Fatalf("q while waiting did something: %d commands", len(h.pending))
+	}
+	// Commands are held, so look at what the third one returns.
+	_, cmd := h.m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
+	if cmd == nil {
+		t.Fatal("a third ctrl+c did nothing")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatal("a third ctrl+c didn't quit at once")
+	}
+	h.release()
+	<-stopped
+}
+
+// Describe scrolls when it doesn't fit, and the reason a check failed is
+// near the top, above a long list of folders.
+func TestDescribeScrolls(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	folders := []string{"DBM-Core"}
+	for _, raid := range []string{"Aberrus", "Amirdrassil", "Nerubar", "Undermine", "Manaforge", "Vault", "Party", "Delves", "Dungeons", "Challenges"} {
+		folders = append(folders, "DBM-"+raid)
+	}
+	f.checked[2].Folders = folders
+	h := newHarness(t, f, Options{})
+	h.keys("j", "j", "enter")
+	h.golden("describe_long")
+	h.keys("G")
+	h.golden("describe_long_end")
+	h.keys("g")
+	h.golden("describe_long")
+}
+
+// Help fits the smallest window by scrolling.
+func TestHelpSmallWindow(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, sample(), Options{})
+	h.send(tea.WindowSizeMsg{Width: minWidth, Height: minHeight})
+	h.keys("?")
+	h.golden("help_small")
+	h.keys("G")
+	h.golden("help_small_end")
+}
+
+// A title too long for the window is cut, not wrapped.
+func TestLongTitle(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	long := "classic-era-hardcore-test-copy"
+	f.profiles = []app.ProfileInfo{{Name: long, Path: "/games/wow/_classic_era_/Interface/AddOns"}}
+	f.local[0].Title = "Baganator, the bag and bank replacement for every client"
+	f.checked[0].Title = f.local[0].Title
+	h := newHarness(t, f, Options{Profile: long})
+	h.send(tea.WindowSizeMsg{Width: minWidth, Height: minHeight})
+	h.golden("long_title")
+	h.keys("enter")
+	h.golden("long_title_describe")
+}
+
+// Pressing c while a check is running or queued doesn't queue another.
+func TestCheckNotTwice(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	h := newHarness(t, f, Options{})
+	f.calls = nil
+	h.hold = true
+	h.keys("c", "c", "c")
+	h.release()
+	if diff := cmp.Diff([]string{"list forever", "check forever"}, f.calls); diff != "" {
+		t.Errorf("calls (-want +got):\n%s", diff)
+	}
+}
+
+// Only the addon being described is read: opening another, or closing
+// describe, drops a queued Info.
+func TestInfoNotQueuedTwice(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	h := newHarness(t, f, Options{})
+	f.calls = nil
+	h.hold = true
+	h.keys("c")            // a check, for the Infos to wait behind
+	h.keys("enter", "esc") // Baganator, closed
+	h.keys("j", "enter", "esc", "j", "enter")
+	h.release()
+	want := []string{"list forever", "check forever", "info forever " + plater.String()}
+	if diff := cmp.Diff(want, f.calls); diff != "" {
+		t.Errorf("calls (-want +got):\n%s", diff)
 	}
 }

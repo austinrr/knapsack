@@ -1,0 +1,15 @@
+ Profile: classic-era-hardcore-test-copy         [1] addons
+ Path:    /games/wow/_classic_era_/Interface/AddOns  ? help
+┌─ describe(classic-era-hardcore-test-copy/Baganator, th… ─┐
+│ Title:      Baganator, the bag and bank replacement for… │
+│ Ref:        github:austinrr/baganator-mirror             │
+│ Status:     ↑ update available   851 → 854               │
+│ Author:     plusmouse                                    │
+│ Notes:      Bag and bank replacement with sorting, cate… │
+│ Version:    851                                          │
+│ Installed:  2026-11-13 10:00 UTC (2d ago)                │
+│ Interface:  110205, 50500                                │
+│ Folders:    Baganator                                    │
+│ ↓ 2 more · j k to scroll                                 │
+└──────────────────────────────────────────────────────────┘
+ esc back  j k scroll        5 addons · 1 update · 1 failed

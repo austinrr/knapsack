@@ -3,9 +3,10 @@
 ┌──────────────────────── describe(forever/Baganator) ─────────────────────────┐
 │ Title:      Baganator                                                        │
 │ Ref:        github:austinrr/baganator-mirror                                 │
+│ Status:     ↑ update available   851 → 854                                   │
+│             error: read Baganator.toc: permission denied                     │
 │ Author:     —                                                                │
 │ Notes:      —                                                                │
-│ Status:     ↑ update available   851 → 854                                   │
 │ Version:    851                                                              │
 │ Installed:  2026-11-13 10:00 UTC (2d ago)                                    │
 │ Interface:  —                                                                │
@@ -13,7 +14,6 @@
 │             Baganator_Categories                                             │
 │ Source:     https://github.com/austinrr/baganator-mirror                     │
 │                                                                              │
-│ error: read Baganator.toc: permission denied                                 │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -21,4 +21,4 @@
 │                                                                              │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
- esc back  q quit                                5 addons · 1 update · 1 failed
+ esc back  j k scroll  q quit                    5 addons · 1 update · 1 failed

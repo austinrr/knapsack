@@ -9,6 +9,7 @@
 │                                                                              │
 │ Describe                                                                     │
 │   esc             back to addons                                             │
+│   j k             scroll, when it doesn't fit                                │
 │                                                                              │
 │ Everywhere                                                                   │
 │   j k  ↓ ↑        move                                                       │
@@ -19,6 +20,5 @@
 │                                                                              │
 │                                                                              │
 │                                                                              │
-│                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
- esc close                                       5 addons · 1 update · 1 failed
+ esc close  j k scroll                           5 addons · 1 update · 1 failed

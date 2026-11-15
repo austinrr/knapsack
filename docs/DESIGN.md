@@ -1442,10 +1442,13 @@ add).
 | `o` | Open the addon's page in the browser |
 | `e` | Edit the profile in the editor, as `profiles edit` does (§9.6) |
 
-**Describe** shows `app.Details`: title, ref, author, notes, status with
-`installed → available`, install time, Interface numbers, folders, and
-the source page; and, for a row whose last job or check failed, the
-error, its hint and its `report:` link (§8.6).
+**Describe** shows `app.Details`: title, ref, status with `installed →
+available`, and, right under it for a row whose last job or check
+failed, the error, its hint and its `report:` link (§8.6), so a long
+list of folders never pushes them out of view; then author, notes,
+install time, Interface numbers, folders and the source page. Describe
+and help scroll with `j`/`k` (and `g`, `G`, `ctrl-f`, `ctrl-b`) when
+they don't fit, with a last line saying how many more there are.
 
 | Key | Action |
 |---|---|
@@ -1532,6 +1535,9 @@ lives in one place.
 ### 9.4 Jobs, progress and what's known
 
 **Jobs.** Every `app` call runs in a `tea.Cmd`, never in `Update`.
+The same work isn't queued twice: `c` while a check is running or
+queued does nothing, and opening describe on another addon, or closing
+it, drops a queued `Info`.
 They run **one at a time**, in the order started, because profile locks
 are file locks: a second lock on a profile from the same process fails
 as `in use by another knapsack process`, just as from another one
@@ -1612,9 +1618,12 @@ and `--prune` flags, and the TUI asks instead.
   `xdg-open`, `rundll32 url.dll,FileProtocolHandler`), in a small file per
   OS. A ref's page comes from `ref.Ref.URL`.
 - **Ctrl-C** arrives as a key, since the terminal is in raw mode. With no
-  job, it quits. With one, it asks; yes cancels the job's context, waits
-  for it to roll back as the CLI does, and quits. A second Ctrl-C while
-  waiting quits at once, as the CLI's second signal does (§8.6).
+  job that changes anything, it quits, from anywhere, the filter
+  included. With one, it asks, and Ctrl-C again answers yes: that
+  cancels the job's context, waits for it to roll back as the CLI does,
+  and quits. One more Ctrl-C while waiting quits at once, as the CLI's
+  second signal does (§8.6). If the job finishes before the question is
+  answered, the question goes.
 - **Colors** adapt to light and dark terminals (Lip Gloss), and `NO_COLOR`
   turns them off; marks and statuses have glyphs, so nothing depends on
   color alone. The spinner uses `|/-\` in the Windows console, as the

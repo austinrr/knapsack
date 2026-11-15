@@ -1,0 +1,24 @@
+ Profile: forever                                                    [1] addons
+ Path:    C:\Program Files (x86)\World of W…\_forever_\Interface\AddOns  ? help
+┌────────────────────────── describe(forever/Plater) ──────────────────────────┐
+│             error: wago plater: rate limited                                 │
+│             hint: wait a minute and press c to check again                   │
+│ Author:     —                                                                │
+│ Notes:      —                                                                │
+│ Version:    610                                                              │
+│ Installed:  2026-11-13 10:00 UTC (2d ago)                                    │
+│ Interface:  —                                                                │
+│ Folders:    DBM-Core                                                         │
+│             DBM-Aberrus                                                      │
+│             DBM-Amirdrassil                                                  │
+│             DBM-Nerubar                                                      │
+│             DBM-Undermine                                                    │
+│             DBM-Manaforge                                                    │
+│             DBM-Vault                                                        │
+│             DBM-Party                                                        │
+│             DBM-Delves                                                       │
+│             DBM-Dungeons                                                     │
+│             DBM-Challenges                                                   │
+│ Source:     https://addons.wago.io/addons/plater                             │
+└──────────────────────────────────────────────────────────────────────────────┘
+ esc back  j k scroll  q quit                    5 addons · 1 update · 1 failed

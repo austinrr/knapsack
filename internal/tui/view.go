@@ -52,8 +52,12 @@ func (m *model) render() string {
 		return ""
 	}
 	if m.width < minWidth || m.height < minHeight {
-		return fmt.Sprintf("Make the window larger: knapsack needs %d×%d, and this is %d×%d.",
-			minWidth, minHeight, m.width, m.height)
+		lines := wrap(m.width, fmt.Sprintf("Make the window larger: knapsack needs %d×%d, and this is %d×%d.",
+			minWidth, minHeight, m.width, m.height))
+		for i, l := range lines {
+			lines[i] = ansi.Truncate(l, m.width, "")
+		}
+		return strings.Join(lines[:min(len(lines), m.height)], "\n")
 	}
 	lines := m.header()
 	lines = append(lines, m.box(m.height-len(lines)-1)...)
@@ -106,8 +110,11 @@ func cutMiddle(path string, width int) string {
 // lines in all.
 func (m *model) box(height int) []string {
 	title, body := m.content(m.width-4, height-2)
+	if m.scrollable() {
+		body = m.bodyWindow(body, height-2)
+	}
 	inner := m.width - 2
-	top := "─ " + title + " ─"
+	top := "─ " + ansi.Truncate(title, inner-4, "…") + " ─"
 	fill := max(0, inner-ansi.StringWidth(top))
 	lines := []string{"┌" + strings.Repeat("─", fill/2) + top + strings.Repeat("─", fill-fill/2) + "┐"}
 	for i := range height - 2 {
@@ -120,8 +127,37 @@ func (m *model) box(height int) []string {
 	return append(lines, "└"+strings.Repeat("─", inner)+"┘")
 }
 
-// content is the box's title and lines, at most width wide and height
-// high.
+// scrollable is whether the box shows describe or help, whose lines
+// scroll when they don't fit (bodyOffset); the table scrolls by its
+// cursor instead.
+func (m *model) scrollable() bool {
+	return m.help || m.describing && m.loaded && !m.noProfiles && m.loadErr == nil
+}
+
+// bodyHeight is how many lines the box holds inside its borders.
+func (m *model) bodyHeight() int { return max(1, m.height-5) }
+
+// maxBodyOffset is how far describe or help can scroll: until its last
+// line is in view.
+func (m *model) maxBodyOffset() int {
+	_, body := m.content(m.width-4, m.bodyHeight())
+	return max(0, len(body)-m.bodyHeight())
+}
+
+// bodyWindow is the part of body that fits in height lines, from
+// bodyOffset; when more is below, the last line says so.
+func (m *model) bodyWindow(body []string, height int) []string {
+	off := max(0, min(m.bodyOffset, len(body)-height))
+	body = body[off:]
+	if len(body) > height {
+		more := len(body) - height + 1
+		body = append(body[:height-1:height-1], faintStyle.Render(fmt.Sprintf("↓ %d more · j k to scroll", more)))
+	}
+	return body
+}
+
+// content is the box's title and lines, at most width wide. Describe and
+// help may be taller than height; bodyWindow scrolls them.
 func (m *model) content(width, height int) (string, []string) {
 	switch {
 	case m.help:
@@ -184,13 +220,15 @@ func (m *model) table(width, height int) (string, []string) {
 			widths[j] = max(widths[j], ansi.StringWidth(c))
 		}
 	}
-	// NAME gives way when the rest don't fit.
-	const gap = 3
+	// NAME gives way when the rest don't fit, down to minName; past that,
+	// the columns on the right are cut instead, since the name matters
+	// most.
+	const gap, minName = 3, 16
 	rest := 0
 	for _, w := range widths[1:] {
 		rest += w + gap
 	}
-	widths[0] = max(len(headers[0]), min(widths[0], width-rest))
+	widths[0] = max(min(widths[0], minName), min(widths[0], width-rest))
 
 	line := func(cs []string, style func(j int, s string) string) string {
 		parts := make([]string, len(cs))
@@ -262,8 +300,6 @@ func (m *model) describe(width int) (string, []string) {
 	}
 	field("Title", dash(r.Title))
 	field("Ref", r.Ref.String())
-	field("Author", toc(func(d *app.Details) string { return d.Author }))
-	field("Notes", toc(func(d *app.Details) string { return d.Notes }))
 	status := string(r.Status)
 	if r.Version != "" && r.Available != "" && r.Available != r.Version {
 		status += "   " + r.Version + " → " + r.Available
@@ -272,6 +308,17 @@ func (m *model) describe(width int) (string, []string) {
 		status = st.Render(glyph(r.Status) + " " + status)
 	}
 	field("Status", status)
+	// Why the check or Info failed comes first, under the status it
+	// explains, so a long list of folders never pushes it out of view.
+	for _, err := range []error{r.Err, m.infoErr} {
+		if err != nil {
+			for _, l := range errorLines(width-12, err, m.opts.Running) {
+				lines = append(lines, strings.Repeat(" ", 12)+l)
+			}
+		}
+	}
+	field("Author", toc(func(d *app.Details) string { return d.Author }))
+	field("Notes", toc(func(d *app.Details) string { return d.Notes }))
 	field("Version", dash(r.Version))
 	installed := "—"
 	if !r.InstalledAt.IsZero() {
@@ -291,12 +338,6 @@ func (m *model) describe(width int) (string, []string) {
 		field("Folders", r.Folders...)
 	}
 	field("Source", r.Ref.URL())
-	for _, err := range []error{r.Err, m.infoErr} {
-		if err != nil {
-			lines = append(lines, "")
-			lines = append(lines, errorLines(width, err, m.opts.Running)...)
-		}
-	}
 	return title, lines
 }
 
@@ -332,6 +373,7 @@ func (m *model) helpLines(width int) []string {
 	)
 	lines = append(lines, section("Describe",
 		key{"esc", "back to addons"},
+		key{"j k", "scroll, when it doesn't fit"},
 	)...)
 	return append(lines, section("Everywhere",
 		key{"j k  ↓ ↑", "move"},
@@ -354,13 +396,13 @@ func (m *model) footer() string {
 	var keys []string
 	switch {
 	case m.help:
-		keys = []string{"esc", "close"}
+		keys = []string{"esc", "close", "j k", "scroll"}
 	case !m.loaded || m.noProfiles:
 		keys = []string{"q", "quit"}
 	case m.loadErr != nil:
 		keys = []string{"c", "try again", "q", "quit"}
 	case m.describing:
-		keys = []string{"esc", "back", "q", "quit"}
+		keys = []string{"esc", "back", "j k", "scroll", "q", "quit"}
 	default:
 		keys = []string{"enter", "describe", "c", "check", "/", "filter", "?", "help", "q", "quit"}
 	}
@@ -396,7 +438,7 @@ func (m *model) status() string {
 		return errorStyle.Render("✗ " + s)
 	case !m.loaded || m.loadErr != nil || m.noProfiles:
 		return ""
-	case m.running != nil && m.running.name != "checking" && len(m.checking) == 0:
+	case m.running != nil && m.running.kind != jobCheck && len(m.checking) == 0:
 		return faintStyle.Render(m.spinner() + " " + m.running.name)
 	}
 	return faintStyle.Render(m.summary(m.visible()))
