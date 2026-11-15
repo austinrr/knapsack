@@ -1614,3 +1614,161 @@ func TestEditProfile(t *testing.T) {
 		t.Errorf("edited = %v, want retail second", edited)
 	}
 }
+
+// e waits for no job: one running or queued could hold the lock its
+// save needs, so it says to wait instead.
+func TestEditWaitsForJobs(t *testing.T) {
+	t.Parallel()
+	called := false
+	h := newHarness(t, twoProfiles(), Options{Edit: func(context.Context, string) (bool, app.ProfileEditResult, error) {
+		called = true
+		return false, app.ProfileEditResult{}, nil
+	}})
+	h.hold = true
+	h.keys("u", "e")
+	if called || !strings.HasPrefix(h.m.flash, "Wait for updating") {
+		t.Errorf("editor ran %v, flash %q; want it not run, and a wait", called, h.m.flash)
+	}
+}
+
+// A SIGINT or SIGTERM from outside is caught: Bubble Tea's quit on it
+// becomes a signalMsg, which waits for a write to roll back, then quits.
+// The TUI's own quit passes, and Run then reports the signal.
+func TestSignalQuit(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, sample(), Options{})
+	if _, ok := quitFilter(h.m, tea.InterruptMsg{}).(signalMsg); !ok {
+		t.Fatal("SIGINT's InterruptMsg wasn't caught")
+	}
+	if _, ok := quitFilter(h.m, tea.QuitMsg{}).(signalMsg); !ok {
+		t.Fatal("SIGTERM's QuitMsg wasn't caught")
+	}
+	stopped := make(chan struct{})
+	h.hold = true
+	h.run(h.m.enqueue(writeJob(stopped)))
+	h.send(signalMsg{})
+	if h.quit || !h.m.quitting || !h.m.signaled {
+		t.Fatalf("quit %v, quitting %v, signaled %v; want it waiting for the write", h.quit, h.m.quitting, h.m.signaled)
+	}
+	h.release()
+	<-stopped
+	if !h.quit {
+		t.Fatal("didn't quit once the write stopped")
+	}
+	if _, ok := quitFilter(h.m, tea.QuitMsg{}).(tea.QuitMsg); !ok {
+		t.Error("the TUI's own quit was caught")
+	}
+}
+
+// Switching from a scrolled describe to profiles starts the table at its
+// top.
+func TestSwitchResetsScroll(t *testing.T) {
+	t.Parallel()
+	f := twoProfiles()
+	f.checked[0].Folders = make([]string, 30)
+	for i := range f.checked[0].Folders {
+		f.checked[0].Folders[i] = fmt.Sprintf("Baganator_%d", i)
+	}
+	h := newHarness(t, f, Options{})
+	h.keys("enter", "G", "2")
+	if got := ansi.Strip(h.m.render()); !strings.Contains(got, "NAME") || !strings.Contains(got, "forever (*)") {
+		t.Errorf("profiles view after a scrolled describe:\n%s", got)
+	}
+}
+
+// The profiles table scrolls to keep its cursor in view.
+func TestProfilesScroll(t *testing.T) {
+	t.Parallel()
+	f := twoProfiles()
+	for i := range 20 {
+		f.profiles = append(f.profiles, app.ProfileInfo{Name: fmt.Sprintf("test-%02d", i), Flavor: "retail", Path: fmt.Sprintf("/games/wow%02d/_retail_/Interface/AddOns", i)})
+	}
+	h := newHarness(t, f, Options{})
+	h.send(tea.WindowSizeMsg{Width: minWidth, Height: minHeight})
+	h.keys("2", "G")
+	h.golden("profiles_scrolled")
+	h.keys("ctrl+b")
+	if h.m.pcursor != len(f.profiles)-1-h.m.pageSize() {
+		t.Errorf("pcursor after ctrl+b = %d", h.m.pcursor)
+	}
+}
+
+// enter twice in the form saves once.
+func TestFormSavesOnce(t *testing.T) {
+	t.Parallel()
+	f := twoProfiles()
+	h := newHarness(t, f, Options{})
+	f.calls = nil
+	h.keys("2", "n")
+	h.m.form.fields[0].SetValue("/games/wow/_classic_")
+	h.hold = true
+	h.keys("enter", "enter")
+	h.golden("profile_saving")
+	h.release()
+	if n := len(slices.DeleteFunc(slices.Clone(f.calls), func(c string) bool { return !strings.HasPrefix(c, "set ") })); n != 1 {
+		t.Errorf("calls = %v, want one set", f.calls)
+	}
+}
+
+// s can't empty a field: SetProfile would take it as unchanged.
+func TestSetEmptied(t *testing.T) {
+	t.Parallel()
+	f := twoProfiles()
+	h := newHarness(t, f, Options{})
+	f.calls = nil
+	h.keys("2", "s")
+	h.m.form.fields[1].SetValue("")
+	h.keys("enter")
+	if len(f.calls) != 0 || h.m.form == nil || h.m.form.err == nil {
+		t.Errorf("calls %v, form open %v; want nothing sent and the form's error", f.calls, h.m.form != nil)
+	}
+}
+
+// A new path for the profile shown forgets what was checked, and checks
+// again.
+func TestSetPathChecksAgain(t *testing.T) {
+	t.Parallel()
+	f := twoProfiles()
+	h := newHarness(t, f, Options{})
+	f.calls = nil
+	h.keys("2", "s")
+	h.m.form.fields[0].SetValue("/games/other/_forever_/Interface/AddOns")
+	h.keys("enter")
+	want := []string{`set name="forever" path="/games/other/_forever_/Interface/AddOns" flavor="" must=2`, "list forever", "check forever"}
+	if diff := cmp.Diff(want, f.calls); diff != "" {
+		t.Errorf("calls (-want +got):\n%s", diff)
+	}
+}
+
+// The addons view, with no profiles, points to the profiles view.
+func TestNoProfilesAddonsView(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, &fake{}, Options{})
+	h.keys("1")
+	h.golden("no_profiles_addons")
+}
+
+// An older read of the profiles, answering after a later one, is
+// dropped.
+func TestStaleProfilesRead(t *testing.T) {
+	t.Parallel()
+	f := twoProfiles()
+	h := newHarness(t, f, Options{})
+	h.keys("2")
+	stale := profilesMsg{read: h.m.preads - 1, profiles: f.profiles[:1]}
+	h.send(stale)
+	if len(h.m.profiles) != 2 {
+		t.Errorf("%d profiles after a stale read, want 2", len(h.m.profiles))
+	}
+}
+
+// The form's fields follow the window's width.
+func TestFormResizes(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, twoProfiles(), Options{})
+	h.keys("2", "n")
+	h.send(tea.WindowSizeMsg{Width: 120, Height: 30})
+	if got, want := h.m.form.fields[0].Width(), h.m.formWidth(); got != want {
+		t.Errorf("field width %d after resizing, want %d", got, want)
+	}
+}

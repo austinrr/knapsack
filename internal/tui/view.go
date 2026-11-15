@@ -140,7 +140,7 @@ func (m *model) box(height int) []string {
 // cursor instead.
 func (m *model) scrollable() bool {
 	return m.help || m.plan != nil || m.confirm != nil ||
-		m.describing && m.loaded && !m.noProfiles && m.loadErr == nil
+		m.view == viewAddons && m.describing && m.loaded && !m.noProfiles && m.loadErr == nil
 }
 
 // bodyHeight is how many lines the box holds inside its borders.
@@ -194,9 +194,8 @@ func (m *model) content(width, height int) (string, []string) {
 		return accentStyle.Render("addons"), wrap(width,
 			"No profiles yet.",
 			"",
-			"Make one for each game client with "+boldStyle.Render("knapsack profiles create --auto")+
-				", or by path with "+boldStyle.Render("knapsack profiles create --path <AddOns>")+
-				", then open knapsack tui again.")
+			"Press "+boldStyle.Render("2")+" for profiles, where "+boldStyle.Render("A")+
+				" finds World of Warcraft and makes one for each game client.")
 	case m.loadErr != nil:
 		return accentStyle.Render("addons"), errorLines(width, m.loadErr, m.opts.Running)
 	case m.describing:
@@ -522,7 +521,9 @@ func (m *model) footer() string {
 	case m.view == viewProfiles:
 		keys = []string{"enter", "use", "n", "new", "s", "set", "A", "find the game", "e", "edit",
 			"ctrl+d", "delete", "tab", "addons", "?", "help"}
-	case !m.loaded || m.noProfiles:
+	case m.noProfiles:
+		keys = []string{"2", "profiles", "q", "quit"}
+	case !m.loaded:
 		keys = []string{"q", "quit"}
 	case m.loadErr != nil:
 		keys = []string{"c", "try again", "q", "quit"}

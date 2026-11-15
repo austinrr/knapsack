@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"errors"
 	"sync"
 
 	tea "charm.land/bubbletea/v2"
@@ -58,11 +57,12 @@ func Run(ctx context.Context, opts Options) error {
 	b := &bus{}
 	rep := newReporter(b)
 	m := newModel(ctx, opts.NewApp(rep), opts, b, rep)
-	p := tea.NewProgram(m, tea.WithContext(ctx))
+	p := tea.NewProgram(m, tea.WithContext(ctx), tea.WithFilter(quitFilter))
 	b.set(p.Send)
 	_, err := p.Run()
-	if errors.Is(err, tea.ErrInterrupted) {
-		// A SIGINT from outside, which says it better than Bubble Tea.
+	if err == nil && m.signaled {
+		// Quit on a signal from outside, once any job rolled back: not
+		// a success.
 		return context.Canceled
 	}
 	return err

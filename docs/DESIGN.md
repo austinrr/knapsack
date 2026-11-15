@@ -1471,9 +1471,9 @@ view says so, with the command that picks one.
 |---|---|
 | `enter` | Use the profile (`UseProfile`) and show its addons |
 | `n` | New profile form: path, then optional name and flavor (`SetProfile`) |
-| `s` | The same form for the cursor's profile, filled in; only changed fields are sent, as `profiles set` takes them |
+| `s` | The same form for the cursor's profile, filled in; only changed fields are sent, as `profiles set` takes them, and a field can't be emptied. A new path forgets what was checked in the old folder |
 | `A` | Find the game and make a profile per client (`AutoProfiles`); the result, made and skipped, shows in a modal, as `profiles create --auto` reports it |
-| `e` | Edit the profile in the editor |
+| `e` | Edit the profile in the editor; while a job runs or waits, it says to wait, since saving takes the lock the job may hold |
 | `ctrl-d` | Delete the profile, after a confirm saying its addon files stay |
 
 **Sources**: NAME, STATUS (`ready` or `needs key`), READ VIA and KEY FROM,
@@ -1639,9 +1639,13 @@ and `--prune` flags, and the TUI asks instead.
   addons the edit added or took out (`U`), or its error.
 - **Signals.** `main` cancels its context on SIGINT, which a Ctrl-C typed
   in the editor sends. So `tui.Run` keeps the context's values but not
-  its cancellation: in raw mode Ctrl-C is a key, Bubble Tea handles
-  SIGINT and SIGTERM from outside itself, and it ignores them while the
-  editor has the terminal, as the edit loop does.
+  its cancellation: in raw mode Ctrl-C is a key, and Bubble Tea gets
+  SIGINT and SIGTERM from outside itself, ignoring them while the editor
+  has the terminal, as the edit loop does. Bubble Tea would quit on
+  them at once, so a filter (`tea.WithFilter`) turns that quit into
+  the TUI's own, as Ctrl-C answered yes: a job that writes is cancelled
+  and rolled back first, and a second signal quits at once. Knapsack
+  then exits 2, as the CLI does when interrupted.
 - **Browser.** `o` and `r` open a URL with the OS's handler (`open`,
   `xdg-open`, `rundll32 url.dll,FileProtocolHandler`), in a small file per
   OS, without waiting for it or letting it write on the terminal, and

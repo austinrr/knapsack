@@ -25,6 +25,7 @@ var viewNames = [viewCount]string{"addons", "profiles"}
 
 // profilesMsg is every profile, from config alone.
 type profilesMsg struct {
+	read     int // which read, of m.preads
 	profiles []app.ProfileInfo
 	err      error
 }
@@ -32,17 +33,21 @@ type profilesMsg struct {
 // profilesCmd reads the profiles. It isn't a job: Profiles reads only
 // config, without a profile's lock, so it needn't wait for one
 // (DESIGN.md §9.4).
+// Reads can overlap, so each is numbered and only the latest's answer is
+// used: an older one may be from before a change.
 func (m *model) profilesCmd() tea.Cmd {
-	a, ctx := m.a, m.ctx
+	m.preads++
+	a, ctx, read := m.a, m.ctx, m.preads
 	return func() tea.Msg {
 		ps, err := a.Profiles(ctx)
-		return profilesMsg{profiles: ps, err: err}
+		return profilesMsg{read: read, profiles: ps, err: err}
 	}
 }
 
 // switchView shows view v, reading the profiles afresh for their view.
 func (m *model) switchView(v int) tea.Cmd {
 	m.view = (v + viewCount) % viewCount
+	m.bodyOffset = 0
 	if m.view == viewProfiles {
 		return m.profilesCmd()
 	}
@@ -144,11 +149,29 @@ func (m *model) profilesKey(s string) (tea.Cmd, bool) {
 		m.pcursor = 0
 	case "G", "end":
 		m.pcursor = len(m.profiles) - 1
+	case "ctrl+f", "pgdown":
+		m.pcursor += m.pageSize()
+	case "ctrl+b", "pgup":
+		m.pcursor -= m.pageSize()
 	default:
 		return nil, false
 	}
-	m.pcursor = max(0, min(m.pcursor, len(m.profiles)-1))
+	m.pscroll()
 	return nil, true
+}
+
+// pscroll keeps the profiles view's cursor on a row and in view, as
+// scroll does the table's.
+func (m *model) pscroll() {
+	n, page := len(m.profiles), m.pageSize()
+	m.pcursor = max(0, min(m.pcursor, n-1))
+	if m.pcursor < m.poffset {
+		m.poffset = m.pcursor
+	}
+	if m.pcursor >= m.poffset+page {
+		m.poffset = m.pcursor - page + 1
+	}
+	m.poffset = max(0, min(m.poffset, n-page))
 }
 
 func (m *model) askDeleteProfile(name string) {
@@ -184,7 +207,7 @@ func (m *model) profileResult(msg tea.Msg) tea.Cmd {
 		if msg.err != nil {
 			// The form is still open: it shows the error, with its hint.
 			if m.form != nil {
-				m.form.err = msg.err
+				m.form.err, m.form.saving = msg.err, false
 			} else {
 				m.err = msg.err
 			}
@@ -199,6 +222,11 @@ func (m *model) profileResult(msg tea.Msg) tea.Cmd {
 			m.flash = "Saved profile " + name + "."
 		default:
 			m.flash = "Profile " + name + " unchanged."
+		}
+		if msg.req.Path != "" {
+			// Another folder: what was checked was the old one's.
+			delete(m.known, name)
+			delete(m.checked, name)
 		}
 		switch {
 		case msg.res.MadeCurrent || m.profile == "":
@@ -309,7 +337,11 @@ type profileForm struct {
 	labels   []string
 	focus    int
 	err      error
+	saving   bool // a save is queued or running: enter waits for it
 }
+
+// formWidth is a form field's width: the box's, less its label.
+func (m *model) formWidth() int { return max(10, m.width-16) }
 
 func (m *model) openProfileForm(p *app.ProfileInfo) tea.Cmd {
 	f := &profileForm{existing: p}
@@ -318,7 +350,7 @@ func (m *model) openProfileForm(p *app.ProfileInfo) tea.Cmd {
 		t.Prompt = ""
 		t.Placeholder = placeholder
 		t.SetValue(value)
-		t.SetWidth(max(10, m.width-20))
+		t.SetWidth(m.formWidth())
 		if !m.blink {
 			st := t.Styles()
 			st.Cursor.Blink = false
@@ -353,6 +385,9 @@ func (m *model) formKey(k tea.KeyPressMsg) tea.Cmd {
 	case "shift+tab", "up":
 		return f.move(-1)
 	case "enter":
+		if f.saving {
+			return nil
+		}
 		return m.submitProfileForm()
 	}
 	return m.formInput(k)
@@ -388,10 +423,20 @@ func (m *model) submitProfileForm() tea.Cmd {
 	req := app.SetProfileRequest{Path: f.value("Path"), Name: f.value("Name"), Flavor: f.value("Flavor"), Must: app.MustBeNew}
 	if p := f.existing; p != nil {
 		req = app.SetProfileRequest{Name: p.Name, Must: app.MustExist}
-		if path := f.value("Path"); path != p.Path {
+		path, fl := f.value("Path"), f.value("Flavor")
+		// SetProfile reads an empty field as unchanged, so an emptied one
+		// would be quietly ignored.
+		if path == "" || fl == "" {
+			f.err = &app.UserError{
+				Msg:  "a profile needs a path and a flavor",
+				Hint: "type one; a flavor is only worked out from the path when a profile is made",
+			}
+			return nil
+		}
+		if path != p.Path {
 			req.Path = path
 		}
-		if fl := f.value("Flavor"); fl != string(p.Flavor) {
+		if fl != string(p.Flavor) {
 			req.Flavor = fl
 		}
 		if req.Path == "" && req.Flavor == "" {
@@ -403,7 +448,7 @@ func (m *model) submitProfileForm() tea.Cmd {
 		f.err = errors.New("the path is needed: the client folder, or its Interface/AddOns")
 		return nil
 	}
-	f.err = nil
+	f.err, f.saving = nil, true
 	a := m.a
 	return m.profileJob("saving", func(ctx context.Context) tea.Msg {
 		res, err := a.SetProfile(ctx, req)
@@ -429,7 +474,10 @@ func (m *model) formLines(width int) []string {
 		}
 		lines = append(lines, ansi.Truncate(label+t.View(), width, "…"))
 	}
-	if f.err != nil {
+	switch {
+	case f.saving:
+		lines = append(lines, "", faintStyle.Render(m.spinner()+" saving"))
+	case f.err != nil:
 		lines = append(lines, "")
 		lines = append(lines, errorLines(width, f.err, m.opts.Running)...)
 	}
@@ -440,6 +488,12 @@ func (m *model) formLines(width int) []string {
 // does, then reads it again (DESIGN.md §9.6).
 func (m *model) edit(name string) tea.Cmd {
 	if m.opts.Edit == nil {
+		return nil
+	}
+	// The edit saves under the profile's lock, which a job may hold: it
+	// waits for none, as profiles edit wouldn't for another process.
+	if m.running != nil || len(m.queue) > 0 {
+		m.flash = "Wait for " + m.busyName() + " to finish, then press e."
 		return nil
 	}
 	m.flash, m.err = "", nil
@@ -502,8 +556,8 @@ func (m *model) profilesTable(width int) (string, []string) {
 		return "  " + strings.Join(parts, strings.Repeat(" ", gap))
 	}
 	lines := []string{boldStyle.Render(line(headers))}
-	for i, cs := range cells {
-		l := line(cs)
+	for i := m.poffset; i < len(cells) && i < m.poffset+m.pageSize(); i++ {
+		l := line(cells[i])
 		if i == m.pcursor {
 			l = "  " + cursorStyle.Render(pad(strings.TrimPrefix(l, "  "), width-2))
 		}
