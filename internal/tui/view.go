@@ -525,7 +525,10 @@ func (m *model) footer() string {
 	case m.add != nil:
 		keys = []string{"ctrl+s", "add", "tab", "force box", "esc", "cancel"}
 	case m.plan != nil:
-		keys = []string{"enter", "update", "space", "check box", "j k", "move", "esc", "cancel"}
+		keys = []string{"enter", "update", "esc", "cancel"}
+		if len(m.plan.boxes()) > 0 {
+			keys = []string{"enter", "update", "space", "check box", "j k", "move", "esc", "cancel"}
+		}
 	case m.confirm != nil && m.confirm.info:
 		keys = []string{"enter", "close", "j k", "scroll"}
 	case m.confirm != nil:

@@ -18,7 +18,7 @@
 │ github:owner/repo                                                            │
 │ … and 16 more                                                                │
 │                                                                              │
-│ [ ] Force: take over folders no addon owns                                   │
+│ [ ] Force: remove and replace the addon folder                               │
 │                                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
  ctrl+s add  tab force box  esc cancel           5 addons · 1 update · 1 failed

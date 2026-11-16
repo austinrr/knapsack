@@ -963,8 +963,8 @@ func TestUpdateUpToDate(t *testing.T) {
 	}
 }
 
-// U shows the plan, from what's known; a prune box and Force can be
-// checked, and enter updates exactly what the plan lists.
+// U shows the plan, from what's known; a prune box can be checked, and
+// enter updates exactly what the plan lists. It never forces.
 func TestUpdateAll(t *testing.T) {
 	t.Parallel()
 	f := sample()
@@ -974,11 +974,11 @@ func TestUpdateAll(t *testing.T) {
 	f.calls = nil
 	h.keys("U")
 	h.golden("plan")
-	h.keys("space", "j", "space")
+	h.keys("j", "space")
 	h.golden("plan_checked")
 	h.keys("enter")
 	want := []string{
-		fmt.Sprintf("update forever [%s %s %s %s] prune=true force=true", baganator, plater, leatrix, weak),
+		fmt.Sprintf("update forever [%s %s %s %s] prune=true force=false", baganator, plater, leatrix, weak),
 		"list forever",
 	}
 	if diff := cmp.Diff(want, f.calls); diff != "" {
@@ -1047,6 +1047,22 @@ func TestUpdateFailed(t *testing.T) {
 	}
 	h.keys("enter")
 	h.golden("update_failed_describe")
+}
+
+// A folder conflict's hint names the CLI command that forces the one
+// addon, as the TUI's update doesn't force, and says folders for more
+// than one.
+func TestUpdateConflict(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	f.failed = map[ref.Ref]error{baganator: &app.UserError{
+		Msg:  "github austinrr/baganator-mirror: folders already exist and this addon doesn't own them: Baganator, Baganator_Categories",
+		Hint: "the folders were installed some other way; rerun with --force to replace them",
+		Err:  &app.FolderConflictError{Folders: []string{"Baganator", "Baganator_Categories"}},
+	}}
+	h := newHarness(t, f, Options{})
+	h.keys("u", "enter")
+	h.golden("update_conflict_describe")
 }
 
 // ctrl+d asks first, naming the folders it deletes; n cancels, y removes.
@@ -1405,8 +1421,9 @@ func TestAddFailedReopens(t *testing.T) {
 	f := sample()
 	silver := ref.Ref{Source: ref.GitHub, ID: "kemayo/silverdragon"}
 	f.failed = map[ref.Ref]error{silver: &app.UserError{
-		Msg:  "github kemayo/silverdragon: folder SilverDragon in AddOns belongs to no addon",
-		Hint: "check Force to replace it with the release",
+		Msg:  "github kemayo/silverdragon: folders already exist and this addon doesn't own them: SilverDragon",
+		Hint: "the folders were installed some other way; rerun with --force to replace them",
+		Err:  &app.FolderConflictError{Folders: []string{"SilverDragon"}},
 	}}
 	h := newHarness(t, f, Options{})
 	h.keys("a")
@@ -1422,6 +1439,29 @@ func TestAddFailedReopens(t *testing.T) {
 		t.Error("Force was checked, though it wasn't before")
 	}
 	h.golden("add_failed")
+}
+
+// Folders in the way of more than one addon, or of one addon's several,
+// make Force's label say folders.
+func TestAddConflictFolders(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	silver := ref.Ref{Source: ref.GitHub, ID: "kemayo/silverdragon"}
+	f.failed = map[ref.Ref]error{silver: &app.UserError{
+		Msg: "github kemayo/silverdragon: folders already exist and this addon doesn't own them: SilverDragon, SilverDragon_Options",
+		Err: &app.FolderConflictError{Folders: []string{"SilverDragon", "SilverDragon_Options"}},
+	}}
+	h := newHarness(t, f, Options{})
+	h.keys("a")
+	h.m.add.text.SetValue(silver.String())
+	h.keys("ctrl+s")
+	// The box's borders and the wrapping set aside, as the hint wraps.
+	screen := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(h.m.render()), "│", "")), " ")
+	for _, want := range []string{"hint: to remove and replace the addon folders, check Force", "[ ] Force: remove and replace the addon folders"} {
+		if !strings.Contains(screen, want) {
+			t.Errorf("screen doesn't say %q:\n%s", want, screen)
+		}
+	}
 }
 
 // Adopting records an installed addon in config at the version on disk,

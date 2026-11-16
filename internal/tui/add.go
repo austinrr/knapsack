@@ -20,6 +20,9 @@ type addModal struct {
 	force    bool
 	onForce  bool     // the Force box has the focus, not the text
 	problems []string // why lines didn't parse, from the last ctrl+s
+	// conflicts is how many folders Add found in the way, when the dialog
+	// opened again on its failures, for Force's label.
+	conflicts int
 }
 
 func (m *model) openAdd() tea.Cmd {
@@ -144,9 +147,13 @@ func (m *model) reopenAdd(msg doneMsg) tea.Cmd {
 	lines := make([]string, len(failed))
 	for i, res := range failed {
 		lines[i] = res.Ref.String()
-		p := res.Err.Error() // which names the addon
+		if ce, ok := errors.AsType[*app.FolderConflictError](res.Err); ok {
+			a.conflicts += len(ce.Folders)
+		}
+		err := conflictHint(res.Err, "check Force")
+		p := err.Error() // which names the addon
 		var ue *app.UserError
-		if errors.As(res.Err, &ue) && ue.Hint != "" {
+		if errors.As(err, &ue) && ue.Hint != "" {
 			p += " · hint: " + ue.Hint
 		}
 		a.problems = append(a.problems, p)
@@ -178,7 +185,7 @@ func (m *model) addLines(width, height int) []string {
 	if a.force {
 		box = "[x]"
 	}
-	force := box + " Force: take over folders no addon owns"
+	force := box + " Force: remove and replace the " + addonFolders(a.conflicts)
 	if a.onForce {
 		force = cursorStyle.Render(force)
 	}

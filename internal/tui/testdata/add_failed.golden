@@ -8,11 +8,11 @@
 │ ┃                                                                            │
 │ ┃                                                                            │
 │ ┃                                                                            │
-│ ✗ github kemayo/silverdragon: folder SilverDragon in AddOns belongs to no    │
-│ addon · hint: check Force to replace it with the release                     │
+│ ✗ github kemayo/silverdragon: folders already exist and this addon doesn't   │
+│ own them: SilverDragon · hint: to remove and replace the addon folder, check │
+│ Force                                                                        │
 │                                                                              │
-│ [ ] Force: take over folders no addon owns                                   │
-│                                                                              │
+│ [ ] Force: remove and replace the addon folder                               │
 │                                                                              │
 │                                                                              │
 │                                                                              │
