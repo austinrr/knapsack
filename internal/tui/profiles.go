@@ -283,10 +283,10 @@ func editSummary(msg editedMsg) string {
 	}
 	s := "Saved profile " + msg.name + "."
 	if n := len(msg.res.Added); n > 0 {
-		s += fmt.Sprintf(" %s added: U installs them.", count(n, "addon"))
+		s += fmt.Sprintf(" %s added: U installs them.", app.Count(n, "addon"))
 	}
 	if n := len(msg.res.Removed); n > 0 {
-		s += fmt.Sprintf(" %s taken out: U with their prune boxes uninstalls them.", count(n, "addon"))
+		s += fmt.Sprintf(" %s taken out: U with their prune boxes uninstalls them.", app.Count(n, "addon"))
 	}
 	return s
 }

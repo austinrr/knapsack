@@ -1528,7 +1528,10 @@ func Run(ctx context.Context, opts Options) error
 ```
 
 Paths are shortened with `app.ShortenHome`, and an error's `report:` link
-is `app.ReportURL`, as the CLI's are.
+is `app.ReportURL`, as the CLI's are. So are rows named (`app.UniqueNames`),
+counts and sizes said (`app.Count`, `app.FormatProgress`), and sources
+described (`SourceInfo.Status`, `app.KeyFrom`, `app.DescribeKey`), from
+`internal/app/display.go`, so both frontends say a thing the same way.
 
 `tui` uses the App through an interface of the methods it calls, defined
 in `tui` (§4, rule 5), so its tests can use a fake. `*app.App` satisfies

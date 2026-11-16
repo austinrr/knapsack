@@ -24,41 +24,21 @@ type sourceJSON struct {
 	KeyFrom string `json:"key_from,omitempty"`
 }
 
-// sourceStatus is how ready a source is: "ready", or "needs key" for one
-// read through its official API without a key.
-func sourceStatus(s app.SourceInfo) string {
-	if !s.Ready() {
-		return "needs key"
-	}
-	return "ready"
-}
-
-// keyFrom is where a source's key comes from, as sourceJSON.KeyFrom has it.
-// GitHub's token is looked for as commands do, which may run gh.
+// keyFrom is where a source's key comes from (app.KeyFrom). GitHub's
+// token is looked for as commands do, which may run gh.
 func keyFrom(ctx context.Context, e env, s app.SourceInfo) string {
-	switch {
-	case !s.NeedsKey:
-		_, origin := findGitHubToken(ctx, e.getenv, e.ghAuthToken)
-		return origin
-	case s.Key == app.KeyEnv:
-		return s.Env
-	case s.Key == app.KeyConfig:
-		return "config"
+	github := ""
+	if !s.NeedsKey {
+		_, github = findGitHubToken(ctx, e.getenv, e.ghAuthToken)
 	}
-	return ""
+	return app.KeyFrom(s, github)
 }
 
-// describeKey says where the key comes from, for the table.
+// describeKey is app.DescribeKey, with "-" for a source with no key, as
+// the table shows an empty cell.
 func describeKey(s app.SourceInfo, from string) string {
-	switch {
-	case from == "config":
-		return "set in config"
-	case from == "gh":
-		return "from gh auth token"
-	case from != "":
-		return "from $" + from
-	case !s.NeedsKey:
-		return "none (60 requests an hour)"
+	if d := app.DescribeKey(s, from); d != "" {
+		return d
 	}
 	return "-"
 }
@@ -114,7 +94,7 @@ GitHub CLI when there is one, for a higher rate limit.`,
 			if output == "json" {
 				out := make([]sourceJSON, len(sources))
 				for i, s := range sources {
-					out[i] = sourceJSON{Name: s.Name, Status: sourceStatus(s), API: string(s.API), KeyFrom: keyFrom(cmd.Context(), c.env, s)}
+					out[i] = sourceJSON{Name: s.Name, Status: s.Status(), API: string(s.API), KeyFrom: keyFrom(cmd.Context(), c.env, s)}
 				}
 				return writeJSON(w, out)
 			}
@@ -122,7 +102,7 @@ GitHub CLI when there is one, for a higher rate limit.`,
 			out := &printer{w: tw}
 			out.printf("NAME\tSTATUS\tAPI\tKEY\n")
 			for _, s := range sources {
-				out.printf("%s\t%s\t%s\t%s\n", s.Name, sourceStatus(s), s.API, describeKey(s, keyFrom(cmd.Context(), c.env, s)))
+				out.printf("%s\t%s\t%s\t%s\n", s.Name, s.Status(), s.API, describeKey(s, keyFrom(cmd.Context(), c.env, s)))
 			}
 			if out.err != nil {
 				return out.err

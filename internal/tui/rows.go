@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/austinrr/knapsack/internal/app"
-	"github.com/austinrr/knapsack/internal/ref"
 )
 
 // row is one addon as shown: its listing, with what's known laid over
@@ -25,7 +24,7 @@ func (m *model) allRows() []row { return m.rowsMatching("") }
 
 func (m *model) rowsMatching(query string) []row {
 	k := m.known[m.profile]
-	names := uniqueNames(m.rows)
+	names := app.UniqueNamesOf(m.rows)
 	q := strings.ToLower(query)
 	var out []row
 	for i, in := range m.rows {
@@ -41,24 +40,6 @@ func (m *model) rowsMatching(query string) []row {
 			continue
 		}
 		out = append(out, row{Installed: in, name: names[i]})
-	}
-	return out
-}
-
-// uniqueNames is each row's name, with its ref's ID added when another
-// row shows the same name, as list does (DESIGN.md §8.4): "Details!
-// (a/details)".
-func uniqueNames(rows []app.Installed) []string {
-	count := map[string]int{}
-	for _, r := range rows {
-		count[strings.ToLower(r.Name())]++
-	}
-	out := make([]string, len(rows))
-	for i, r := range rows {
-		out[i] = r.Name()
-		if count[strings.ToLower(out[i])] > 1 && r.Ref != (ref.Ref{}) {
-			out[i] = fmt.Sprintf("%s (%s)", out[i], r.Ref.ID)
-		}
 	}
 	return out
 }
@@ -81,22 +62,14 @@ func (m *model) summary(rows []row) string {
 	if checking > 0 {
 		return fmt.Sprintf("%s checking, %d of %d done", m.spinner(), len(rows)-checking, len(rows))
 	}
-	parts := []string{count(len(rows), "addon")}
+	parts := []string{app.Count(len(rows), "addon")}
 	if updates > 0 {
-		parts = append(parts, count(updates, "update"))
+		parts = append(parts, app.Count(updates, "update"))
 	}
 	if failed > 0 {
 		parts = append(parts, fmt.Sprintf("%d failed", failed))
 	}
 	return strings.Join(parts, " · ")
-}
-
-// count is n things, as "1 addon" or "2 addons".
-func count(n int, thing string) string {
-	if n == 1 {
-		return "1 " + thing
-	}
-	return fmt.Sprintf("%d %ss", n, thing)
 }
 
 func (m *model) spinner() string { return m.spin[m.frame%len(m.spin)] }

@@ -251,7 +251,7 @@ func (m *model) table(width, height int) (string, []string) {
 			if m.hidden == 1 {
 				verb = "wasn't"
 			}
-			msg += fmt.Sprintf(" %s in AddOns %s installed by Knapsack.", count(m.hidden, "folder"), verb)
+			msg += fmt.Sprintf(" %s in AddOns %s installed by Knapsack.", app.Count(m.hidden, "folder"), verb)
 		}
 		return title, wrap(width, msg, "", "Press "+boldStyle.Render("a")+" to add one, by ref or link.")
 	}

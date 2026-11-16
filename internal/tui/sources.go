@@ -46,27 +46,11 @@ func (m *model) sourcesCmd() tea.Cmd {
 	}
 }
 
-// sourceStatus and keyFrom are the STATUS and KEY columns, as sources
-// list shows them.
-func sourceStatus(s app.SourceInfo) string {
-	if !s.Ready() {
-		return "needs key"
-	}
-	return "ready"
-}
-
+// keyFrom is the KEY column, as sources list shows it, with "—" for a
+// source with no key.
 func (m *model) keyFrom(s app.SourceInfo) string {
-	switch {
-	case !s.NeedsKey && m.githubKey == "gh":
-		return "from gh auth token"
-	case !s.NeedsKey && m.githubKey != "":
-		return "from $" + m.githubKey
-	case !s.NeedsKey:
-		return "none (60 requests an hour)"
-	case s.Key == app.KeyEnv:
-		return "from $" + s.Env
-	case s.Key == app.KeyConfig:
-		return "set in config"
+	if d := app.DescribeKey(s, app.KeyFrom(s, m.githubKey)); d != "" {
+		return d
 	}
 	return "—"
 }
@@ -329,7 +313,7 @@ func (m *model) sourcesTable(width int) (string, []string) {
 		if s.API == config.APIWebsite {
 			via = "website"
 		}
-		cells[i] = []string{s.Name, sourceStatus(s), via, m.keyFrom(s)}
+		cells[i] = []string{s.Name, s.Status(), via, m.keyFrom(s)}
 		for j, c := range cells[i] {
 			widths[j] = max(widths[j], ansi.StringWidth(c))
 		}
@@ -348,8 +332,9 @@ func (m *model) sourcesTable(width int) (string, []string) {
 		switch {
 		case i == m.scursor:
 			l = "  " + cursorStyle.Render(pad(strings.TrimPrefix(l, "  "), width-2))
-		case cs[1] == "needs key":
-			l = strings.Replace(l, "needs key", warnStyle.Render("needs key"), 1)
+		case !m.sources[i].Ready():
+			// The status column, s.Status(), is the row's second.
+			l = strings.Replace(l, cs[1], warnStyle.Render(cs[1]), 1)
 		}
 		lines = append(lines, ansi.Truncate(l, width, "…"))
 	}

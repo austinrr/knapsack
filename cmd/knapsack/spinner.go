@@ -197,7 +197,7 @@ func (s *status) Event(e app.Event) {
 	case app.EventDownloading:
 		s.set("Downloading knapsack " + e.Version)
 	case app.EventProgress:
-		s.set("Downloading knapsack " + e.Version + ", " + formatProgress(e.Done, e.Total))
+		s.set("Downloading knapsack " + e.Version + ", " + app.FormatProgress(e.Done, e.Total))
 	case app.EventWarned:
 		s.mu.Lock()
 		defer s.mu.Unlock()
