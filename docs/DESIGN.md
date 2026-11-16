@@ -26,7 +26,8 @@ feature has to justify the code, tests and docs it adds.
 - **Clean removal**: Knapsack knows exactly which folders each addon owns.
 - **Linux, Windows and macOS** from a single codebase, shipped as single
   static binaries.
-- **CLI first**, built so a TUI can be added later without touching the core.
+- **CLI first**, built so a TUI could be added without touching the core,
+  as it was (§9).
 - **Readable state**: config and state are plain TOML files a person can
   inspect and fix by hand.
 
@@ -111,7 +112,7 @@ GitHub SDKs (go-github), git libraries, ORMs/SQLite.
 
 ```
      ┌────────────────┐        ┌────────────────┐
-     │  cmd/knapsack  │        │  internal/tui  │  (later; `knapsack tui`)
+     │  cmd/knapsack  │        │  internal/tui  │  (`knapsack tui`, §9)
      │  (cobra CLI)   │        │  (bubbletea)   │
      └───────┬────────┘        └───────┬────────┘
              └────────────┬────────────┘
@@ -1014,7 +1015,7 @@ knapsack sources set-key <source>  store an API key (prompted, or from stdin)
 knapsack sources unset-key <source>
 
 # Other
-knapsack tui                       (later) interactive interface over the same core
+knapsack tui                       interactive interface over the same core (§9)
 knapsack version                   the version, and whether a newer one is out
 knapsack self-update               replace knapsack with the newest release
 knapsack completion bash|zsh|fish|powershell
