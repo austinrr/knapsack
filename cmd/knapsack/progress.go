@@ -244,7 +244,7 @@ func (r *barReporter) text() string {
 		if !known {
 			want = -1 // only what's downloaded, then
 		}
-		parts = append(parts, fmt.Sprintf("%d downloading, %s", downloading, formatProgress(got, want)))
+		parts = append(parts, fmt.Sprintf("%d downloading, %s", downloading, app.FormatProgress(got, want)))
 	}
 	return r.spin.String() + " " + strings.Join(parts, " · ")
 }
@@ -265,25 +265,4 @@ func (r *barReporter) stop() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.line.erase()
-}
-
-// formatProgress shows bytes downloaded of the total expected, or only
-// what's downloaded when the total is unknown (negative).
-func formatProgress(done, total int64) string {
-	if total < 0 {
-		return formatBytes(done)
-	}
-	return formatBytes(done) + " of " + formatBytes(total)
-}
-
-// formatBytes shows a size in KiB or MiB with one decimal, as progress
-// needs no more precision.
-func formatBytes(n int64) string {
-	switch {
-	case n >= 1<<20:
-		return fmt.Sprintf("%.1f MiB", float64(n)/(1<<20))
-	case n >= 1<<10:
-		return fmt.Sprintf("%.1f KiB", float64(n)/(1<<10))
-	}
-	return fmt.Sprintf("%d B", n)
 }

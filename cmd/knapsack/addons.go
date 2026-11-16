@@ -231,30 +231,6 @@ func toInstalledJSON(in app.Installed) installedJSON {
 	return j
 }
 
-// nameRow is one table row's profile, name and ref, for uniqueNames.
-type nameRow struct {
-	profile, name string
-	ref           ref.Ref
-}
-
-// uniqueNames returns each row's name, with its ref's ID added when another
-// row in the same profile shows the same name, since titles and repo names
-// needn't be unique: "Details! (a/details)" and "Details! (b/details)".
-func uniqueNames(rows []nameRow) []string {
-	count := map[[2]string]int{}
-	for _, r := range rows {
-		count[[2]string{r.profile, strings.ToLower(r.name)}]++
-	}
-	out := make([]string, len(rows))
-	for i, r := range rows {
-		out[i] = r.name
-		if count[[2]string{r.profile, strings.ToLower(r.name)}] > 1 && r.ref != (ref.Ref{}) {
-			out[i] = fmt.Sprintf("%s (%s)", r.name, r.ref.ID)
-		}
-	}
-	return out
-}
-
 // sourceColumn is the SOURCE column: the source's name, or with -o wide
 // the full ref. An unmanaged folder has none.
 func sourceColumn(r ref.Ref, wide bool) string {
@@ -385,11 +361,11 @@ func printList(w io.Writer, list []app.Installed, all, wide bool) error {
 	} else {
 		out.printf("ADDON\tSTATUS\tVERSION\tSOURCE\n")
 	}
-	rows := make([]nameRow, len(list))
+	rows := make([]app.NameRow, len(list))
 	for i, in := range list {
-		rows[i] = nameRow{in.Profile, in.Name(), in.Ref}
+		rows[i] = app.NameRow{Profile: in.Profile, Name: in.Name(), Ref: in.Ref}
 	}
-	names := uniqueNames(rows)
+	names := app.UniqueNames(rows)
 	for i, in := range list {
 		if all {
 			out.printf("%s\t", in.Profile)

@@ -155,7 +155,7 @@ func (m *model) askRemove(rows []row) tea.Cmd {
 	}
 	what := names[0]
 	if len(rows) > 1 {
-		what = count(len(rows), "addon")
+		what = app.Count(len(rows), "addon")
 	}
 	m.bodyOffset = 0
 	m.confirm = &confirmModal{

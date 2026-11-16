@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"strings"
 	"sync"
 
@@ -80,37 +79,17 @@ func (s stage) String() string {
 	return "downloading " + shortProgress(s.done, s.total)
 }
 
-// shortProgress is formatProgress with the unit said once when both
+// shortProgress is app.FormatProgress with the unit said once when both
 // sizes share it, "1.2 of 4.5 MiB", to fit a row.
 func shortProgress(done, total int64) string {
-	d, t := formatBytes(done), formatBytes(total)
+	d, t := app.FormatBytes(done), app.FormatBytes(total)
 	if total >= 0 && done >= 1<<10 {
 		if du, tu := unit(d), unit(t); du == tu {
 			return strings.TrimSuffix(d, " "+du) + " of " + t
 		}
 	}
-	return formatProgress(done, total)
+	return app.FormatProgress(done, total)
 }
 
-// unit is the unit formatBytes gave: "MiB".
+// unit is the unit app.FormatBytes gave: "MiB".
 func unit(s string) string { return s[strings.LastIndexByte(s, ' ')+1:] }
-
-// formatProgress and formatBytes show bytes downloaded of those expected
-// as the CLI's progress bar does: "1.2 MiB of 4.5 MiB", or only what's
-// downloaded when the total is unknown (negative).
-func formatProgress(done, total int64) string {
-	if total < 0 {
-		return formatBytes(done)
-	}
-	return formatBytes(done) + " of " + formatBytes(total)
-}
-
-func formatBytes(n int64) string {
-	switch {
-	case n >= 1<<20:
-		return fmt.Sprintf("%.1f MiB", float64(n)/(1<<20))
-	case n >= 1<<10:
-		return fmt.Sprintf("%.1f KiB", float64(n)/(1<<10))
-	}
-	return fmt.Sprintf("%d B", n)
-}

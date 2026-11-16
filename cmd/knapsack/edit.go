@@ -221,20 +221,12 @@ func (c *cli) editProfile(ctx context.Context, name string) (saved bool, res app
 func noteProfileEdit(cmd *cobra.Command, name string, res app.ProfileEditResult) error {
 	w := &printer{w: cmd.ErrOrStderr()}
 	if n := len(res.Added); n > 0 {
-		w.printf("%s added: install with `knapsack update -p %s`.\n", count(n, "addon"), name)
+		w.printf("%s added: install with `knapsack update -p %s`.\n", app.Count(n, "addon"), name)
 	}
 	if n := len(res.Removed); n > 0 {
-		w.printf("%s removed: uninstall with `knapsack update --prune -p %s`.\n", count(n, "addon"), name)
+		w.printf("%s removed: uninstall with `knapsack update --prune -p %s`.\n", app.Count(n, "addon"), name)
 	}
 	return w.err
-}
-
-// count is n things, as "1 addon" or "2 addons".
-func count(n int, thing string) string {
-	if n == 1 {
-		return "1 " + thing
-	}
-	return fmt.Sprintf("%d %ss", n, thing)
 }
 
 func newConfigEditCmd(c *cli) *cobra.Command {
