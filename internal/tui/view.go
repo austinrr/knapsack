@@ -540,7 +540,7 @@ func (m *model) footer() string {
 		keys = []string{"A", "find the game", "n", "new", "?", "help", "q", "quit"}
 	case m.view == viewProfiles:
 		keys = []string{"enter", "use", "n", "new", "s", "set", "A", "find the game", "e", "edit",
-			"ctrl+d", "delete", "tab", "addons", "?", "help"}
+			"ctrl+d", "delete", "tab", "sources", "?", "help"}
 	case m.noProfiles:
 		keys = []string{"2", "profiles", "q", "quit"}
 	case !m.loaded:

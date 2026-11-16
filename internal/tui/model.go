@@ -149,11 +149,15 @@ type model struct {
 	// The sources view's: each source, where GitHub's token comes from,
 	// the cursor, reads as preads counts the profiles', and the key
 	// input.
-	sources   []app.SourceInfo
-	githubKey string
-	scursor   int
-	sreads    int
-	keyForm   *keyForm
+	sources []app.SourceInfo
+	// sourcesRead is whether a read has answered; githubKeyKnown whether
+	// GitHub's token has been looked for, which is once a session.
+	sourcesRead    bool
+	githubKey      string
+	githubKeyKnown bool
+	scursor        int
+	sreads         int
+	keyForm        *keyForm
 
 	// openURL opens a page in the browser; blink is whether text cursors
 	// blink. Tests replace the one and turn off the other.
@@ -342,6 +346,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.form.fields[i].SetWidth(m.formWidth())
 			}
 		}
+		if m.keyForm != nil {
+			m.keyForm.input.SetWidth(m.formWidth())
+		}
 		if m.add != nil {
 			m.add.text.SetWidth(m.addWidth())
 		}
@@ -373,9 +380,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.read != m.sreads {
 			return m, nil // a later read is on its way
 		}
-		m.sources, m.githubKey = msg.sources, msg.githubKey
 		if msg.err != nil {
-			m.err = msg.err
+			m.err = msg.err // the last list stays, to see what failed
+			return m, nil
+		}
+		m.sources, m.sourcesRead = msg.sources, true
+		if msg.githubKnown {
+			m.githubKey, m.githubKeyKnown = msg.githubKey, true
 		}
 		m.scursor = max(0, min(m.scursor, len(m.sources)-1))
 		return m, nil

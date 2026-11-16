@@ -18,21 +18,29 @@ type sourcesMsg struct {
 	read      int // which read, of m.sreads
 	sources   []app.SourceInfo
 	githubKey string // "GITHUB_TOKEN", "GH_TOKEN", "gh" or ""
-	err       error
+	// githubKnown is whether githubKey was looked for on this read.
+	githubKnown bool
+	err         error
 }
 
 // sourcesCmd reads the sources, as profilesCmd reads the profiles:
 // config alone, not as a job, numbered so only the latest read is used.
 // Finding GitHub's token may run gh, which is why it's here, off the
 // event loop.
+// Where GitHub's token comes from is found once a session, on the first
+// read: it may run gh, and it hardly ever changes.
 func (m *model) sourcesCmd() tea.Cmd {
 	m.sreads++
-	a, ctx, read, ghKey := m.a, m.ctx, m.sreads, m.opts.GitHubKeyFrom
+	a, ctx, read := m.a, m.ctx, m.sreads
+	var ghKey func(context.Context) string
+	if !m.githubKeyKnown {
+		ghKey = m.opts.GitHubKeyFrom
+	}
 	return func() tea.Msg {
 		ss, err := a.Sources(ctx)
 		msg := sourcesMsg{read: read, sources: ss, err: err}
-		if ghKey != nil {
-			msg.githubKey = ghKey(ctx)
+		if err == nil && ghKey != nil {
+			msg.githubKey, msg.githubKnown = ghKey(ctx), true
 		}
 		return msg
 	}
@@ -65,9 +73,11 @@ func (m *model) keyFrom(s app.SourceInfo) string {
 
 // sourceDoneMsg is what a change to a source did.
 type sourceDoneMsg struct {
-	source string
-	flash  string
-	err    error
+	source  string
+	key     bool // from the key form, which shows its error
+	changed bool // whether config changed: a new key, or a new way of reading
+	flash   string
+	err     error
 }
 
 func (m *model) sourcesKey(s string) (tea.Cmd, bool) {
@@ -111,12 +121,6 @@ func (m *model) sourcesKey(s string) (tea.Cmd, bool) {
 	return nil, true
 }
 
-// sourceJob changes a source's settings in config.
-func (m *model) sourceJob(name string, run func(ctx context.Context) tea.Msg) tea.Cmd {
-	m.flash, m.err = "", nil
-	return m.enqueue(job{kind: jobProfile, name: name, writes: true, run: run})
-}
-
 // toggleAPI switches a source between its official API and its website.
 func (m *model) toggleAPI(s app.SourceInfo) tea.Cmd {
 	to := string(config.APIWebsite)
@@ -124,9 +128,9 @@ func (m *model) toggleAPI(s app.SourceInfo) tea.Cmd {
 		to = string(config.APIOfficial)
 	}
 	a, name := m.a, s.Name
-	return m.sourceJob("saving", func(ctx context.Context) tea.Msg {
+	return m.configJob("saving", func(ctx context.Context) tea.Msg {
 		res, err := a.SetSourceAPI(ctx, name, to)
-		msg := sourceDoneMsg{source: name, err: err}
+		msg := sourceDoneMsg{source: name, changed: res.Changed, err: err}
 		switch {
 		case err != nil:
 		case res.API == config.APIWebsite:
@@ -150,9 +154,9 @@ func (m *model) askUnsetKey(s app.SourceInfo) {
 		note:     "Every profile shares it. The source can't be read through its official API without one.",
 		yes:      "remove",
 		onYes: func() tea.Cmd {
-			return m.sourceJob("saving", func(ctx context.Context) tea.Msg {
+			return m.configJob("saving", func(ctx context.Context) tea.Msg {
 				res, err := a.SetSourceKey(ctx, name, "")
-				return sourceDoneMsg{source: name, err: err, flash: keyFlash(name, res, false)}
+				return sourceDoneMsg{source: name, changed: res.Changed, err: err, flash: keyFlash(name, res, false)}
 			})
 		},
 	}
@@ -187,6 +191,7 @@ type keyForm struct {
 	source string
 	input  textinput.Model
 	err    error
+	saving bool // the key is with SetSourceKey: enter waits for it
 }
 
 func (m *model) openKeyForm(source string) tea.Cmd {
@@ -213,6 +218,9 @@ func (m *model) keyFormKey(k tea.KeyPressMsg) tea.Cmd {
 	case "ctrl+c":
 		return m.globalKey(s)
 	case "enter":
+		if m.keyForm.saving {
+			return nil
+		}
 		return m.submitKey()
 	}
 	return m.keyInput(k)
@@ -233,11 +241,14 @@ func (m *model) submitKey() tea.Cmd {
 		f.err = &app.UserError{Msg: "no key was typed", Hint: "paste it, or esc to cancel; ctrl+d removes a key"}
 		return nil
 	}
-	m.keyForm = nil // the key leaves the model with the job
+	// The key leaves the model with the job: the form stays, empty, to
+	// show what SetSourceKey makes of it, as checkKey may refuse it.
+	f.input.SetValue("")
+	f.err, f.saving = nil, true
 	a, name := m.a, f.source
-	return m.sourceJob("saving", func(ctx context.Context) tea.Msg {
+	return m.configJob("saving", func(ctx context.Context) tea.Msg {
 		res, err := a.SetSourceKey(ctx, name, key)
-		return sourceDoneMsg{source: name, err: err, flash: keyFlash(name, res, true)}
+		return sourceDoneMsg{source: name, changed: res.Changed, err: err, flash: keyFlash(name, res, true), key: true}
 	})
 }
 
@@ -246,7 +257,10 @@ func (m *model) keyFormLines(width int) []string {
 	lines := wrap(width, "The API key for "+boldStyle.Render(f.source)+", shared by every profile, written to config "+
 		"readable only by you:", "")
 	lines = append(lines, ansi.Truncate(accentStyle.Render(pad("Key:", 9))+f.input.View(), width, "…"))
-	if f.err != nil {
+	switch {
+	case f.saving:
+		lines = append(lines, "", faintStyle.Render(m.spinner()+" saving"))
+	case f.err != nil:
 		lines = append(lines, "")
 		lines = append(lines, errorLines(width, f.err, m.opts.Running)...)
 	}
@@ -257,28 +271,56 @@ func (m *model) keyFormLines(width int) []string {
 // sources again, and forgets what was checked for that source's addons,
 // which a key or a way of reading changes the answer for.
 func (m *model) sourceResult(msg sourceDoneMsg) tea.Cmd {
+	if msg.key && m.keyForm != nil {
+		if m.keyForm.saving = false; msg.err != nil {
+			m.keyForm.err = msg.err // to paste a corrected one
+			return m.sourcesCmd()
+		}
+		m.keyForm = nil
+	}
 	if m.err = msg.err; msg.err == nil {
 		m.flash = msg.flash
-		changed := false
-		for _, k := range m.known {
-			for r := range k {
-				if r.Source == msg.source {
-					delete(k, r)
-					changed = true
-				}
-			}
-		}
-		if changed {
-			m.flash += " c checks its addons again."
+		if msg.changed && m.forgetSource(msg.source) {
+			m.flash += " Press 1, then c, to check its addons again."
 		}
 	}
 	return m.sourcesCmd()
+}
+
+// forgetSource forgets what was checked for source's addons, in every
+// profile, and puts the rows shown back to unchecked, so the table, its
+// counts and u agree. It reports whether anything was forgotten.
+func (m *model) forgetSource(source string) bool {
+	forgot := false
+	for _, k := range m.known {
+		for r := range k {
+			if r.Source == source {
+				delete(k, r)
+				forgot = true
+			}
+		}
+	}
+	for i, r := range m.rows {
+		if r.Ref.Source != source {
+			continue
+		}
+		switch r.Status {
+		case app.StatusUpToDate, app.StatusUpdateAvailable, app.StatusUnknown:
+			m.rows[i].Status, m.rows[i].Available, m.rows[i].Err = app.StatusInstalled, "", nil
+			forgot = true
+		case app.StatusInstalled, app.StatusMissing, app.StatusNotInConfig, app.StatusUnmanaged, app.StatusChecking:
+		}
+	}
+	return forgot
 }
 
 // sourcesTable is the sources view: NAME, STATUS, READ VIA and KEY, as
 // sources list shows them.
 func (m *model) sourcesTable(width int) (string, []string) {
 	title := accentStyle.Render("sources") + fmt.Sprintf("[%d]", len(m.sources))
+	if !m.sourcesRead {
+		return title, []string{faintStyle.Render(m.spinner() + " loading")}
+	}
 	headers := []string{"NAME", "STATUS", "READ VIA", "KEY"}
 	widths := []int{4, 6, 8, 3}
 	cells := make([][]string, len(m.sources))

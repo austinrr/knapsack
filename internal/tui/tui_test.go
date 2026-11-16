@@ -42,14 +42,17 @@ type fake struct {
 	calls    []string
 	// rep is the TUI's reporter, which Update reports to as the App's
 	// does; failed are the addons Update fails, with why.
-	rep       *reporter
-	failed    map[ref.Ref]error
-	updateErr error // Update fails as a whole
-	setErr    error // SetProfile fails
-	auto      app.AutoProfilesResult
-	sources   []app.SourceInfo
-	keys      []string // what SetSourceKey was given
-	envSet    bool
+	rep        *reporter
+	failed     map[ref.Ref]error
+	updateErr  error // Update fails as a whole
+	setErr     error // SetProfile fails
+	auto       app.AutoProfilesResult
+	sources    []app.SourceInfo
+	keys       []string // what SetSourceKey was given
+	envSet     bool
+	keyErr     error // SetSourceKey refuses the key
+	sameKey    bool  // SetSourceKey finds config already has it
+	sourcesErr error
 }
 
 // Update installs each named addon at the version its check found,
@@ -186,6 +189,9 @@ func (f *fake) DeleteProfile(_ context.Context, name string) (app.DeleteProfileR
 
 // Sources lists GitHub, CurseForge and Wago as sources says.
 func (f *fake) Sources(context.Context) ([]app.SourceInfo, error) {
+	if f.sourcesErr != nil {
+		return nil, f.sourcesErr
+	}
 	if f.sources == nil {
 		f.sources = []app.SourceInfo{
 			{Name: ref.GitHub, API: config.APIOfficial},
@@ -201,7 +207,10 @@ func (f *fake) Sources(context.Context) ([]app.SourceInfo, error) {
 func (f *fake) SetSourceKey(_ context.Context, name, key string) (app.SetSourceKeyResult, error) {
 	f.calls = append(f.calls, fmt.Sprintf("set-key %s (%d chars)", name, len(key)))
 	f.keys = append(f.keys, key)
-	res := app.SetSourceKeyResult{Changed: true, Overridden: f.envSet, Env: "KNAPSACK_" + strings.ToUpper(name) + "_API_KEY"}
+	if f.keyErr != nil {
+		return app.SetSourceKeyResult{}, f.keyErr
+	}
+	res := app.SetSourceKeyResult{Changed: !f.sameKey, Overridden: f.envSet, Env: "KNAPSACK_" + strings.ToUpper(name) + "_API_KEY"}
 	for i, s := range f.sources {
 		if s.Name == name {
 			f.sources[i].Key = app.KeyConfig
@@ -1866,7 +1875,7 @@ func TestSetKey(t *testing.T) {
 			t.Errorf("the key appears in %q", s)
 		}
 	}
-	if want := "Saved curseforge's API key. c checks its addons again."; h.m.flash != want {
+	if want := "Saved curseforge's API key. Press 1, then c, to check its addons again."; h.m.flash != want {
 		t.Errorf("flash = %q, want %q", h.m.flash, want)
 	}
 	if _, ok := h.m.known["forever"][weak]; ok {
@@ -1914,7 +1923,7 @@ func TestToggleAPI(t *testing.T) {
 	h := newHarness(t, f, Options{})
 	f.calls = nil
 	h.keys("3", "j", "j", "w")
-	// Then that Wago's addons are checked again with c, as it forgot them.
+	// The message goes on to say how to check Wago's addons again.
 	if want := "wago is read through its official API now, which needs a key: press enter."; !strings.HasPrefix(h.m.flash, want) {
 		t.Errorf("flash = %q, want it to start %q", h.m.flash, want)
 	}
@@ -1937,5 +1946,105 @@ func TestGitHubSource(t *testing.T) {
 	h.keys("w")
 	if len(f.calls) != 0 || !strings.Contains(h.m.flash, "only through its API") {
 		t.Errorf("w on GitHub: calls %v, flash %q", f.calls, h.m.flash)
+	}
+}
+
+// Forgetting what was checked for a source puts its rows back to
+// unchecked, so the table and u agree.
+func TestForgetSourceRows(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, sample(), Options{})
+	h.keys("3", "j", "enter")
+	h.m.keyForm.input.SetValue("abc")
+	h.keys("enter", "1")
+	for _, r := range h.m.visible() {
+		if r.Ref == weak && r.Status != app.StatusNotInConfig {
+			t.Errorf("WeakAuras is %q; want it as it was, not in config, which no check changes", r.Status)
+		}
+		if r.Ref.Source == ref.CurseForge && r.Status != app.StatusInstalled && r.Status != app.StatusNotInConfig {
+			t.Errorf("%s is %q after CurseForge's key changed, want unchecked", r.name, r.Status)
+		}
+	}
+	// A CurseForge addon that was checked is unchecked again.
+	f := sample()
+	f.checked[4].Status, f.checked[4].Available = app.StatusUpdateAvailable, "5.18.0"
+	f.local[4].Status = app.StatusInstalled
+	h = newHarness(t, f, Options{})
+	h.keys("3", "j", "enter")
+	h.m.keyForm.input.SetValue("abc")
+	h.keys("enter", "1")
+	for _, r := range h.m.visible() {
+		if r.Ref == weak && (r.Status != app.StatusInstalled || r.Available != "") {
+			t.Errorf("WeakAuras is %q, %q after CurseForge's key changed; want unchecked", r.Status, r.Available)
+		}
+	}
+}
+
+// A key SetSourceKey refuses keeps the form open, empty, with why, to
+// paste a corrected one.
+func TestKeyRefused(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	f.keyErr = &app.UserError{Msg: "the API key has spaces or line breaks in it", Hint: "an API key is one word with no spaces"}
+	h := newHarness(t, f, Options{})
+	h.keys("3", "j", "enter")
+	h.send(tea.PasteMsg{Content: "two words"})
+	h.keys("enter")
+	if h.m.keyForm == nil || h.m.keyForm.err == nil || h.m.keyForm.input.Value() != "" {
+		t.Fatalf("form %+v; want it open, empty, with the error", h.m.keyForm)
+	}
+	h.golden("key_refused")
+}
+
+// The key field follows the window's width.
+func TestKeyFormResizes(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, sample(), Options{})
+	h.keys("3", "j", "enter")
+	h.send(tea.WindowSizeMsg{Width: 120, Height: 30})
+	if got, want := h.m.keyForm.input.Width(), h.m.formWidth(); got != want {
+		t.Errorf("key field width %d after resizing, want %d", got, want)
+	}
+}
+
+// Where GitHub's token comes from is looked for once a session.
+func TestGitHubKeyOnce(t *testing.T) {
+	t.Parallel()
+	looks := 0
+	h := newHarness(t, sample(), Options{GitHubKeyFrom: func(context.Context) string { looks++; return "gh" }})
+	h.keys("3", "1", "3", "j", "w")
+	if looks != 1 || h.m.githubKey != "gh" {
+		t.Errorf("looked %d times, found %q; want once, gh", looks, h.m.githubKey)
+	}
+}
+
+// Saving the key config already has forgets nothing.
+func TestSameKeyForgetsNothing(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	f.sameKey = true
+	f.checked[4].Status = app.StatusUpdateAvailable
+	h := newHarness(t, f, Options{})
+	h.keys("3", "j", "enter")
+	h.m.keyForm.input.SetValue("abc")
+	h.keys("enter")
+	if want := "curseforge already had that key."; h.m.flash != want {
+		t.Errorf("flash = %q, want %q", h.m.flash, want)
+	}
+	if _, ok := h.m.known["forever"][weak]; !ok {
+		t.Error("what was known about WeakAuras was forgotten for an unchanged key")
+	}
+}
+
+// A failed read keeps the sources last read, with the error.
+func TestSourcesReadFails(t *testing.T) {
+	t.Parallel()
+	f := sample()
+	h := newHarness(t, f, Options{})
+	h.keys("3")
+	f.sourcesErr = errors.New("config.toml: permission denied")
+	h.keys("1", "3")
+	if len(h.m.sources) != 3 || h.m.err == nil {
+		t.Errorf("%d sources, err %v; want the 3 read before, and the error", len(h.m.sources), h.m.err)
 	}
 }
