@@ -111,3 +111,9 @@ func keyPage(name, prep string) string {
 	}
 	return ""
 }
+
+// FolderConflictError is the cause of an install refused because folders
+// it would write already exist and no addon owns them, which Force
+// replaces: install.ConflictError, for frontends, which don't import
+// install. Find it with errors.As.
+type FolderConflictError = install.ConflictError

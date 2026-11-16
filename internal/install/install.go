@@ -12,6 +12,18 @@ import (
 	"github.com/austinrr/knapsack/internal/flavor"
 )
 
+// ConflictError is ErrConflict, with the folders that already exist.
+type ConflictError struct {
+	Folders []string
+}
+
+func (e *ConflictError) Error() string {
+	return ErrConflict.Error() + ": " + strings.Join(e.Folders, ", ")
+}
+
+// Is makes errors.Is(err, ErrConflict) true.
+func (e *ConflictError) Is(target error) bool { return target == ErrConflict }
+
 // Errors from Install and Remove that callers turn into hints. Match them
 // with errors.Is.
 var (
@@ -134,7 +146,7 @@ func foldersToReplace(incoming, previous []string, onDisk listing, force bool) (
 		add(actual)
 	}
 	if len(conflicts) > 0 {
-		return nil, fmt.Errorf("%w: %s", ErrConflict, strings.Join(conflicts, ", "))
+		return nil, &ConflictError{Folders: conflicts}
 	}
 	for _, p := range previous {
 		if kept[strings.ToLower(p)] {

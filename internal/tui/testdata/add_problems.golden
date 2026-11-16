@@ -11,7 +11,7 @@
 │ ✗ line 2: invalid addon ref "baganator": want <source>:<id> or a URL, e.g.   │
 │ github:owner/repo                                                            │
 │                                                                              │
-│ [ ] Force: take over folders no addon owns                                   │
+│ [ ] Force: remove and replace the addon folder                               │
 │                                                                              │
 │                                                                              │
 │                                                                              │

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -242,6 +243,9 @@ func (m *model) applyResults(msg doneMsg) tea.Cmd {
 				kn.status = app.StatusUnknown
 			}
 			kn.err = res.Err
+			if msg.kind == jobUpdate {
+				kn.err = conflictHint(res.Err, fmt.Sprintf("run `knapsack update -p %s %s --force`", profile, res.Ref))
+			}
 			k[res.Ref] = kn
 		case app.ActionUnchanged, app.ActionNotInConfig:
 		}
@@ -265,6 +269,32 @@ func (m *model) applyResults(msg doneMsg) tea.Cmd {
 		}
 	}
 	return cmd
+}
+
+// conflictHint replaces a folder conflict's hint, the CLI's "rerun with
+// --force", with how the TUI replaces the folders, fix: Add's Force box,
+// or for update, which doesn't force, as replacing folders no addon owns
+// is a choice made addon by addon, the CLI command for the one addon.
+// Other errors are returned as they are.
+func conflictHint(err error, fix string) error {
+	ce, ok := errors.AsType[*app.FolderConflictError](err)
+	if !ok {
+		return err
+	}
+	return &app.UserError{
+		Msg:  err.Error(),
+		Hint: "to remove and replace the " + addonFolders(len(ce.Folders)) + ", " + fix,
+		Err:  err,
+	}
+}
+
+// addonFolders is "addon folders" for n of them, and "addon folder" for
+// one, or before any is known.
+func addonFolders(n int) string {
+	if n > 1 {
+		return "addon folders"
+	}
+	return "addon folder"
 }
 
 // resultSummary says what a job did, as the CLI's summary line does:
@@ -332,8 +362,7 @@ func (m *model) confirmKey(s string) tea.Cmd {
 // answers (DESIGN.md §9.5).
 type planModal struct {
 	items  []planItem
-	force  bool
-	cursor int // over the boxes: each prune candidate, then Force
+	cursor int // over the prune candidates' boxes
 }
 
 type planItem struct {
@@ -373,7 +402,7 @@ func (m *model) openPlan(rows []row) tea.Cmd {
 }
 
 // boxes are the indexes in items of the prune candidates, whose boxes
-// the cursor moves over before Force's.
+// the cursor moves over.
 func (p *planModal) boxes() []int {
 	var out []int
 	for i, it := range p.items {
@@ -389,7 +418,7 @@ func (m *model) planKey(s string) tea.Cmd {
 	boxes := p.boxes()
 	switch s {
 	case "j", "down", "tab":
-		p.cursor = min(p.cursor+1, len(boxes))
+		p.cursor = max(min(p.cursor+1, len(boxes)-1), 0)
 		m.followPlanCursor()
 	case "k", "up", "shift+tab":
 		p.cursor = max(p.cursor-1, 0)
@@ -399,13 +428,13 @@ func (m *model) planKey(s string) tea.Cmd {
 	case "space":
 		if p.cursor < len(boxes) {
 			p.items[boxes[p.cursor]].prune = !p.items[boxes[p.cursor]].prune
-		} else {
-			p.force = !p.force
 		}
 	case "enter":
 		m.plan = nil
 		var refs []ref.Ref
-		opts := app.UpdateOptions{Force: p.force}
+		// Force isn't offered here: replacing folders no addon owns is
+		// done one addon at a time, with update --force (conflictHint).
+		var opts app.UpdateOptions
 		for _, it := range p.items {
 			switch {
 			case it.action != "prune":
@@ -490,11 +519,6 @@ func (m *model) planLines(width int) (lines []string, cursorLine int) {
 	group("install", "Install")
 	group("check", "Checked when updating")
 	group("prune", "Not in config: left installed, unless checked to uninstall")
-	lines = append(lines, "")
-	if p.cursor == len(boxes) {
-		cursorLine = len(lines)
-	}
-	lines = append(lines, box(p.force, p.cursor == len(boxes), "Force: replace folders no addon owns"))
 	return wrapLines(width, lines), cursorLine
 }
 

@@ -1610,9 +1610,12 @@ There's no check on a timer.
   upgrade, not installed an install, not in config a prune candidate,
   left unchecked so it stays installed, as `update` without `--prune`
   leaves it. Unchecked or unknown rows are listed as `checked when
-  updating`. A Force box sets `UpdateOptions.Force`. `enter` runs
-  `Update`, which resolves everything again, so the plan never acts on
-  stale answers.
+  updating`. `enter` runs `Update`, which resolves everything again, so
+  the plan never acts on stale answers. It never sets
+  `UpdateOptions.Force`: replacing folders no addon owns is decided addon
+  by addon, so a folder conflict's hint names the CLI command for the one
+  addon, `knapsack update -p <profile> <ref> --force`, in place of the
+  CLI's "rerun with --force".
 - **Add**: a text area with line numbers, one ref or URL per line, so a
   list can be pasted (a paste goes to the dialog, or to the filter while
   it's open). Each line is parsed with `ref.Parse` on `ctrl-s`; if any
@@ -1623,7 +1626,8 @@ There's no check on a timer.
   with how many more, so the Force box stays in view. An addon `Add`
   can't add opens the dialog again with only the failed refs, each with
   its error and hint, and Force as it was: a folder conflict's fix is a
-  tab and a space away. An addon `Add` adopts (installed already, not in
+  tab and a space away, and its hint says `check Force` in place of the
+  CLI's "rerun with --force". An addon `Add` adopts (installed already, not in
   config) is left unchecked, since it's recorded at the version on
   disk. An empty profile says `a` adds one.
 - **Set key**: `textinput` in password mode, so the key is never drawn,
