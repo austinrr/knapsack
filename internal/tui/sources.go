@@ -332,8 +332,9 @@ func (m *model) sourcesTable(width int) (string, []string) {
 		switch {
 		case i == m.scursor:
 			l = "  " + cursorStyle.Render(pad(strings.TrimPrefix(l, "  "), width-2))
-		case cs[1] == "needs key":
-			l = strings.Replace(l, "needs key", warnStyle.Render("needs key"), 1)
+		case !m.sources[i].Ready():
+			// The status column, s.Status(), is the row's second.
+			l = strings.Replace(l, cs[1], warnStyle.Render(cs[1]), 1)
 		}
 		lines = append(lines, ansi.Truncate(l, width, "…"))
 	}

@@ -88,3 +88,19 @@ func TestSourceDisplay(t *testing.T) {
 		}
 	}
 }
+
+// UniqueNamesOf names Installed and Plan rows as UniqueNames does.
+func TestUniqueNamesOf(t *testing.T) {
+	t.Parallel()
+	a := ref.Ref{Source: ref.GitHub, ID: "a/details"}
+	b := ref.Ref{Source: ref.GitHub, ID: "b/details"}
+	installed := []app.Installed{{Profile: "forever", Ref: a, Title: "Details!"}, {Profile: "forever", Ref: b, Title: "Details!"}}
+	plans := []app.Plan{{Profile: "forever", Ref: a, Title: "Details!"}, {Profile: "forever", Ref: b, Title: "Details!"}}
+	want := []string{"Details! (a/details)", "Details! (b/details)"}
+	if diff := cmp.Diff(want, app.UniqueNamesOf(installed)); diff != "" {
+		t.Errorf("UniqueNamesOf(installed) (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff(want, app.UniqueNamesOf(plans)); diff != "" {
+		t.Errorf("UniqueNamesOf(plans) (-want +got):\n%s", diff)
+	}
+}

@@ -36,6 +36,27 @@ func UniqueNames(rows []NameRow) []string {
 	return out
 }
 
+// UniqueNamesOf is UniqueNames for rows that say their own NameRow, as
+// Installed and Plan do.
+func UniqueNamesOf[T interface{ NameRow() NameRow }](rows []T) []string {
+	named := make([]NameRow, len(rows))
+	for i, r := range rows {
+		named[i] = r.NameRow()
+	}
+	return UniqueNames(named)
+}
+
+// NameRow is the addon's profile, the name it's shown by, and its ref.
+func (in Installed) NameRow() NameRow {
+	return NameRow{Profile: in.Profile, Name: in.Name(), Ref: in.Ref}
+}
+
+// NameRow is the planned addon's profile, the name it's shown by, and its
+// ref.
+func (p Plan) NameRow() NameRow {
+	return NameRow{Profile: p.Profile, Name: p.DisplayName(), Ref: p.Ref}
+}
+
 // Count is n things, as "1 addon" or "2 addons".
 func Count(n int, thing string) string {
 	if n == 1 {

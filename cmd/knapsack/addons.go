@@ -193,10 +193,11 @@ func noteUnmanaged(cmd *cobra.Command, n int, afterTable bool) error {
 			return err
 		}
 	}
-	note := fmt.Sprintf("%d folders in AddOns aren't managed by Knapsack; see them with --unmanaged.", n)
+	verb, them := "aren't", "them"
 	if n == 1 {
-		note = "1 folder in AddOns isn't managed by Knapsack; see it with --unmanaged."
+		verb, them = "isn't", "it"
 	}
+	note := fmt.Sprintf("%s in AddOns %s managed by Knapsack; see %s with --unmanaged.", app.Count(n, "folder"), verb, them)
 	_, err := fmt.Fprintln(cmd.ErrOrStderr(), note)
 	return err
 }
@@ -361,11 +362,7 @@ func printList(w io.Writer, list []app.Installed, all, wide bool) error {
 	} else {
 		out.printf("ADDON\tSTATUS\tVERSION\tSOURCE\n")
 	}
-	rows := make([]app.NameRow, len(list))
-	for i, in := range list {
-		rows[i] = app.NameRow{Profile: in.Profile, Name: in.Name(), Ref: in.Ref}
-	}
-	names := app.UniqueNames(rows)
+	names := app.UniqueNamesOf(list)
 	for i, in := range list {
 		if all {
 			out.printf("%s\t", in.Profile)

@@ -295,11 +295,7 @@ func printPlans(out *printer, plans []app.Plan, all, wide bool) {
 		row.printf("PROFILE\t")
 	}
 	row.printf("ADDON\tINSTALLED\tAVAILABLE\tACTION\tSOURCE\n")
-	rows := make([]app.NameRow, len(plans))
-	for i, p := range plans {
-		rows[i] = app.NameRow{Profile: p.Profile, Name: p.DisplayName(), Ref: p.Ref}
-	}
-	names := app.UniqueNames(rows)
+	names := app.UniqueNamesOf(plans)
 	for i, p := range plans {
 		if all {
 			row.printf("%s\t", p.Profile)

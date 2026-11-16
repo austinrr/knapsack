@@ -24,7 +24,7 @@ func (m *model) allRows() []row { return m.rowsMatching("") }
 
 func (m *model) rowsMatching(query string) []row {
 	k := m.known[m.profile]
-	names := uniqueNames(m.rows)
+	names := app.UniqueNamesOf(m.rows)
 	q := strings.ToLower(query)
 	var out []row
 	for i, in := range m.rows {
@@ -42,16 +42,6 @@ func (m *model) rowsMatching(query string) []row {
 		out = append(out, row{Installed: in, name: names[i]})
 	}
 	return out
-}
-
-// uniqueNames is each row's name, made unique as list makes it
-// (app.UniqueNames).
-func uniqueNames(rows []app.Installed) []string {
-	named := make([]app.NameRow, len(rows))
-	for i, r := range rows {
-		named[i] = app.NameRow{Profile: r.Profile, Name: r.Name(), Ref: r.Ref}
-	}
-	return app.UniqueNames(named)
 }
 
 // summary is the status line's counts: how many addons, and once
