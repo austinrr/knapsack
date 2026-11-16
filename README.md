@@ -92,6 +92,9 @@ replaces the folder with the release.
 `profiles create` plus `update` reinstalls everything. Releases are
 compared by checksum, not version number.
 
+Or do all of this interactively with `knapsack tui` (see
+[Interactive interface](#interactive-interface)).
+
 ## Commands
 
 | Command | What it does |
@@ -108,6 +111,7 @@ compared by checksum, not version number.
 | `sources list`, `set-api`, `set-key`, `unset-key` | List addon sources, choose whether each is read from its official API or website, and manage API keys, for every profile |
 | `version` | Print Knapsack's version, and say if there's a newer one |
 | `self-update` | Update Knapsack to the newest release |
+| `tui` | Browse and manage addons, profiles and sources interactively, in the terminal |
 
 An addon can be named by its ref (`github:austinrr/baganator-mirror`,
 `curseforge:<id>`, `wago:<id>`), its GitHub, curseforge.com or
@@ -174,6 +178,36 @@ that opens a GitHub issue with the details filled in; please send it.
 `KNAPSACK_WAGO_API_KEY` and `KNAPSACK_CURSEFORGE_API_KEY` override the
 stored keys. Wago publishes no checksums, so `check`, and `list` unless
 `--no-check`, download each Wago addon to tell whether it changed.
+
+## Interactive interface
+
+`knapsack tui` opens an interactive interface over the same commands,
+laid out like k9s: one table at a time, and single-key actions. It
+opens on the current profile, or the one `-p` names, without making it
+current, and with no profiles yet, it opens on the profiles view.
+
+```sh
+knapsack tui
+knapsack tui -p retail
+```
+
+The table appears at once, then each addon is checked as `list` checks
+it, row by row. Nothing is read in the background after that, so the
+TUI never makes a `knapsack update` in another terminal, or a scheduled
+one, fail on a profile in use; `c` checks again. Unlike the CLI, which
+never prompts, the TUI asks before removing anything, and shows what
+`U` will do before doing it.
+
+| View | Keys |
+|---|---|
+| **Addons** (`1`) | `enter` describe · `u` update · `U` update all, with a plan first · `a` add, by ref or link · `ctrl+d` remove · `space` mark · `o` open the addon's page · `e` edit the profile · `c` check again · `/` filter |
+| **Profiles** (`2`) | `enter` use · `n` new, by path · `s` set its path or flavor · `A` find the game · `e` edit · `ctrl+d` delete |
+| **Sources** (`3`) | `enter` set the API key · `ctrl+d` remove it · `w` official API or website |
+
+`tab` switches views, `?` shows every key, and `q` or `ctrl+c` quits.
+Quitting while something is being installed or removed asks first, then
+rolls it back. It needs a terminal; scripts use `list`, `check` and
+`update`.
 
 ## Where files live
 
