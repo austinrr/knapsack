@@ -290,6 +290,9 @@ type confirmModal struct {
 	// closes it, and onYes is nil.
 	info            bool
 	title, question string
+	// subject is who the title names, "key(curseforge)": the profile
+	// unless set.
+	subject string
 	// note is prose under the question, wrapped as a paragraph.
 	note string
 	// lines are paragraphs, wrapped to the window when drawn, so a list

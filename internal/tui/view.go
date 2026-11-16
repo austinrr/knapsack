@@ -186,8 +186,12 @@ func (m *model) content(width, height int) (string, []string) {
 			title = "profile(" + m.form.existing.Name + ")"
 		}
 		return accentStyle.Render(title), m.formLines(width)
+	case m.keyForm != nil:
+		return accentStyle.Render("key") + "(" + m.keyForm.source + ")", m.keyFormLines(width)
 	case m.view == viewProfiles:
 		return m.profilesTable(width)
+	case m.view == viewSources:
+		return m.sourcesTable(width)
 	case !m.loaded:
 		return accentStyle.Render("addons"), []string{faintStyle.Render(m.spinner() + " loading")}
 	case m.noProfiles:
@@ -222,7 +226,11 @@ func (m *model) confirmContent(width int) (string, []string) {
 			lines = append(lines, indent+l)
 		}
 	}
-	return accentStyle.Render(m.confirm.title) + "(" + m.profile + ")", lines
+	subject := m.confirm.subject
+	if subject == "" {
+		subject = m.profile
+	}
+	return accentStyle.Render(m.confirm.title) + "(" + subject + ")", lines
 }
 
 // table is the addons view.
@@ -444,6 +452,14 @@ func (m *model) helpLines(width int) []string {
 		return append(lines, "")
 	}
 	var lines []string
+	if m.view == viewSources {
+		lines = section("Sources",
+			key{"enter", "set its API key, shared by every profile"},
+			key{"ctrl+d", "remove its API key from config"},
+			key{"w", "read it through its official API, or its website"},
+		)
+		return append(lines, m.helpEverywhere(section)...)
+	}
 	if m.view == viewProfiles {
 		lines = section("Profiles",
 			key{"enter", "use the profile: make it current, and show its addons"},
@@ -484,7 +500,7 @@ func (m *model) helpLines(width int) []string {
 func (m *model) helpEverywhere(section func(string, ...struct{ keys, what string }) []string) []string {
 	type key = struct{ keys, what string }
 	return section("Everywhere",
-		key{"1 2  tab", "addons, profiles view"},
+		key{"1 2 3  tab", "addons, profiles, sources view"},
 		key{"j k  ↓ ↑", "move"},
 		key{"g G", "top, bottom"},
 		key{"ctrl+f ctrl+b", "page down, up"},
@@ -516,11 +532,15 @@ func (m *model) footer() string {
 		keys = []string{"y", m.confirm.yes, "n", "cancel"}
 	case m.form != nil:
 		keys = []string{"enter", "save", "tab", "next field", "esc", "cancel"}
+	case m.keyForm != nil:
+		keys = []string{"enter", "save", "esc", "cancel"}
+	case m.view == viewSources:
+		keys = []string{"enter", "set key", "ctrl+d", "remove key", "w", "website", "tab", "addons", "?", "help"}
 	case m.view == viewProfiles && len(m.profiles) == 0:
 		keys = []string{"A", "find the game", "n", "new", "?", "help", "q", "quit"}
 	case m.view == viewProfiles:
 		keys = []string{"enter", "use", "n", "new", "s", "set", "A", "find the game", "e", "edit",
-			"ctrl+d", "delete", "tab", "addons", "?", "help"}
+			"ctrl+d", "delete", "tab", "sources", "?", "help"}
 	case m.noProfiles:
 		keys = []string{"2", "profiles", "q", "quit"}
 	case !m.loaded:

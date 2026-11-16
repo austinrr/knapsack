@@ -1481,12 +1481,20 @@ as `sources list` shows them.
 
 | Key | Action |
 |---|---|
-| `k` | Set the API key: masked input (§9.5) |
-| `K` | Remove the key, after a confirm (`SetSourceKey` with `""`) |
+| `enter` | Set the API key: masked input (§9.5) |
+| `ctrl-d` | Remove the key, after a confirm (`SetSourceKey` with `""`) |
 | `w` | Switch between the official API and the website (`SetSourceAPI`) |
 
-On GitHub's row, `k`, `K` and `w` say why they don't apply, as the CLI's
-errors do: its token is never stored, and it has only its API.
+`j` and `k` move here as everywhere, so setting a key is `enter`, and
+removing one `ctrl-d`, as removing and deleting are in the other views.
+On GitHub's row, the three say why they don't apply, as the CLI's
+errors do: its token is never stored, and it has only its API. The view
+is read when it's opened, as the profiles view is, with where GitHub's
+token comes from (`Options.GitHubKeyFrom`, which may run `gh`). After a
+change, what was checked for that source's addons is forgotten, since a
+key or a way of reading changes the answer, and the status line says
+`c` checks them again; a key the environment overrides, or one for a
+source read from its website, is noted as `set-key` notes it.
 
 ### 9.3 Package and wiring
 
@@ -1509,7 +1517,7 @@ type Options struct {
     Home    string // for shortening paths
     Running string // "v0.2.0 on linux/amd64", for report links
     // GitHubKeyFrom says where GitHub's token comes from ("GITHUB_TOKEN",
-    // "GH_TOKEN", "gh" or ""), as sources list finds it. (PR 25)
+    // "GH_TOKEN", "gh" or ""), as sources list finds it.
     GitHubKeyFrom func(context.Context) string
     // Edit runs the CLI's edit loop (§8.4, profiles edit) on a profile,
     // with the terminal handed over to the editor.
@@ -1614,7 +1622,8 @@ There's no check on a timer.
   tab and a space away. An addon `Add` adopts (installed already, not in
   config) is left unchecked, since it's recorded at the version on
   disk. An empty profile says `a` adds one.
-- **Set key**: `textinput` in password mode, so the key is never drawn.
+- **Set key**: `textinput` in password mode, so the key is never drawn,
+  only a `•` for each character, so a paste can be seen to have landed.
   `app` validates it as `set-key` does (§8.4). The key is cleared from the
   model once the job is sent, and never appears in a message, the status
   line or an error.

@@ -48,7 +48,7 @@ const (
 	jobUpdate
 	jobRemove
 	jobAdd
-	jobProfile // a change to config's profiles
+	jobProfile // a change to config: a profile's, or a source's
 )
 
 // jobDoneMsg is a job's result, delivered when it finishes.
@@ -146,6 +146,18 @@ type model struct {
 	// preads counts reads of the profiles, so only the latest's answer
 	// is used.
 	preads int
+	// The sources view's: each source, where GitHub's token comes from,
+	// the cursor, reads as preads counts the profiles', and the key
+	// input.
+	sources []app.SourceInfo
+	// sourcesRead is whether a read has answered; githubKeyKnown whether
+	// GitHub's token has been looked for, which is once a session.
+	sourcesRead    bool
+	githubKey      string
+	githubKeyKnown bool
+	scursor        int
+	sreads         int
+	keyForm        *keyForm
 
 	// openURL opens a page in the browser; blink is whether text cursors
 	// blink. Tests replace the one and turn off the other.
@@ -334,6 +346,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.form.fields[i].SetWidth(m.formWidth())
 			}
 		}
+		if m.keyForm != nil {
+			m.keyForm.input.SetWidth(m.formWidth())
+		}
 		if m.add != nil {
 			m.add.text.SetWidth(m.addWidth())
 		}
@@ -361,6 +376,20 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case editedMsg:
 		return m, m.profileResult(msg)
+	case sourcesMsg:
+		if msg.read != m.sreads {
+			return m, nil // a later read is on its way
+		}
+		if msg.err != nil {
+			m.err = msg.err // the last list stays, to see what failed
+			return m, nil
+		}
+		m.sources, m.sourcesRead = msg.sources, true
+		if msg.githubKnown {
+			m.githubKey, m.githubKeyKnown = msg.githubKey, true
+		}
+		m.scursor = max(0, min(m.scursor, len(m.sources)-1))
+		return m, nil
 	case openedMsg:
 		// Opening a page is an action: it replaces the last error, as
 		// any does (DESIGN.md §9.1).
@@ -458,6 +487,8 @@ func (m *model) result(msg tea.Msg) tea.Cmd {
 		}
 	case usedMsg, profileSetMsg, autoMsg, deletedMsg:
 		return m.profileResult(msg)
+	case sourceDoneMsg:
+		return m.sourceResult(msg)
 	case doneMsg:
 		if msg.kind == jobRemove && msg.profile == m.profile {
 			// Describing an addon just removed goes back to the table.
@@ -559,6 +590,8 @@ func (m *model) key(k tea.KeyPressMsg) tea.Cmd {
 		return m.addKey(k)
 	case m.form != nil:
 		return m.formKey(k)
+	case m.keyForm != nil:
+		return m.keyFormKey(k)
 	case m.filtering:
 		switch s {
 		case "ctrl+c":
@@ -586,6 +619,10 @@ func (m *model) key(k tea.KeyPressMsg) tea.Cmd {
 		}
 	case m.view == viewProfiles:
 		if cmd, ok := m.profilesKey(s); ok {
+			return cmd
+		}
+	case m.view == viewSources:
+		if cmd, ok := m.sourcesKey(s); ok {
 			return cmd
 		}
 	case m.describing:
@@ -639,6 +676,8 @@ func (m *model) paste(msg tea.PasteMsg) tea.Cmd {
 		return m.addInput(msg)
 	case m.form != nil:
 		return m.formInput(msg)
+	case m.keyForm != nil:
+		return m.keyInput(msg)
 	case m.filtering:
 		return m.editFilter(msg)
 	}
@@ -732,7 +771,7 @@ func (m *model) addonsKey(s string) (tea.Cmd, bool) {
 
 func (m *model) globalKey(s string) tea.Cmd {
 	switch s {
-	case "1", "2":
+	case "1", "2", "3":
 		return m.switchView(int(s[0] - '1'))
 	case "tab":
 		return m.switchView(m.view + 1)

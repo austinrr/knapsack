@@ -14,14 +14,15 @@ import (
 	"github.com/austinrr/knapsack/internal/app"
 )
 
-// The views, switched with 1–2 or tab (DESIGN.md §9.2).
+// The views, switched with 1–3 or tab (DESIGN.md §9.2).
 const (
 	viewAddons = iota
 	viewProfiles
+	viewSources
 	viewCount
 )
 
-var viewNames = [viewCount]string{"addons", "profiles"}
+var viewNames = [viewCount]string{"addons", "profiles", "sources"}
 
 // profilesMsg is every profile, from config alone.
 type profilesMsg struct {
@@ -48,8 +49,11 @@ func (m *model) profilesCmd() tea.Cmd {
 func (m *model) switchView(v int) tea.Cmd {
 	m.view = (v + viewCount) % viewCount
 	m.bodyOffset = 0
-	if m.view == viewProfiles {
+	switch m.view {
+	case viewProfiles:
 		return m.profilesCmd()
+	case viewSources:
+		return m.sourcesCmd()
 	}
 	return nil
 }
@@ -97,8 +101,9 @@ type (
 	}
 )
 
-// profileJob is a job that changes config: quick, but a write.
-func (m *model) profileJob(name string, run func(ctx context.Context) tea.Msg) tea.Cmd {
+// configJob is a job that changes config, a profile's or a source's:
+// quick, but a write.
+func (m *model) configJob(name string, run func(ctx context.Context) tea.Msg) tea.Cmd {
 	m.flash, m.err = "", nil
 	return m.enqueue(job{kind: jobProfile, name: name, writes: true, run: run})
 }
@@ -115,7 +120,7 @@ func (m *model) profilesKey(s string) (tea.Cmd, bool) {
 			return nil, true
 		}
 		name := p.Name
-		return m.profileJob("switching", func(ctx context.Context) tea.Msg {
+		return m.configJob("switching", func(ctx context.Context) tea.Msg {
 			return usedMsg{name: name, err: a.UseProfile(ctx, name)}
 		}), true
 	case "n":
@@ -126,7 +131,7 @@ func (m *model) profilesKey(s string) (tea.Cmd, bool) {
 		}
 		return m.openProfileForm(p), true
 	case "A":
-		return m.profileJob("finding the game", func(ctx context.Context) tea.Msg {
+		return m.configJob("finding the game", func(ctx context.Context) tea.Msg {
 			res, err := a.AutoProfiles(ctx, "")
 			return autoMsg{res: res, err: err}
 		}), true
@@ -184,7 +189,7 @@ func (m *model) askDeleteProfile(name string) {
 			"and what it installed goes. To manage them again, make the profile again and add them.",
 		yes: "delete",
 		onYes: func() tea.Cmd {
-			return m.profileJob("deleting", func(ctx context.Context) tea.Msg {
+			return m.configJob("deleting", func(ctx context.Context) tea.Msg {
 				res, err := a.DeleteProfile(ctx, name)
 				return deletedMsg{name: name, res: res, err: err}
 			})
@@ -450,7 +455,7 @@ func (m *model) submitProfileForm() tea.Cmd {
 	}
 	f.err, f.saving = nil, true
 	a := m.a
-	return m.profileJob("saving", func(ctx context.Context) tea.Msg {
+	return m.configJob("saving", func(ctx context.Context) tea.Msg {
 		res, err := a.SetProfile(ctx, req)
 		return profileSetMsg{req: req, res: res, err: err}
 	})

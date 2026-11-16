@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+
 	"github.com/spf13/cobra"
 
 	"github.com/austinrr/knapsack/internal/app"
@@ -14,7 +16,8 @@ func newTUICmd(c *cli) *cobra.Command {
 		Long: `Open an interactive interface over a profile's addons, like k9s: each
 addon and whether it's up to date, checked as list checks them, with
 details on enter and a filter on /. u and U update, a adds, ctrl+d
-removes; tab switches to your profiles. Press ? for every key, q to quit.
+removes; tab switches to your profiles and the addon sources, with their
+API keys. Press ? for every key, q to quit.
 
 It opens on the current profile, or the one -p names, without making it
 current. It's for a terminal; scripts use list, check and update.`,
@@ -42,6 +45,10 @@ current. It's for a terminal; scripts use list, check and update.`,
 				Home:    c.env.home,
 				Running: c.env.version + " on " + c.env.platform,
 				Edit:    c.editProfile,
+				GitHubKeyFrom: func(ctx context.Context) string {
+					_, from := findGitHubToken(ctx, c.env.getenv, c.env.ghAuthToken)
+					return from
+				},
 			})
 		},
 	}
