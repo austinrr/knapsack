@@ -2,7 +2,9 @@ package curseforge
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"slices"
@@ -144,16 +146,67 @@ func (w *Website) projectID(ctx context.Context, slug string) (string, error) {
 	if resp.StatusCode == http.StatusAccepted {
 		return "", fmt.Errorf("CFWidget is still looking the project up; retry in a minute")
 	}
-	var project struct {
-		ID int `json:"id"`
-	}
-	if err := readJSON(resp, &project); err != nil {
+	id, err := widgetID(resp.Body)
+	if err != nil {
 		return "", fmt.Errorf("%w: decode GET %s: %w", source.ErrUnexpectedWebsite, endpoint, err)
 	}
-	if project.ID <= 0 {
+	if id <= 0 {
 		return "", fmt.Errorf("%w: GET %s has no project ID", source.ErrUnexpectedWebsite, endpoint)
 	}
-	return strconv.Itoa(project.ID), nil
+	return strconv.Itoa(id), nil
+}
+
+// maxWidgetResponse bounds how much of CFWidget's answer is read looking
+// for the project's ID.
+const maxWidgetResponse = 64 << 20
+
+// widgetID reads the "id" of the JSON object in body, stopping as soon as
+// it has it. CFWidget's answer carries every file and game version the
+// project has ever had, megabytes for a long-lived addon and growing with
+// each release, but "id" comes first, so the rest is never read. It's 0
+// when the object has no "id".
+func widgetID(body io.Reader) (int, error) {
+	dec := json.NewDecoder(&limitedReader{r: body, n: maxWidgetResponse})
+	if tok, err := dec.Token(); err != nil {
+		return 0, err
+	} else if tok != json.Delim('{') {
+		return 0, fmt.Errorf("not a JSON object")
+	}
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			return 0, err
+		}
+		if tok == "id" {
+			var id int
+			err := dec.Decode(&id)
+			return id, err
+		}
+		var skip json.RawMessage
+		if err := dec.Decode(&skip); err != nil {
+			return 0, err
+		}
+	}
+	return 0, nil
+}
+
+// limitedReader reads at most n bytes of r, then fails with
+// source.ErrTooLarge.
+type limitedReader struct {
+	r io.Reader
+	n int64
+}
+
+func (l *limitedReader) Read(p []byte) (int, error) {
+	if l.n <= 0 {
+		return 0, fmt.Errorf("%w: it's over %d MiB", source.ErrTooLarge, maxWidgetResponse>>20)
+	}
+	if int64(len(p)) > l.n {
+		p = p[:l.n]
+	}
+	n, err := l.r.Read(p)
+	l.n -= int64(n)
+	return n, err
 }
 
 // get fetches url from the website, turning an unsuccessful answer into
