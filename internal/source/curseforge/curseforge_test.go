@@ -132,6 +132,37 @@ func TestWebsitePages(t *testing.T) {
 	}
 }
 
+// CFWidget's answer lists every file and game version a project has had,
+// megabytes for a long-lived addon: the ID is read from its start, and the
+// rest left unread, however big it is.
+func TestWebsiteBigLookup(t *testing.T) {
+	t.Parallel()
+	files := `[` + strings.Repeat(`{"id":1,"name":"Syndicator-1.zip"},`, maxWidgetResponse/30) + `{}]`
+	for _, tt := range []struct {
+		name, body string
+		want       error
+	}{
+		{"id first", `{"id":988370,"files":` + files + `}`, nil},
+		{"id later", `{"title":"Syndicator","files":[{"id":1}],"id":988370}`, nil},
+		{"id after too much", `{"files":` + files + `,"id":988370}`, source.ErrTooLarge},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			srv, _ := serve(t, map[string]route{"/widget/wow/addons/syndicator": {body: tt.body}})
+			got, err := NewWebsite(srv.Client(), srv.URL, srv.URL+"/widget").ID(context.Background(), "syndicator")
+			if tt.want != nil {
+				if !errors.Is(err, tt.want) || !errors.Is(err, source.ErrUnexpectedWebsite) {
+					t.Errorf("ID = %q, %v; want %v", got, err, tt.want)
+				}
+				return
+			}
+			if err != nil || got != "988370" {
+				t.Errorf("ID = %q, %v; want 988370", got, err)
+			}
+		})
+	}
+}
+
 func TestWebsiteResolveErrors(t *testing.T) {
 	t.Parallel()
 	lookup := func(r route) map[string]route {
@@ -150,6 +181,8 @@ func TestWebsiteResolveErrors(t *testing.T) {
 		{"lookup pending", lookup(route{status: http.StatusAccepted, body: `{"error":"in_queue"}`}), nil, "retry in a minute"},
 		{"lookup changed shape", lookup(route{body: `{"project":{"id":988370}}`}), source.ErrUnexpectedWebsite, "has no project ID"},
 		{"lookup not JSON", lookup(route{body: `<html>`}), source.ErrUnexpectedWebsite, "decode"},
+		{"lookup not an object", lookup(route{body: `[988370]`}), source.ErrUnexpectedWebsite, "not a JSON object"},
+		{"lookup bad id", lookup(route{body: `{"id":"988370"}`}), source.ErrUnexpectedWebsite, "decode"},
 		{"blocked", files(route{status: http.StatusForbidden, body: "_cf-lb_"}), source.ErrUnexpectedWebsite, "answered 403 Forbidden"},
 		{"outage", files(route{status: http.StatusServiceUnavailable}), nil, "answered 503"},
 		{"rate limited", files(route{status: http.StatusTooManyRequests}), source.ErrRateLimited, "rate limit"},
